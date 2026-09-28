@@ -102,10 +102,18 @@ res = client.chat.completions.create(
             <td><code>baseURL</code> / <code>base_url</code></td>
             <td><code>string</code></td>
             <td>Spanlens cloud proxy</td>
-            <td>Override for self-hosting</td>
+            <td>Override for self-hosting. An explicit value always wins.</td>
           </tr>
         </tbody>
       </table>
+      <p>
+        Self-hosting with the TypeScript SDK: set <code>SPANLENS_BASE_URL</code> to your
+        server&apos;s origin (for example <code>https://spanlens.example.com</code>, the value{' '}
+        <code>spanlens init --server-url</code> writes) and every factory routes to that origin
+        with the usual route path, so <code>createOpenAI()</code> calls{' '}
+        <code>https://spanlens.example.com/proxy/openai/v1</code>. <code>SpanlensClient</code>{' '}
+        uses the same origin for ingest and evals unless you pass <code>baseUrl</code>.
+      </p>
 
       <h2 id="create-anthropic">createAnthropic()</h2>
       <LangTabs
@@ -195,8 +203,11 @@ res = client.chat.completions.create(
         <li>Raw <code>prompt_versions.id</code> UUID</li>
       </ul>
       <p>
-        The same helper exists on the Anthropic integration. For Gemini and any non-SDK transport,
-        set the header directly: <code>x-spanlens-prompt-version: &lt;id&gt;</code>.
+        The same helper exists on every TypeScript provider integration. On{' '}
+        <code>@spanlens/sdk/gemini</code> it returns <code>customHeaders</code>, the field the
+        Gemini SDK sends (see the note under <a href="#with-user">withUser()</a>). For any
+        non-SDK transport, set the header directly:{' '}
+        <code>x-spanlens-prompt-version: &lt;id&gt;</code>.
       </p>
 
       <h2 id="with-user">withUser() / withSession(), end-user tracking (v0.2.7+)</h2>
@@ -246,8 +257,25 @@ client = openai.OpenAI(
       />
       <p>
         Each helper returns <code>{`{ headers: { ... } }`}</code>, so multiple helpers can be
-        spread together. The Anthropic integration exports the same helpers.
+        spread together. Every TypeScript provider integration exports the same helpers.
       </p>
+      <p>
+        Gemini is the exception: <code>@google/generative-ai</code> only sends{' '}
+        <code>customHeaders</code> and ignores a <code>headers</code> key, so the helpers on{' '}
+        <code>@spanlens/sdk/gemini</code> return <code>{`{ customHeaders, headers }`}</code>.
+        Pass one straight to <code>generateContent()</code>, or merge several:
+      </p>
+      <CodeBlock language="ts">{`import { createGemini, withUser, withSession } from '@spanlens/sdk/gemini'
+
+const model = createGemini().getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+await model.generateContent('Hi', withUser(currentUser.id))
+await model.generateContent('Hi', {
+  customHeaders: {
+    ...withUser(currentUser.id).customHeaders,
+    ...withSession(sessionId).customHeaders,
+  },
+})`}</CodeBlock>
       <p>
         All three headers are stripped by the <code>STRIP_PREFIXES</code> (<code>x-spanlens-*</code>)
         policy before forwarding to upstream providers (OpenAI/Anthropic/Gemini), they are used
@@ -290,6 +318,12 @@ client = openai.OpenAI(
           </tr>
         </tbody>
       </table>
+      <p>
+        With the TypeScript <a href="#observe-openai"><code>observe*</code> helpers</a>, passing{' '}
+        <code>logBody: &apos;meta&apos;</code> or <code>&apos;none&apos;</code> also keeps the
+        prompt and response out of the span itself: the SDK sends no span input or output to
+        Spanlens, only tokens, model, status, and timing.
+      </p>
       <p>
         Even in <code>&apos;full&apos;</code> mode, the server auto-masks API key patterns
         (<code>sk-*</code>, <code>sk-proj-*</code>, <code>sk-ant-*</code>, <code>AIza*</code>,
@@ -648,11 +682,19 @@ res = observe_openai(trace, "greeting", lambda headers:
       />
       <p>
         Same pattern works with <code>observeAnthropic()</code> / <code>observe_anthropic()</code>{' '}
-        and <code>observeGemini()</code> / <code>observe_gemini()</code>. The{' '}
-        <code>logBody</code> option on the options form maps 1:1 to the{' '}
-        <a href="#with-log-body"><code>withLogBody()</code></a> helper, and the{' '}
-        <code>cache</code> option maps 1:1 to{' '}
-        <a href="#with-cache"><code>withCache()</code></a>.
+        and <code>observeGemini()</code> / <code>observe_gemini()</code>. In TypeScript, hand the
+        headers to Gemini as <code>{`{ customHeaders: headers }`}</code>, the only header field{' '}
+        <code>@google/generative-ai</code> sends. The <code>logBody</code> option on the options
+        form maps 1:1 to the <a href="#with-log-body"><code>withLogBody()</code></a> helper, and
+        with <code>&apos;meta&apos;</code> or <code>&apos;none&apos;</code> the TypeScript helpers
+        also leave the prompt and response off the span. The <code>cache</code> option maps 1:1
+        to <a href="#with-cache"><code>withCache()</code></a>.
+      </p>
+      <p>
+        The TypeScript helpers return as soon as your callback settles. The span&apos;s end is
+        stamped at that moment and delivered in the background, so a slow Spanlens server never
+        adds latency to your response; pass <code>awaitIngest: true</code> in the options form to
+        wait for delivery inline, and see <a href="#flush">flush()</a> for short-lived processes.
       </p>
 
       <h2 id="observe-ollama">observeOllama(), self-hosted LLMs (v0.5.0+ / 0.4.0+)</h2>
@@ -662,6 +704,11 @@ res = observe_openai(trace, "greeting", lambda headers:
         reach your local Ollama, but the SDK can. Wrap your Ollama call with{' '}
         <code>observeOllama()</code> and only the trace metadata (model, tokens, latency) flows to
         Spanlens. Your prompts and responses never leave your machine via Spanlens.
+      </p>
+      <p>
+        In TypeScript this is the helper&apos;s default <code>logBody: &apos;meta&apos;</code>. If
+        you do want the response stored on the span, opt in with{' '}
+        <code>{`observeOllama(trace, { name: 'chat', logBody: 'full' }, fn)`}</code>.
       </p>
       <p>
         The dashboard tags the trace <code>provider: ollama</code> and leaves the cost column as
@@ -816,7 +863,7 @@ result = graph.invoke(
           <tr>
             <td><code>maxInputBytes</code> / <code>max_input_bytes</code></td>
             <td><code>16_384</code></td>
-            <td>JSON byte cap on <code>span.input</code>. Larger payloads become <code>{'{ __truncated: true, preview, originalBytes }'}</code>.</td>
+            <td>Cap on the JSON size of <code>span.input</code>, in bytes (UTF-8 in TypeScript, so CJK text and emoji count at their real size). Larger payloads become <code>{'{ __truncated: true, preview, originalBytes }'}</code>.</td>
           </tr>
           <tr>
             <td><code>maxOutputBytes</code> / <code>max_output_bytes</code></td>
@@ -840,8 +887,9 @@ result = graph.invoke(
       <ul>
         <li>
           <strong>Single handler, multiple runs</strong>, concurrent invocations are tracked by
-          LangChain&rsquo;s per-run UUID, so one handler instance is safe to share across
-          parallel graph executions.
+          LangChain&rsquo;s per-run UUID and, in TypeScript, every top-level run gets its own
+          trace closed with that run&rsquo;s status, so one handler instance is safe to share
+          across parallel graph executions.
         </li>
         <li>
           <strong>Duck-typed</strong>, Spanlens does not import from{' '}
@@ -857,24 +905,43 @@ result = graph.invoke(
 
       <h3 id="vercel-ai">Vercel AI SDK</h3>
       <p>
-        Pass <code>tracker.onStepFinish</code> and <code>tracker.onFinish</code> to{' '}
-        <code>generateText</code> / <code>streamText</code>. Works with AI SDK 4.x and 5.x.
+        Streaming calls (<code>streamText</code> / <code>streamObject</code>) take{' '}
+        <code>tracker.onFinish</code> and <code>tracker.onError</code>. Awaited calls (
+        <code>generateText</code> / <code>generateObject</code>) have no <code>onFinish</code>{' '}
+        callback in AI SDK 4.x and 5.x, so pass the result to <code>tracker.end()</code>. Token
+        totals cover every step of a multi-step run. Works with AI SDK 4.x and 5.x; see the{' '}
+        <a href="/docs/integrations/vercel-ai">Vercel AI SDK integration</a> page for details.
       </p>
       <LangTabs
         ts={`import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
 import { SpanlensClient } from '@spanlens/sdk'
-import { generateText } from 'ai'
+import { generateText, streamText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 
 const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
-const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
 
-const result = await generateText({
+// generateText / generateObject: close the span from the awaited result
+const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+try {
+  const result = await generateText({
+    model: openai('gpt-4o'),
+    messages: [{ role: 'user', content: 'Hello' }],
+    onStepFinish: tracker.onStepFinish,  // counts tool steps and sums their usage
+  })
+  await tracker.end(result)             // closes span with the run's token totals
+} catch (err) {
+  await tracker.onError(err)            // closes span as an error
+  throw err
+}
+
+// streamText / streamObject: close the span from the callbacks
+const streamTracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+const stream = streamText({
   model: openai('gpt-4o'),
   messages: [{ role: 'user', content: 'Hello' }],
-  onStepFinish: tracker.onStepFinish,  // records intermediate tool steps
-  onFinish: tracker.onFinish,          // closes span with final token counts
-  onError: tracker.onError,            // closes span if a streaming call fails
+  onStepFinish: streamTracker.onStepFinish,
+  onFinish: streamTracker.onFinish,      // closes span once the stream ends
+  onError: streamTracker.onError,        // closes span if the stream fails
 })`}
         py={`# Vercel AI SDK is TypeScript-only`}
       />
@@ -937,31 +1004,41 @@ with client.start_trace("multi-agent-workflow") as trace:
       <h2 id="flush">Graceful shutdown, <code>client.flush()</code></h2>
       <p>
         Ingest calls run in the background. In short-lived processes, scripts, one-shot jobs,
-        serverless cold starts, the process can exit before all POSTs complete. Call{' '}
+        serverless handlers, the process can exit or freeze before they complete. Call{' '}
         <code>flush()</code> before exit to drain them:
       </p>
       <CodeBlock language="ts">{`const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 
 // ... your agent logic ...
 
-await client.flush()   // resolves when all in-flight ingest calls have settled
+await client.flush()                     // resolves when every scheduled ingest call has settled
+await client.flush({ timeoutMs: 2000 })  // or cap the wait to fit a time budget
 process.exit(0)`}</CodeBlock>
       <p>
-        <code>flush()</code> uses <code>Promise.allSettled</code> internally, it resolves even if
-        some requests failed, so a network error won&apos;t hang the process. Failed writes are
-        silently dropped (or forwarded to your <code>onError</code> hook if set). Transient
-        failures are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms)
-        before giving up.
+        In TypeScript, <code>flush()</code> waits for everything scheduled so far: in-flight
+        requests, span and trace ends you never awaited (including those from{' '}
+        <code>observe()</code> and the framework integrations), and anything scheduled while it
+        waits. It resolves even if some requests failed, so a network error won&apos;t hang the
+        process. Failed writes are dropped and reported to your <code>onError</code> hook if set.
+        The TypeScript transport gives network errors, timeouts, and <code>5xx</code> responses 3
+        attempts in total, 200 ms and then 400 ms apart, before giving up; <code>4xx</code>{' '}
+        responses are not retried.
       </p>
 
       <h2 id="non-blocking">Non-blocking by design</h2>
       <p>
-        Both SDKs do the actual ingest HTTP calls in the background, the TypeScript SDK uses the
-        runtime&rsquo;s native promise queue, while Python uses a small daemon thread pool. Either
-        way, your hot path (the LLM call itself) is never delayed by Spanlens, and a slow / down
-        Spanlens server never crashes your app. Failures are swallowed by default; pass{' '}
-        <code>silent: false</code> (TS) or <code>silent=False</code> (Python) plus an{' '}
-        <code>onError</code> hook to surface them.
+        Both SDKs do the actual ingest HTTP calls in the background: the TypeScript SDK on the
+        runtime&rsquo;s promise queue, Python on a small background thread pool. In TypeScript,{' '}
+        <code>startTrace()</code> and <code>span()</code> return immediately, and{' '}
+        <code>observe()</code> and the <code>observe*</code> provider helpers resolve as soon as
+        your callback does, with the span&apos;s end time stamped at that moment. So neither the
+        LLM call nor the code awaiting <code>observe()</code> waits on Spanlens, and a slow
+        Spanlens server does not stretch recorded durations. The only calls that wait for
+        delivery are the ones you await on purpose: <code>span.end()</code>,{' '}
+        <code>trace.end()</code>, <code>client.flush()</code>, or <code>observe()</code> with{' '}
+        <code>awaitIngest: true</code>. A slow or down Spanlens server never crashes your app.
+        Failures are swallowed by default; pass <code>silent: false</code> (TS) or{' '}
+        <code>silent=False</code> (Python) plus an <code>onError</code> hook to surface them.
       </p>
 
       <h2>TypeScript &amp; Python compatibility</h2>

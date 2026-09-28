@@ -8,6 +8,11 @@
  * client-side tracing: wrap each call with `observeOllama()` so the span is
  * ingested and tagged `provider: 'ollama'` in the dashboard.
  *
+ * `observeOllama()` defaults to `logBody: 'meta'`: the span carries the model,
+ * token counts, status, and timing, but neither the prompt nor the response
+ * leaves your machine. Pass `{ name, logBody: 'full' }` to store the response
+ * as span output.
+ *
  * Replaces:
  *   import OpenAI from 'openai'
  *   const ollama = new OpenAI({

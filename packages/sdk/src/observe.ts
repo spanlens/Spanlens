@@ -348,6 +348,11 @@ export function observeGemini<T>(
  * Spanlens can compute) and the dashboard renders a "Self-hosted" badge
  * in the cost column.
  *
+ * Unlike the hosted-provider helpers, `logBody` defaults to `'meta'` here:
+ * the span carries model, tokens, status, and timing, and the prompt and
+ * response stay on your machine. Pass `logBody: 'full'` to capture the
+ * response as span output.
+ *
  * @example
  *   import OpenAI from 'openai'
  *   import { observeOllama } from '@spanlens/sdk'

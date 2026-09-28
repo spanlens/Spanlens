@@ -1,5 +1,35 @@
 # @spanlens/sdk changelog
 
+## Unreleased
+
+Tracing no longer sits on your request path, `flush()` drains everything, span bodies follow `logBody`, and self-hosted deployments are picked up from `SPANLENS_BASE_URL`.
+
+### Changed
+
+- `observe()` and every `observe<Provider>()` helper return as soon as your callback settles. The span's end PATCH is queued in the background instead of being awaited, so a slow or unreachable Spanlens server no longer adds its round trips (up to about 29 seconds with the defaults) to your response time. Pass `awaitIngest: true` to wait for delivery inline.
+- `span.end()` and `trace.end()` stamp `ended_at` at the moment they are called. Previously it was taken after the creation POST finished, so ingest latency inflated span durations on the dashboard.
+- `observeOllama()` now defaults to `logBody: 'meta'`: the span carries tokens, model, status, and timing but not the prompt or response, matching the promise that a local model's bodies stay on your machine. Pass `logBody: 'full'` to capture the response as span output again.
+- `@spanlens/sdk/gemini` header helpers (`withUser`, `withSession`, `withLogBody`, `withCache`, `withPromptVersion`) now return `{ customHeaders, headers }`. `@google/generative-ai` only sends `customHeaders`, so the previous `{ headers }` shape never reached the proxy. Merge several helpers through `customHeaders`.
+
+### Added
+
+- `SPANLENS_BASE_URL`: when set to a self-hosted server origin (for example `https://spanlens.example.com`, as written by `spanlens init --server-url`), every proxy factory routes to that origin plus the hosted route's path, and the client's ingest and evals calls use it too. An explicit `baseURL` / `baseUrl` option still wins; `createOllama()` is unaffected.
+- `client.flush({ timeoutMs })` caps how long flush waits.
+- `tracker.end(result)` on the Vercel AI tracker closes the span from an awaited `generateText` / `generateObject` result. Those functions have no `onFinish` callback in AI SDK 4.x and 5.x, so the previously documented `generateText({ onFinish })` never closed the span.
+- The Vercel AI tracker records a structured `object` (from `generateObject` / `streamObject`) as JSON text output.
+- `ObserveOptions` and `FlushOptions` types are exported.
+
+### Fixed
+
+- `client.flush()` now waits for span and trace ends that were never awaited, including ones still queued behind their creation POST, and keeps draining until nothing new is pending. Before, it returned while those PATCHes were outstanding, so fire-and-forget ends (and the LlamaIndex integration, which always ends spans that way) could leave spans `running` after a serverless freeze or `process.exit`.
+- With `logBody: 'meta'` or `'none'`, the provider helpers no longer send the response as span output or the prompt as span input. Previously the option only set the proxy header, and the full response still went to ingest through the span.
+- LangChain: every top-level run gets its own trace. A handler shared across overlapping invocations (as the docs recommend) used to merge them into one trace, drop the second run's error status, and leave later runs in a trace that never ended. Sampled-out error runs are still recorded when a parallel run succeeds.
+- LangChain: `maxInputBytes` / `maxOutputBytes` count UTF-8 bytes. They compared UTF-16 string length, so CJK text was stored at up to 3x the cap and emoji at 2x; the preview is now cut on a character boundary and `originalBytes` is a real byte count.
+- Vercel AI: token totals cover the whole run. From AI SDK 5.0 on, `onFinish` passes the last step's `usage` and the run's sum in `totalUsage`; the tracker now prefers `totalUsage`, then the sum of the steps seen by `onStepFinish`, then `usage`.
+- Gemini: `getGenerativeModelFromCachedContent()` routes through the Spanlens proxy. It used to call Google directly with your Spanlens key. An OpenAI-style `{ headers }` passed to either model factory is folded into `customHeaders`.
+- `evals.run({ timeoutMs })` is a hard deadline. It now aborts a stalled trigger POST, poll request, or response body and never sleeps past the deadline, instead of waiting for the runtime's own fetch timeout (about 5 minutes on Node) and failing with "fetch failed".
+- The retry description in the docs and code comments now matches the transport: 3 attempts in total (the first try plus 2 retries) with 200 ms and 400 ms back-off. The documented 800 ms step never happened.
+
 ## 0.17.0
 
 Mistral and OpenRouter integrations, plus header-helper parity across every proxy subpath.

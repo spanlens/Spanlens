@@ -62,6 +62,23 @@ const openrouter = createOpenRouter()  // -> /proxy/openrouter/v1
 
 The returned clients are **identical** to `new OpenAI(...)` etc, so all options (timeout, headers, organization, etc.) forward through. Peer dependencies (`openai`, `@anthropic-ai/sdk`, `@google/generative-ai`) are optional. Install only the ones you use.
 
+### Self-hosted Spanlens
+
+Set `SPANLENS_BASE_URL` to your server's origin (the value `spanlens init --server-url` writes) and every factory routes there instead of the hosted proxy, keeping the same route path:
+
+```bash
+SPANLENS_BASE_URL=https://spanlens.example.com
+```
+
+```ts
+createOpenAI()      // -> https://spanlens.example.com/proxy/openai/v1
+createAnthropic()   // -> https://spanlens.example.com/proxy/anthropic
+createGemini()      // -> https://spanlens.example.com/proxy/gemini
+new SpanlensClient({ apiKey })  // ingest and evals -> https://spanlens.example.com
+```
+
+An explicit `baseURL` (or `baseUrl` for Gemini and `SpanlensClient`) always wins. `createOllama()` keeps pointing at your local Ollama. In runtimes without `process` (browser bundles) the variable is treated as unset.
+
 ### Prompt A/B tagging (v0.2.2+)
 
 Link a call to a specific [Spanlens Prompts](https://www.spanlens.io/docs/features/prompts) version so it shows up in the A/B metrics table:
@@ -101,6 +118,18 @@ await openai.chat.completions.create(
 - **`withUser(id)`** tags the call so it shows up under that user in the [/users](https://www.spanlens.io/users) page (cost, tokens, error rate, last seen).
 - **`withSession(id)`** groups calls in the same chat / conversation so multi-turn flows are easy to inspect.
 - **`withLogBody('meta')`** stores only metadata, not request / response bodies. Use `'none'` to also drop end-user IDs. Useful for HIPAA-style data minimization without dropping the request entirely.
+
+**Gemini** reads per-request headers from `customHeaders`, not `headers`, so the helpers exported from `@spanlens/sdk/gemini` return `{ customHeaders, headers }`. Pass one directly, or merge several through `customHeaders`:
+
+```ts
+import { createGemini, withUser, withLogBody } from '@spanlens/sdk/gemini'
+const model = createGemini().getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+await model.generateContent('Hello', withUser(currentUser.id))
+await model.generateContent('Hello', {
+  customHeaders: { ...withUser(currentUser.id).customHeaders, ...withLogBody('meta').customHeaders },
+})
+```
 
 For **multi-step agent tracing** (Gantt view, parent/child spans, RAG pipelines), continue to the Quick start below.
 
@@ -146,7 +175,7 @@ try {
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `apiKey` | `string` | (required) | Spanlens API key (`sl_live_...`). |
-| `baseUrl` | `string` | `https://api.spanlens.io` | API base URL. |
+| `baseUrl` | `string` | `SPANLENS_BASE_URL`, then `https://api.spanlens.io` | API base URL for ingest and evals. |
 | `timeoutMs` | `number` | `3000` | Request timeout for ingest calls. |
 | `silent` | `boolean` | `true` | Swallow network errors so instrumentation never crashes user code. |
 | `onError` | `(err, ctx) => void` | (none) | Called on every ingest failure (even when `silent`). |
@@ -169,9 +198,11 @@ Starts a new trace. Returns immediately. The backend ingest POST runs in the bac
 
 **`spanType`**: `'llm' | 'tool' | 'retrieval' | 'embedding' | 'custom'` (default `'custom'`).
 
+Both `end()` methods stamp `ended_at` at the moment you call them and queue the PATCH right away. The returned promise settles once the PATCH is delivered (or given up on); awaiting it is optional, because `client.flush()` waits for it either way.
+
 ### `observe(parent, options, fn)`
 
-Wraps an async function in a span. Auto-ends the span on success or failure (rethrows the error).
+Wraps an async function in a span. Auto-ends the span on success or failure (rethrows the error). `observe()` resolves as soon as `fn` does: the end PATCH is sent in the background, so Spanlens never adds latency to your return path. Pass `awaitIngest: true` in `options` to wait for delivery inline instead.
 
 ```ts
 const result = await observe(traceOrSpan, { name: 'work' }, async (span) => {
@@ -212,6 +243,8 @@ const res = await observeOpenAI(trace, 'answer', (headers) =>
 await trace.end({ status: 'completed' })
 ```
 
+By default the helper records the response as the span's output. Pass `logBody: 'meta'` (or `'none'`) in the options form, for example `observeOpenAI(trace, { name: 'answer', logBody: 'meta' }, fn)`, and the SDK sends neither the span input nor the response to Spanlens; the proxied request row gets the same treatment through the header the callback receives.
+
 ### Anthropic
 
 ```ts
@@ -234,6 +267,24 @@ const res = await observeAnthropic(trace, 'reason', (headers) =>
 await trace.end()
 ```
 
+### Gemini
+
+`@google/generative-ai` sends per-request headers from `customHeaders`, so hand the tracing headers over under that key:
+
+```ts
+import { SpanlensClient, observeGemini } from '@spanlens/sdk'
+import { createGemini } from '@spanlens/sdk/gemini'
+
+const spanlens = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
+const model = createGemini().getGenerativeModel({ model: 'gemini-2.5-flash' })
+
+const trace = spanlens.startTrace({ name: 'summarize' })
+const res = await observeGemini(trace, 'summary', (headers) =>
+  model.generateContent('Summarize: ...', { customHeaders: headers }),
+)
+await trace.end()
+```
+
 ### LangChain JS (v0.3.0+)
 
 `@spanlens/sdk/langchain` ships a drop-in callback handler. Pass it to the
@@ -252,6 +303,8 @@ const result = await chain.invoke({ input: 'Hello' }, { callbacks: [handler] })
 // → prompt/completion tokens, model name, latency automatically recorded
 ```
 
+One handler can be shared by the whole process: every top-level run gets its own trace, closed with that run's status, so overlapping invocations never mix. `maxInputBytes` / `maxOutputBytes` (default 16 KB each) cap the JSON stored on a span in UTF-8 bytes.
+
 Attach to an existing trace to nest spans under your workflow:
 
 ```ts
@@ -266,27 +319,45 @@ await trace.end()
 
 ### Vercel AI SDK (v0.3.0+)
 
-`@spanlens/sdk/vercel-ai` provides `createSpanlensTracker()` whose
-`onStepFinish` and `onFinish` callbacks spread directly into `generateText`,
-`streamText`, `generateObject`, and `streamObject` options:
+`@spanlens/sdk/vercel-ai` provides `createSpanlensTracker()`, which opens one
+LLM span per AI SDK call. Streaming calls close it through callbacks; awaited
+calls close it with `tracker.end(result)`, because `generateText` and
+`generateObject` have no `onFinish` callback in AI SDK 4.x and 5.x:
 
 ```ts
-import { generateText } from 'ai'
+import { generateText, streamText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { SpanlensClient } from '@spanlens/sdk'
 import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
 
 const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
-const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
 
-const result = await generateText({
+// generateText / generateObject
+const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+try {
+  const result = await generateText({
+    model: openai('gpt-4o'),
+    messages: [{ role: 'user', content: 'Hello!' }],
+    onStepFinish: tracker.onStepFinish,  // optional (counts tool steps, sums their usage)
+  })
+  await tracker.end(result)             // required (records the run's total usage)
+} catch (err) {
+  await tracker.onError(err)            // ends the span as an error
+  throw err
+}
+
+// streamText / streamObject
+const streamTracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+const stream = streamText({
   model: openai('gpt-4o'),
   messages: [{ role: 'user', content: 'Hello!' }],
-  onStepFinish: tracker.onStepFinish,  // optional (captures multi-step tool calls)
-  onFinish: tracker.onFinish,          // required (records final usage)
-  onError: tracker.onError,            // recommended (ends the span if a streaming call fails)
+  onStepFinish: streamTracker.onStepFinish,
+  onFinish: streamTracker.onFinish,      // required (records the run's total usage)
+  onError: streamTracker.onError,        // recommended (ends the span if the stream fails)
 })
 ```
+
+Token totals cover every step: the tracker uses `totalUsage` when the AI SDK provides it (5.x and later, where `usage` is only the last step), otherwise the sum of the steps seen by `onStepFinish`, otherwise `usage`.
 
 Attach to an existing trace:
 
@@ -294,13 +365,13 @@ Attach to an existing trace:
 const trace = client.startTrace({ name: 'ai_pipeline' })
 const tracker = createSpanlensTracker({ client, trace, modelName: 'gpt-4o' })
 
-await generateText({ ..., onFinish: tracker.onFinish })
+await tracker.end(await generateText({ ... }))
 await trace.end()
 ```
 
 ### Ollama (local LLMs)
 
-`observeOllama()` traces calls against a local Ollama instance. Use the OpenAI client pointed at Ollama's OpenAI-compatible endpoint. The wrapper tags the span as `provider: 'ollama'` so the dashboard charts it separately:
+`observeOllama()` traces calls against a local Ollama instance. Use the OpenAI client pointed at Ollama's OpenAI-compatible endpoint. The wrapper tags the span as `provider: 'ollama'` so the dashboard charts it separately. It defaults to `logBody: 'meta'`: Spanlens receives the model, token counts, status, and timing, while the prompt and the response stay on your machine. Pass `{ name, logBody: 'full' }` if you do want the response stored as span output.
 
 ```ts
 import OpenAI from 'openai'
@@ -358,18 +429,18 @@ await trace.end()
 
 ## Graceful shutdown with `client.flush()`
 
-Background ingest writes are fire-and-forget. In short-lived processes (scripts, one-shot jobs, serverless cold starts) the process may exit before all POSTs complete. Call `flush()` before exit to drain them:
+Background ingest writes are fire-and-forget. In short-lived processes (scripts, one-shot jobs, serverless handlers) the process may exit or freeze before they complete. Call `flush()` before exit to drain them:
 
 ```ts
 const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 
 // ... your agent logic ...
 
-await client.flush()   // resolves when all in-flight ingest calls have settled
+await client.flush()   // resolves when every scheduled ingest call has settled
 process.exit(0)
 ```
 
-`flush()` resolves even if some requests failed. It uses `Promise.allSettled` internally so a network error won't hang the process.
+`flush()` waits for everything scheduled so far: in-flight requests, span and trace ends you never awaited (including those from `observe()` and the framework integrations, and ones still queued behind their span's creation POST), and anything scheduled while it waits. It resolves even if some requests failed, so a network error won't hang the process; each call is bounded by `timeoutMs` and the retry schedule. To stay inside a time budget, cap the wait with `await client.flush({ timeoutMs: 2000 })`; calls still in flight at that point are abandoned.
 
 ## Troubleshooting and error handling
 
@@ -438,7 +509,7 @@ class SpanlensApiError extends SpanlensTransportError {
 
 The transport retries **transient** failures on its own, so a brief network blip doesn't lose a span:
 
-- **Retried** (up to `3` attempts total) with exponential back-off `200 ms → 400 ms → 800 ms`: network errors, request timeouts (default `3000 ms`), and `5xx`.
+- **Retried**: network errors, request timeouts (default `3000 ms`), and `5xx`. Each call gets `3` attempts in total (the first try plus 2 retries), waiting 200 ms before the second attempt and 400 ms before the third. With the defaults a call that keeps timing out is given up after about 9.6 s; none of that time is spent on your request path unless you await it.
 - **Not retried**: `4xx` client errors, including `429`. These indicate a configuration or quota problem (bad key, missing scope, malformed body, exhausted plan), so retrying wastes time. They go straight to `onError` (and throw when `silent: false`).
 
 Because every trace and span carries a **client-generated UUID**, retries are idempotent: the same UUID delivered twice is a no-op on the server.
@@ -505,8 +576,8 @@ Staging traffic is low, so record everything for debugging. Production is high-v
 
 ## Design notes
 
-- **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously. Network writes run in the background so your hot path never waits on observability.
-- **Retry with back-off**: transient failures (network error, 429, 5xx) are retried up to 3 times with exponential back-off (200 ms → 400 ms → 800 ms). 4xx errors are not retried.
+- **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously, and `observe()` / `observe<Provider>()` resolve as soon as your callback does. Network writes run in the background so your hot path never waits on observability; `ended_at` is stamped when the work finished, not when ingest caught up. Only a promise you await yourself (`span.end()`, `trace.end()`, `flush()`, or `awaitIngest: true`) waits for delivery.
+- **Retry with back-off**: transient failures (network error, timeout, 5xx) get 3 attempts in total, 200 ms then 400 ms apart. 4xx errors, including 429, are not retried.
 - **Client-side UUIDs**: idempotent retries are safe, since the same UUID twice is a no-op on the server.
 - **No unhandled rejections**: background POST failures are silently swallowed; use the `onError` hook for visibility.
 
