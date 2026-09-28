@@ -334,17 +334,15 @@ const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 
 // generateText / generateObject
 const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
-try {
-  const result = await generateText({
-    model: openai('gpt-4o'),
-    messages: [{ role: 'user', content: 'Hello!' }],
-    onStepFinish: tracker.onStepFinish,  // optional (counts tool steps, sums their usage)
-  })
-  await tracker.end(result)             // required (records the run's total usage)
-} catch (err) {
+const result = await generateText({
+  model: openai('gpt-4o'),
+  messages: [{ role: 'user', content: 'Hello!' }],
+  onStepFinish: tracker.onStepFinish,   // optional (counts tool steps, sums their usage)
+}).catch(async (err) => {
   await tracker.onError(err)            // ends the span as an error
   throw err
-}
+})
+await tracker.end(result)               // required (records the run's total usage)
 
 // streamText / streamObject
 const streamTracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
@@ -359,6 +357,8 @@ const stream = streamText({
 
 Token totals cover every step: the tracker uses `totalUsage` when the AI SDK provides it (5.x and later, where `usage` is only the last step), otherwise the sum of the steps seen by `onStepFinish`, otherwise `usage`.
 
+`end()`, `onFinish`, and `onError` never wait on Spanlens. They stamp the end time on the span (and on the trace the tracker opened) the moment they run, queue the updates in the background, and resolve right away, so a slow or unreachable Spanlens server adds nothing to your response time and an ingest error never reaches your `catch`. In a serverless handler, `await client.flush()` before returning. Pass `awaitIngest: true` to `createSpanlensTracker()` if you want them to wait for delivery instead.
+
 Attach to an existing trace:
 
 ```ts
@@ -367,6 +367,7 @@ const tracker = createSpanlensTracker({ client, trace, modelName: 'gpt-4o' })
 
 await tracker.end(await generateText({ ... }))
 await trace.end()
+await client.flush()   // before a serverless handler returns
 ```
 
 ### Ollama (local LLMs)
@@ -440,7 +441,7 @@ await client.flush()   // resolves when every scheduled ingest call has settled
 process.exit(0)
 ```
 
-`flush()` waits for everything scheduled so far: in-flight requests, span and trace ends you never awaited (including those from `observe()` and the framework integrations, and ones still queued behind their span's creation POST), and anything scheduled while it waits. It resolves even if some requests failed, so a network error won't hang the process; each call is bounded by `timeoutMs` and the retry schedule. To stay inside a time budget, cap the wait with `await client.flush({ timeoutMs: 2000 })`; calls still in flight at that point are abandoned.
+`flush()` waits for everything scheduled before you called it: in-flight requests and span and trace ends you never awaited (including those from `observe()` and the framework integrations, and ones still queued behind their span's creation POST). Work scheduled after it starts, for example by other requests sharing the same client in a long-running server, is left for the next flush, so steady traffic can't keep it waiting. It resolves even if some requests failed, so a network error won't hang the process; each call is bounded by `timeoutMs` and the retry schedule. To stay inside a time budget, cap the wait with `await client.flush({ timeoutMs: 2000 })`. `flush()` then stops waiting at the deadline, and any call still in flight carries on in the background.
 
 ## Troubleshooting and error handling
 
@@ -576,7 +577,7 @@ Staging traffic is low, so record everything for debugging. Production is high-v
 
 ## Design notes
 
-- **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously, and `observe()` / `observe<Provider>()` resolve as soon as your callback does. Network writes run in the background so your hot path never waits on observability; `ended_at` is stamped when the work finished, not when ingest caught up. Only a promise you await yourself (`span.end()`, `trace.end()`, `flush()`, or `awaitIngest: true`) waits for delivery.
+- **Fire-and-forget ingest**: `startTrace()` and `trace.span()` return synchronously, and `observe()` / `observe<Provider>()` and the Vercel AI tracker's `end()` / `onFinish` / `onError` resolve as soon as your code is done. Network writes run in the background so your hot path never waits on observability; `ended_at` is stamped when the work finished, not when ingest caught up. Only a promise you await yourself (`span.end()`, `trace.end()`, `flush()`, or anything with `awaitIngest: true`) waits for delivery.
 - **Retry with back-off**: transient failures (network error, timeout, 5xx) get 3 attempts in total, 200 ms then 400 ms apart. 4xx errors, including 429, are not retried.
 - **Client-side UUIDs**: idempotent retries are safe, since the same UUID twice is a no-op on the server.
 - **No unhandled rejections**: background POST failures are silently swallowed; use the `onError` hook for visibility.
