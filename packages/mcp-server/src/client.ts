@@ -15,9 +15,63 @@
 
 const DEFAULT_BASE_URL = 'https://api.spanlens.io'
 
+/**
+ * Per-request budget covering headers AND body. Half the MCP SDK's default
+ * 60 s request timeout, so a stalled API surfaces as our own readable error
+ * before the IDE gives up on the tool call. It also bounds the startup key
+ * check, which runs before any MCP request exists and so has no other limit:
+ * without it, Node's fetch waits up to 300 s and then says only "fetch failed".
+ */
+export const DEFAULT_TIMEOUT_MS = 30_000
+
+/**
+ * Upper bound for a configured timeout. Beyond any MCP client's own request
+ * timeout, and well inside the range where Node timers stay accurate (a
+ * delay above 2^31 - 1 ms silently fires after 1 ms).
+ */
+export const MAX_TIMEOUT_MS = 600_000
+
 export interface SpanlensClientOptions {
   apiKey: string
   baseUrl?: string
+  /** Per-request timeout in ms, headers and body together. Default 30000. */
+  timeoutMs?: number
+}
+
+function isValidTimeoutMs(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_TIMEOUT_MS
+}
+
+const TIMEOUT_RANGE_HINT = `a whole number of milliseconds between 1 and ${MAX_TIMEOUT_MS}`
+
+/**
+ * Parse `SPANLENS_TIMEOUT_MS`. Unset or blank means "use the default"
+ * (undefined). Anything else must be a plain integer in range; a typo
+ * throws instead of silently falling back, so a user who asked for a
+ * longer budget is never left wondering why it had no effect.
+ */
+export function parseTimeoutMs(raw: string | undefined): number | undefined {
+  const trimmed = raw?.trim() ?? ''
+  if (trimmed === '') return undefined
+  const value = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN
+  if (!isValidTimeoutMs(value)) {
+    throw new Error(`SPANLENS_TIMEOUT_MS must be ${TIMEOUT_RANGE_HINT}, got "${trimmed}".`)
+  }
+  return value
+}
+
+/** The Spanlens API sent nothing (or stopped mid-body) within the budget. */
+export class SpanlensTimeoutError extends Error {
+  constructor(
+    public readonly timeoutMs: number,
+    public readonly url: string,
+  ) {
+    super(
+      `Spanlens API did not respond within ${timeoutMs} ms (GET ${url}). ` +
+        'Check SPANLENS_BASE_URL and your network, or raise SPANLENS_TIMEOUT_MS.',
+    )
+    this.name = 'SpanlensTimeoutError'
+  }
 }
 
 export interface SpanlensApiErrorExtras {
@@ -137,13 +191,19 @@ export interface KeyInfo {
 export class SpanlensClient {
   private readonly apiKey: string
   private readonly baseUrl: string
+  public readonly timeoutMs: number
 
   constructor(opts: SpanlensClientOptions) {
     if (!opts.apiKey || opts.apiKey.trim().length === 0) {
       throw new Error('SPANLENS_API_KEY is required')
     }
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    if (!isValidTimeoutMs(timeoutMs)) {
+      throw new Error(`timeoutMs must be ${TIMEOUT_RANGE_HINT}, got ${timeoutMs}.`)
+    }
     this.apiKey = opts.apiKey.trim()
     this.baseUrl = (opts.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '')
+    this.timeoutMs = timeoutMs
   }
 
   /** GET a JSON envelope, return the unwrapped `data` or throw. */
@@ -156,18 +216,7 @@ export class SpanlensClient {
         }
       }
     }
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${this.apiKey}`, Accept: 'application/json' },
-    })
-    let body: unknown
-    try {
-      body = await res.json()
-    } catch {
-      throw new SpanlensApiError(
-        `Spanlens API ${res.status} (response not JSON)`,
-        res.status,
-      )
-    }
+    const { res, body } = await this.fetchJson(url)
     if (!res.ok) {
       throw toApiError(body, res.status, `Spanlens API ${res.status}`)
     }
@@ -176,6 +225,36 @@ export class SpanlensClient {
       throw toApiError(body, res.status, 'Spanlens API returned success=false')
     }
     return env.data
+  }
+
+  /**
+   * One signal bounds both the fetch and the body read: undici keeps
+   * honouring the signal after headers arrive, so a body that stalls
+   * mid-stream rejects too. Only failures that happened because OUR signal
+   * fired are relabelled as timeouts; any other network error propagates
+   * unchanged.
+   */
+  private async fetchJson(url: URL): Promise<{ res: Response; body: unknown }> {
+    const signal = AbortSignal.timeout(this.timeoutMs)
+    const timeoutError = (): SpanlensTimeoutError =>
+      new SpanlensTimeoutError(this.timeoutMs, `${url.origin}${url.pathname}`)
+
+    let res: Response
+    try {
+      res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${this.apiKey}`, Accept: 'application/json' },
+        signal,
+      })
+    } catch (err) {
+      throw signal.aborted ? timeoutError() : err
+    }
+
+    try {
+      return { res, body: await res.json() }
+    } catch {
+      if (signal.aborted) throw timeoutError()
+      throw new SpanlensApiError(`Spanlens API ${res.status} (response not JSON)`, res.status)
+    }
   }
 
   /**

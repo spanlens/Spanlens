@@ -104,6 +104,7 @@ This server is designed for the IDE-config use case, where the credential sits i
 |---|---|---|
 | `SPANLENS_API_KEY` | _required_ | A `sl_live_pub_*` key from the **Public Keys** card on `/projects`. The server refuses to start without one, and refuses to start with a `sl_live_*` (full) key. |
 | `SPANLENS_BASE_URL` | `https://api.spanlens.io` | Override for self-hosted Spanlens. Trailing slashes are normalised. |
+| `SPANLENS_TIMEOUT_MS` | `30000` | How long each API call may take, in milliseconds, before it fails with a timeout error. Applies to the startup key check and to every tool call. Accepts a whole number from 1 to 600000. Any other value stops the server at startup with an error that names the variable. |
 
 ## Self-hosted Spanlens
 

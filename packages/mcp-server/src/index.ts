@@ -21,13 +21,23 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
-import { SpanlensClient, describeError } from './client.js'
+import { SpanlensClient, describeError, parseTimeoutMs } from './client.js'
 import { registerTools } from './tools.js'
 import { SERVER_VERSION } from './version.js'
 
 // All diagnostics go to stderr — stdout is the MCP transport channel.
 const log = (msg: string): void => {
   process.stderr.write(`[spanlens-mcp] ${msg}\n`)
+}
+
+/** SPANLENS_TIMEOUT_MS, or exit with a readable message when it is malformed. */
+function readTimeoutMs(): number | undefined {
+  try {
+    return parseTimeoutMs(process.env['SPANLENS_TIMEOUT_MS'])
+  } catch (err) {
+    log(describeError(err))
+    process.exit(1)
+  }
 }
 
 async function main(): Promise<void> {
@@ -38,7 +48,12 @@ async function main(): Promise<void> {
   }
 
   const baseUrl = process.env['SPANLENS_BASE_URL'] ?? undefined
-  const client = new SpanlensClient(baseUrl ? { apiKey, baseUrl } : { apiKey })
+  const timeoutMs = readTimeoutMs()
+  const client = new SpanlensClient({
+    apiKey,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+  })
 
   // Validate the key + enforce public scope BEFORE binding the transport.
   // If we let a full-access key through and somebody discovers the config
