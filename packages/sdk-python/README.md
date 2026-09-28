@@ -326,16 +326,27 @@ Environment variables:
 ## Why the SDK is non-blocking
 
 Every `trace.end()` / `span.end()` call returns immediately. Network I/O
-runs on a background thread pool with a configurable timeout, so:
+runs on a small pool of background daemon threads with a configurable
+timeout, so:
 
 * Your hot path (the LLM call itself) is never slowed down.
 * The Spanlens server being slow / down does not crash your app.
+* Transient failures (network errors, timeouts, 5xx) are retried up to three
+  attempts with a short backoff. 4xx responses are not retried, and a 429
+  (quota or rate limit) is reported with the code `RATE_LIMITED`.
+* The backlog is bounded (`max_pending`, default 10,000 calls). If Spanlens
+  stays unreachable, new calls are dropped and counted in
+  `client.dropped_count` instead of growing memory.
 * Order is still preserved: a span POST always waits for its parent trace
   POST to finish, because the server's ownership check would otherwise 404
   and the span would be silently lost.
 
 For short-lived scripts, call `client.close()` before exit (or use
-`with SpanlensClient(...) as client:`) to drain the queue.
+`with SpanlensClient(...) as client:`) to drain the queue. `client.flush()`
+waits for delivery without closing the client. Both take a `timeout` in
+seconds (default 5) so a slow backend can never hold up your process for
+longer than that, and the automatic drain at interpreter exit uses the same
+deadline.
 
 ---
 

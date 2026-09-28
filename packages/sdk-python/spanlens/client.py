@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional
 
 from .sampler import BufferingTransport, should_sample, validate_sample_rate
 from .trace import TraceHandle, create_trace
-from .transport import Transport
+from .transport import DEFAULT_SHUTDOWN_TIMEOUT_S, Transport
 
 
 class SpanlensClient:
@@ -34,6 +34,7 @@ class SpanlensClient:
         silent: bool = True,
         on_error: Optional[Callable[[BaseException, str], None]] = None,
         sample_rate: Optional[float] = None,
+        max_pending: Optional[int] = None,
     ) -> None:
         if not api_key or not api_key.strip():
             raise ValueError("[spanlens] api_key is required")
@@ -50,6 +51,8 @@ class SpanlensClient:
             config["base_url"] = base_url
         if on_error is not None:
             config["on_error"] = on_error
+        if max_pending is not None:
+            config["max_pending"] = max_pending
 
         self._transport = Transport(config)
 
@@ -90,14 +93,33 @@ class SpanlensClient:
             real_transport=self._transport,
         )
 
-    def close(self) -> None:
-        """Drain in-flight ingest calls and release the connection pool.
+    def flush(self, timeout: Optional[float] = DEFAULT_SHUTDOWN_TIMEOUT_S) -> bool:
+        """Wait for queued and in-flight ingest calls, up to ``timeout``
+        seconds (``None`` waits without a deadline). Returns ``True`` when
+        everything was delivered (or failed for good) before the deadline.
+
+        Useful in serverless handlers and tests that need the data on the
+        wire before moving on, without closing the client.
+        """
+        return self._transport.flush(timeout)
+
+    def close(self, timeout: Optional[float] = DEFAULT_SHUTDOWN_TIMEOUT_S) -> None:
+        """Deliver pending ingest calls for up to ``timeout`` seconds, then
+        release the connection pool. Calls still queued at the deadline are
+        dropped so a slow or unreachable Spanlens server can't hold up exit.
 
         Optional — also runs automatically at interpreter shutdown via
-        ``atexit``. Call explicitly when you need to guarantee delivery (e.g.
-        in short-lived scripts that exit before the background pool flushes).
+        ``atexit`` (with the same default deadline). Call explicitly when you
+        need to guarantee delivery (e.g. in short-lived scripts that exit
+        before the background pool flushes).
         """
-        self._transport.close()
+        self._transport.close(timeout)
+
+    @property
+    def dropped_count(self) -> int:
+        """Ingest calls dropped because the local backlog was full (Spanlens
+        unreachable or too slow) or the client was already closed."""
+        return self._transport.dropped_count
 
     # Allow `with SpanlensClient(...) as c:` for tidy script lifetimes.
     def __enter__(self) -> SpanlensClient:

@@ -40,8 +40,12 @@ class SpanlensConfig(TypedDict, total=False):
             Observability calls should not block user code indefinitely.
         silent: Swallow all errors so instrumentation never crashes user code
             (default ``True``).
-        on_error: Custom error hook — called when an ingest call fails.
-            Signature ``(err: Exception, context: str) -> None``.
+        on_error: Custom error hook — called once when an ingest call fails
+            for good (after retries). Signature
+            ``(err: Exception, context: str) -> None``.
+        max_pending: Cap on queued + in-flight ingest calls (default
+            10000). Calls beyond it are dropped and counted instead of
+            growing memory while Spanlens is unreachable.
     """
 
     api_key: str
@@ -49,6 +53,7 @@ class SpanlensConfig(TypedDict, total=False):
     timeout_ms: NotRequired[int]
     silent: NotRequired[bool]
     on_error: NotRequired[Optional[Callable[[BaseException, str], None]]]
+    max_pending: NotRequired[int]
     sample_rate: NotRequired[float]
     """Fraction of traces to ingest, in ``[0.0, 1.0]``. Default ``1.0`` (no sampling).
 
