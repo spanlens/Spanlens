@@ -13,6 +13,7 @@
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { aggregateByProvider } from './aggregate.js'
 import { describeError, type SpanlensClient } from './client.js'
 
 const formatJson = (data: unknown): { content: Array<{ type: 'text'; text: string }> } => ({
@@ -78,15 +79,17 @@ export function registerTools(server: McpServer, client: SpanlensClient): void {
         .enum(['model', 'provider'])
         .optional()
         .describe(
-          "When set, returns per-group breakdown from /stats/models instead of overview totals.",
+          "When set, returns a breakdown instead of overview totals. 'model' gives one row per provider and model pair. 'provider' gives one row per provider, with request-weighted latency and error rate.",
         ),
     },
     async ({ timeframe, groupBy }) => {
       try {
         const hours = timeframeToHours(timeframe)
         if (groupBy === 'model' || groupBy === 'provider') {
-          const data = await client.get('/api/v1/stats/models', { hours })
-          return formatJson(data)
+          // The server only groups by (provider, model); the provider view is
+          // rolled up here (see aggregate.ts).
+          const data = await client.get<unknown>('/api/v1/stats/models', { hours })
+          return formatJson(groupBy === 'provider' ? aggregateByProvider(data) : data)
         }
         const data = await client.get('/api/v1/stats/overview', {
           from: hoursAgoIso(hours),

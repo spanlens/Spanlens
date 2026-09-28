@@ -31,16 +31,23 @@ function captureTools(client: SpanlensClient): Map<string, ToolHandler> {
   return handlers
 }
 
-function fakeClient(): { client: SpanlensClient; calls: Array<{ path: string; query?: Record<string, unknown> }> } {
+function fakeClient(
+  response: unknown = { ok: true },
+): { client: SpanlensClient; calls: Array<{ path: string; query?: Record<string, unknown> }> } {
   const calls: Array<{ path: string; query?: Record<string, unknown> }> = []
   const client = {
     get: async (path: string, query?: Record<string, unknown>) => {
       calls.push({ path, query })
-      return { ok: true }
+      return response
     },
   } as unknown as SpanlensClient
   return { client, calls }
 }
+
+type ToolResult = { content: Array<{ text: string }>; isError?: boolean }
+
+const parseText = (result: unknown): unknown =>
+  JSON.parse((result as ToolResult).content[0]?.text ?? 'null')
 
 const NOW = new Date('2026-07-13T12:00:00.000Z').getTime()
 
@@ -72,6 +79,45 @@ describe('get_stats param contract', () => {
 
     expect(calls[0].path).toBe('/api/v1/stats/models')
     expect(calls[0].query).toEqual({ hours: 24 })
+  })
+
+  describe('groupBy output (C17.5)', () => {
+    // Shape of apps/server/src/api/stats.ts `/models`: one row per (provider, model).
+    const MODEL_ROWS = [
+      { provider: 'openai', model: 'gpt-4o', requests: 100, totalCostUsd: 1.5, avgLatencyMs: 800, errorRate: 0.1 },
+      { provider: 'anthropic', model: 'claude-sonnet-4-5', requests: 10, totalCostUsd: 0.9, avgLatencyMs: 1200, errorRate: 0.5 },
+      { provider: 'openai', model: 'gpt-4o-mini', requests: 300, totalCostUsd: 0.3, avgLatencyMs: 400, errorRate: 0 },
+    ]
+
+    test("'provider' rolls the per-model rows up to one row per provider", async () => {
+      const { client, calls } = fakeClient(MODEL_ROWS)
+      const handlers = captureTools(client)
+      const result = await handlers.get('get_stats')!({ timeframe: '24h', groupBy: 'provider' })
+
+      expect(calls[0].path).toBe('/api/v1/stats/models')
+      expect(calls[0].query).toEqual({ hours: 24 })
+      expect(parseText(result)).toEqual([
+        { provider: 'openai', models: ['gpt-4o', 'gpt-4o-mini'], requests: 400, totalCostUsd: 1.8, avgLatencyMs: 500, errorRate: 0.025 },
+        { provider: 'anthropic', models: ['claude-sonnet-4-5'], requests: 10, totalCostUsd: 0.9, avgLatencyMs: 1200, errorRate: 0.5 },
+      ])
+    })
+
+    test("'model' keeps the per (provider, model) rows as the server sent them", async () => {
+      const { client } = fakeClient(MODEL_ROWS)
+      const handlers = captureTools(client)
+      const result = await handlers.get('get_stats')!({ groupBy: 'model' })
+
+      expect(parseText(result)).toEqual(MODEL_ROWS)
+    })
+
+    test("'provider' reports an unexpected response shape as a tool error", async () => {
+      const { client } = fakeClient({ not: 'rows' })
+      const handlers = captureTools(client)
+      const result = (await handlers.get('get_stats')!({ groupBy: 'provider' })) as ToolResult
+
+      expect(result.isError).toBe(true)
+      expect(result.content[0]?.text).toContain('/api/v1/stats/models')
+    })
   })
 
   test('default timeframe is 7d', async () => {

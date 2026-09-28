@@ -72,6 +72,7 @@ The agent will discover seven tools and use them automatically when relevant.
 |---|---|
 | "How much have we spent on LLMs this week?" | `get_stats` |
 | "Break down cost by model for the last 30 days" | `get_stats(groupBy=model)` |
+| "Which provider is costing us the most this week?" | `get_stats(groupBy=provider)` |
 | "Any cost or latency anomalies?" | `get_anomalies` |
 | "Show me the 10 most recent error calls on gpt-4o" | `query_requests` |
 | "List my recent agent runs" | `list_traces` |
@@ -83,7 +84,7 @@ The agent will discover seven tools and use them automatically when relevant.
 
 | Tool | What it returns |
 |---|---|
-| `get_stats` | Aggregate cost, request count, token usage, latency, error rate. Optional `groupBy` for per-model or per-provider breakdown. |
+| `get_stats` | Aggregate cost, request count, token usage, latency, error rate. Optional `groupBy` for a breakdown of cost, requests, latency and error rate: `model` returns one row per provider and model pair, and `provider` rolls those rows up into one row per provider, with latency and error rate weighted by request count. |
 | `query_requests` | Individual LLM requests with cost, latency, model, error message. Filter by `model`, `provider`, `status`, `userId`, `since`, `limit`. |
 | `list_traces` | Agent trace summaries (name, status, duration, span count, total tokens, total cost) for discovering trace IDs. Filter by `limit`, `status`, `since`, `query`. Pair with `get_trace` for the full span tree. |
 | `get_trace` | Full agent span tree for a trace ID — every LLM/tool/retrieval span with timing, tokens, cost. |
