@@ -43,7 +43,11 @@ export const LOG_RETENTION_DAYS: Record<Plan, number> = {
   enterprise: 365,
 }
 
-// Team seat limits per plan. enforced when inviting members.
+// Team seat limits per plan. A seat is a member or an unexpired pending
+// invitation. Enforced by lib/org-seats.ts when an invitation is created and,
+// atomically under the org lock, when one is accepted (org_accept_invitation).
+// Only new joins are refused; members above the limit after a downgrade stay.
+// Instances without billing (self-hosted) do not enforce them at all.
 // null = unlimited (Enterprise only).
 export const SEAT_LIMITS: Record<Plan, number | null> = {
   free: 1,
