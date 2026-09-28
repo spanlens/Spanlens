@@ -1,20 +1,55 @@
 name: E2E (Playwright smoke)
 
-# Manual-only after PR #269's stabilisation. CI #13 was the first green
-# run after 12 layered fixes (password sign-in, workspace bootstrap,
-# encrypted provider_keys, supabase stack bounce, OPENAI_API_BASE env,
-# GITHUB_TOKEN for setup-cli, ClickHouse direct poll, etc.). Now that
-# the spec is stable, we keep automatic trigger off to avoid burning
-# CI minutes on unrelated PRs — operator runs it from the Actions UI
-# before merging anything that touches proxy / auth / log paths.
+# Runs on pull requests that touch the paths this suite actually exercises
+# (auth, proxy, ingest, billing, the request log, the web middleware and
+# the dashboard routes the spec visits), and on demand from the Actions UI.
 #
-# Flip back to `pull_request` triggers after 5 consecutive clean
-# manual runs (Sprint 3-4 success criterion in 06-development-plan.md).
+# It used to be manual-only, and that hid a deterministic failure: the
+# smoke spec never marked onboarding complete and the web process had no
+# service-role key, so the login always landed on /onboarding and the URL
+# wait timed out. Nobody ran it, so nobody saw. The path filter keeps
+# unrelated PRs (docs, marketing pages, SDK) from paying for the
+# several-minute Supabase stack bring-up.
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/server/src/proxy/**'
+      - 'apps/server/src/middleware/**'
+      - 'apps/server/src/api/ingest.ts'
+      - 'apps/server/src/api/otlp.ts'
+      - 'apps/server/src/api/billing.ts'
+      - 'apps/server/src/api/paddleWebhook.ts'
+      - 'apps/server/src/api/requests.ts'
+      - 'apps/server/src/api/feedback.ts'
+      - 'apps/server/src/lib/logger.ts'
+      - 'apps/server/src/lib/crypto.ts'
+      - 'apps/server/src/lib/postgres.ts'
+      - 'apps/server/src/lib/requests-query.ts'
+      - 'apps/server/src/lib/quota.ts'
+      - 'apps/server/src/app.ts'
+      - 'apps/server/scripts/mock-openai-server.ts'
+      - 'apps/web/middleware.ts'
+      - 'apps/web/lib/supabase/**'
+      - 'apps/web/app/login/**'
+      - 'apps/web/app/auth/**'
+      - 'apps/web/app/(dashboard)/layout.tsx'
+      - 'apps/web/app/(dashboard)/requests/**'
+      - 'apps/web/__e2e__/**'
+      - 'apps/web/playwright.config.ts'
+      - 'supabase/superseded-migrations.txt'
+      - 'scripts/superseded-migrations.mjs'
+      - '.github/workflows/e2e.yml'
   workflow_dispatch:
 
-# R-3 / R-23 — single smoke spec exercising signup → api key → proxy → /requests.
-# Spec lives in apps/web/__e2e__/smoke.spec.ts.
+# A new push to the same PR makes the previous run's result moot.
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# R-3 / R-23: smoke.spec.ts signs a pre-seeded user in through the login
+# form, sends a proxy call, and checks the row shows up on /requests.
+# feedback.spec.ts exercises the feedback API. Both live in apps/web/__e2e__/.
 #
 # Stack we bring up in CI (mirrors `docker compose -f docker-compose.dev.yml`):
 #
@@ -50,20 +85,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # apps/web/lib/api-client.ts imports a runtime value
+      # (isApiErrorEnvelope) from @spanlens/api-types, whose exports point at
+      # dist/. `pnpm install` does not build it, so without this step every
+      # dashboard page fails to compile under `next dev`. ci.yml has had the
+      # same step since #277; this workflow never got it.
+      - name: Build @spanlens/api-types
+        run: pnpm --filter @spanlens/api-types build
+
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v3
         with:
-          version: latest
+          # Same pin as ci.yml. `latest` resolves through the GitHub release
+          # API, which intermittently 504s and would now fail PRs rather
+          # than the occasional manual run. Bump both files together.
+          version: 2.106.0
         env:
-          # `setup-cli` resolves the latest release via the GitHub API.
-          # Without GITHUB_TOKEN it goes anonymous and burns the 60/h
-          # rate limit shared across the runner's IP — PR #269 CI #9 hit
-          # exactly this (rate limit exceeded, install failed before any
-          # other step ran). The token is auto-provisioned by Actions
-          # with `public_repo` scope on PRs, which is enough for the
-          # release lookup. Pinning to a specific version (e.g.
-          # `version: 1.226.x`) would also work but skips security
-          # patches between bumps.
+          # Without GITHUB_TOKEN setup-cli goes anonymous and shares the
+          # runner IP's 60/h rate limit (PR #269 CI #9 died on exactly that).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # supabase start brings up the full Postgres + GoTrue + Kong + Studio
@@ -71,15 +110,11 @@ jobs:
       # can read service_role_key + api_url without parsing log lines.
       - name: Start Supabase stack
         run: |
-          # Skip known-superseded migrations that have been fake-applied in
-          # production (see CLAUDE.md "Broken migration 복구 절차"). Mirrors
-          # the same workaround in .github/workflows/ci.yml — the broken
-          # 20260609150000 file stays in git for audit, but the CI runner
-          # removes it so `supabase db reset` against the fresh local
-          # Postgres can finish without retripping the original constraint
-          # violation. Add new entries here only after the supabase MCP
-          # fake-apply has been executed in production.
-          rm -f supabase/migrations/20260609150000_register_orphan_span_link.sql
+          # Skip superseded migrations (fake-applied in production, broken on
+          # a fresh database). The list lives in supabase/superseded-migrations.txt
+          # and is shared with ci.yml and the init.sql generator; add entries
+          # there, never here.
+          node scripts/superseded-migrations.mjs remove
           supabase start
           # `supabase start` brings up the stack with a baseline schema, but
           # does NOT always replay every file under supabase/migrations/
@@ -107,12 +142,17 @@ jobs:
           # re-apply migrations a second time.
           supabase stop --no-backup
           supabase start
-          # Re-read keys after the bounce — the new instance may have
-          # rotated them (in practice supabase keeps deterministic
-          # local-dev keys but we don't want to rely on that).
-          status_json=$(supabase status -o json)
-          # Persist the resolved URLs/keys so subsequent steps can read them
-          # via $GITHUB_ENV without grepping the supabase status output again.
+          # Mirror the hosted platform's table grants for service_role. The
+          # spec seeds its tenant through PostgREST as service_role, and some
+          # CLI images create migration tables without those grants (see
+          # scripts/local-db-setup.mjs). Tables and sequences only, so no
+          # migration's function REVOKE is undone. A no-op where they exist.
+          PGPASSWORD=postgres psql -h localhost -p 54322 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;"
+          # Re-read keys after the bounce: the new instance may have rotated
+          # them (in practice supabase keeps deterministic local-dev keys but
+          # we don't want to rely on that). Persist them so later steps read
+          # them from $GITHUB_ENV.
           status_json=$(supabase status -o json)
           {
             echo "E2E_SUPABASE_URL=$(echo "$status_json" | jq -r .API_URL)"
@@ -173,6 +213,10 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ env.E2E_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.E2E_SUPABASE_ANON_KEY }}
           NEXT_PUBLIC_API_URL: http://localhost:3001
+          # middleware.ts resolves the workspace and the onboarding flag with
+          # the service role. Without it every signed-in navigation is sent to
+          # /onboarding, which is how the smoke spec failed on every run.
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.E2E_SUPABASE_SERVICE_KEY }}
         run: |
           pnpm --filter web dev > /tmp/web.log 2>&1 &
           for i in {1..60}; do

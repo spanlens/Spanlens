@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "echo 'Vercel handles api/ compilation directly — skipping tsc'",
+    "build": "tsc --project tsconfig.build.json",
+    "vercel-build": "echo 'Vercel compiles api/index.ts itself, so the Vercel build skips tsc'",
     "start": "node dist/index.js",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",

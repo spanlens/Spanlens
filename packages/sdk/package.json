@@ -72,6 +72,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run test",

@@ -10,12 +10,18 @@
     "test": "pnpm --recursive test",
     "clean": "pnpm --recursive clean",
     "db:generate-init": "node scripts/generate-init-sql.mjs",
+    "db:check-init": "node scripts/generate-init-sql.mjs --check",
     "db:local": "node scripts/local-db-setup.mjs",
+    "test:scripts": "node --test \"scripts/__tests__/*.test.mjs\"",
     "check:env": "pnpm --filter server check:env"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
     "eslint": "^9",
+    "globals": "^16.5.0",
     "lefthook": "^2.1.9",
+    "pg": "^8.23.0",
     "prettier": "^3.3.3",
     "typescript": "^6.0.3"
   },

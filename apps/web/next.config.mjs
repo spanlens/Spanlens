@@ -138,13 +138,15 @@ const nextConfig = {
   },
 }
 
+// @sentry/nextjs 10 build options. Browser source maps are deleted after
+// upload by default (sourcemaps.deleteSourcemapsAfterUpload), which is what
+// the old `hideSourceMaps` flag used to do. `disableLogger` is gone too: it is
+// deprecated, its replacement (webpack.treeshake.removeDebugLogging) does not
+// work under Turbopack, and it printed a deprecation warning on every build.
+// lib/sentry-build-options.test.ts keeps both from coming back.
 const sentryConfig = {
-  // Only upload source maps in CI/production to avoid slowing local builds
+  // Suppress the SDK's build-time logs (source map upload progress and the like).
   silent: true,
-  // Suppress the Sentry CLI output in CI
-  hideSourceMaps: true,
-  // Disable Sentry when DSN is not set (local dev without secrets)
-  disableLogger: true,
   // Tunnel Sentry requests through Next.js to avoid ad-blocker interference
   tunnelRoute: '/monitoring',
 }

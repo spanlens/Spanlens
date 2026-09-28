@@ -2,7 +2,7 @@
   "version": 2,
   "framework": null,
   "outputDirectory": "apps/server/public",
-  "buildCommand": "pnpm --filter server build",
+  "buildCommand": "pnpm --filter server vercel-build",
   "installCommand": "pnpm install --frozen-lockfile",
   "functions": {
     "api/index.ts": {
