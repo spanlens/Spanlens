@@ -24,7 +24,7 @@ import { findLocalTsc, judgeTypecheck, runTsc, type TscRun } from './verify.js'
 
 export type PatchStepStatus =
   | 'patched' // files patched (and verified when possible)
-  | 'nothing-found' // no provider constructors in the codebase
+  | 'nothing-found' // no provider constructors in the codebase, so nothing is routed yet
   | 'needs-manual' // some call sites were left for the user
   | 'declined' // user said no at the confirmation prompt
   | 'dry-run'
@@ -54,8 +54,16 @@ export interface FinalOutcome {
 export function finalOutcome(status: PatchStepStatus): FinalOutcome {
   switch (status) {
     case 'patched':
-    case 'nothing-found':
       return { message: '🎉 Spanlens setup complete', tone: 'success', exitCode: 0, showNextSteps: true, showCta: true }
+    case 'nothing-found':
+      // No client was switched over, so no request goes through Spanlens yet.
+      return {
+        message: 'Spanlens setup is not finished because the wizard found no client to switch over. Follow the note above to route your requests through Spanlens.',
+        tone: 'warning',
+        exitCode: 0,
+        showNextSteps: true,
+        showCta: false,
+      }
     case 'needs-manual':
       return {
         message: 'Almost there: finish the manual edits listed above, and Spanlens setup is complete.',
@@ -237,7 +245,11 @@ function printNothingFound(providers: readonly Provider[]): void {
   const importLines = providers
     .map((x) => `  ${pc.dim(`import { create${x[0]!.toUpperCase()}${x.slice(1)} } from "@spanlens/sdk/${x}"`)}`)
     .join('\n')
-  p.log.message(pc.dim(`No matching client constructors found. Add manually:\n${importLines}`))
+  p.log.message(
+    pc.dim(
+      `No matching client constructors found. Requests go through Spanlens once your client comes from one of these factories:\n${importLines}`,
+    ),
+  )
 }
 
 function printPlans(cwd: string, plans: readonly PatchPlan[]): void {

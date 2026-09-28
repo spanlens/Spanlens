@@ -67,6 +67,7 @@ describe('formatManualEdit', () => {
       suggested: 'createOpenAI(providerOptions)',
       unknownSources: ['providerOptions'],
       mustNotSet: ['apiKey', 'baseURL'],
+      cautions: [],
       factoryImport: `import { createOpenAI } from '@spanlens/sdk/openai'`,
       reason: 'The options come from `providerOptions`, which the wizard cannot inspect.',
     })
@@ -77,6 +78,25 @@ describe('formatManualEdit', () => {
     expect(text).toContain(`+ import { createOpenAI } from '@spanlens/sdk/openai'`)
     expect(text).toContain('`providerOptions` must not set apiKey or baseURL')
     expect(text).not.toContain(String.fromCharCode(0x2014))
+  })
+
+  it('prints cautions and no replacement when the call must not be switched', () => {
+    const lines = formatManualEdit('lib/azure.ts', {
+      provider: 'openai',
+      line: 2,
+      original: `new OpenAI({ defaultQuery: { 'api-version': '2024-10-21' } })`,
+      suggested: null,
+      unknownSources: [],
+      mustNotSet: ['apiKey', 'baseURL'],
+      cautions: ['Spanlens proxies Azure OpenAI at /proxy/azure.'],
+      factoryImport: null,
+      reason: 'This client looks like Azure OpenAI.',
+    })
+    const text = lines.join('\n')
+    expect(text).toContain(`  new OpenAI({ defaultQuery: { 'api-version': '2024-10-21' } })`)
+    expect(text).not.toContain('- new OpenAI')
+    expect(text).not.toContain('+ ')
+    expect(text).toContain('  Spanlens proxies Azure OpenAI at /proxy/azure.')
   })
 })
 
@@ -218,6 +238,84 @@ describe('planPatches / applyPatches end-to-end', () => {
     expect(results[0]?.patched).toBe(false)
     expect(results[0]?.manual).toHaveLength(1)
     expect(readFileSync(path, 'utf8')).not.toContain('createOpenAI')
+  })
+
+  it('reports a CommonJS require() client instead of skipping it silently', async () => {
+    const path = writeFile(
+      'lib/openai.js',
+      [
+        `const OpenAI = require('openai')`,
+        ``,
+        `module.exports = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 1000 })`,
+      ].join('\n'),
+    )
+    const original = readFileSync(path, 'utf8')
+    const plans = await planPatches(dir, ['openai'])
+    expect(plans).toHaveLength(1)
+    expect(plans[0]?.changes).toEqual([])
+    const edit = plans[0]?.manual[0]
+    expect(edit?.line).toBe(3)
+    expect(edit?.reason).toContain(`require('openai')`)
+    expect(edit?.suggested).toBe('createOpenAI({ timeout: 1000 })')
+    expect(edit?.cautions.join('\n')).toMatch(/ES module/)
+
+    await applyPatches(plans)
+    expect(readFileSync(path, 'utf8')).toBe(original)
+  })
+
+  it('reports destructured require() and dynamic import() clients', async () => {
+    writeFile('lib/a.js', `const { OpenAI } = require('openai')\nexports.a = new OpenAI()\n`)
+    writeFile(
+      'lib/b.ts',
+      `export async function make() {\n  const { default: Anthropic } = await import('@anthropic-ai/sdk')\n  return new Anthropic()\n}\n`,
+    )
+    const plans = await planPatches(dir, ['openai', 'anthropic'])
+    const byProvider = Object.fromEntries(plans.map((p) => [p.provider, p.manual]))
+    expect(byProvider['openai']?.[0]?.reason).toContain(`require('openai')`)
+    expect(byProvider['anthropic']?.[0]?.reason).toContain(`import('@anthropic-ai/sdk')`)
+    expect(byProvider['anthropic']?.[0]?.suggested).toBe('createAnthropic()')
+  })
+
+  it('ignores an OpenAI class that comes from another package', async () => {
+    writeFile(
+      'lib/llm.ts',
+      `import { OpenAI } from '@langchain/openai'\nexport const llm = new OpenAI({ model: 'gpt-4o-mini' })\n`,
+    )
+    expect(await planPatches(dir, ['openai'])).toEqual([])
+  })
+
+  it('does not report other classes exported by the provider package', async () => {
+    writeFile(
+      'lib/azure.ts',
+      `import { AzureOpenAI } from 'openai'\nexport const client = new AzureOpenAI({ apiVersion: '2024-10-21' })\n`,
+    )
+    expect(await planPatches(dir, ['openai'])).toEqual([])
+  })
+
+  it('leaves fetchOptions.headers for a manual edit', async () => {
+    // The typings forbid it, but in JavaScript fetchOptions.headers replaces
+    // every header the client builds, the Spanlens key included.
+    const path = writeFile(
+      'lib/anthropic.js',
+      `import Anthropic from '@anthropic-ai/sdk'
+export const c = new Anthropic({ fetchOptions: { headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY } } })
+`,
+    )
+    const original = readFileSync(path, 'utf8')
+    const plans = await planPatches(dir, ['anthropic'])
+    expect(plans[0]?.changes).toEqual([])
+    expect(plans[0]?.manual[0]?.reason).toContain('fetchOptions')
+    await applyPatches(plans)
+    expect(readFileSync(path, 'utf8')).toBe(original)
+  })
+
+  it('previews the credential headers it removes', async () => {
+    writeFile(
+      'lib/openai.ts',
+      `import OpenAI from 'openai'\nexport const o = new OpenAI({ defaultHeaders: { 'Helicone-Auth': 'Bearer x', 'X-Title': 't' } })\n`,
+    )
+    const [plan] = await planPatches(dir, ['openai'])
+    expect(plan?.changes.join('\n')).toContain('defaultHeaders "Helicone-Auth"')
   })
 
   it('keeps CRLF line endings when it adds an import line', async () => {

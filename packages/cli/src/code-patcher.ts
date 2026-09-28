@@ -2,14 +2,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { NewLineKind, Project } from 'ts-morph'
 import { PROVIDER_CONFIGS, type Provider, type ProviderConfig } from './providers.js'
-import {
-  findNewCalls,
-  formatManualEdit,
-  planCall,
-  stripCredentialProps,
-  type CallPlan,
-  type ManualEdit,
-} from './patch-calls.js'
+import { findNewCalls, formatManualEdit, planCall, type CallPlan, type ManualEdit } from './patch-calls.js'
+import { stripCredentialProps } from './patch-options.js'
+import { findUnsupportedCalls, type UnsupportedCall } from './patch-bindings.js'
 import {
   factoryImportText,
   findProviderImport,
@@ -42,10 +37,16 @@ import { commitWrites, PatchWriteError, restoreBackups, type FileBackup } from '
  *   import { createGemini } from '@spanlens/sdk/gemini'
  *   const genAI = createGemini()                     // positional apiKey dropped
  *
- * Safety rules (see patch-calls.ts and patch-imports.ts):
+ * Safety rules (see patch-calls.ts, patch-options.ts, patch-imports.ts):
  *   - Only inline object-literal options with statically known keys are
  *     rewritten. Variables, spreads, and computed keys are reported as
  *     manual edits, never passed through to the factory.
+ *   - Credential and gateway entries of `defaultHeaders` / `defaultQuery`
+ *     are removed; a custom `fetch`, `fetchOptions.headers`, or headers the
+ *     wizard cannot read send the call to a manual edit. Azure OpenAI
+ *     clients are never switched to createOpenAI().
+ *   - Clients created through `require()`, `import()`, or a namespace import
+ *     are reported as manual edits instead of being skipped silently.
  *   - The provider import is kept (or only our binding is dropped) while the
  *     file still uses it as a type, namespace, instanceof target, or named
  *     import such as `APIError`.
@@ -92,6 +93,8 @@ interface TransformOutcome {
   changed: boolean
   autoCalls: number
   importChange: ImportChange | null
+  /** Nested option entries (credential headers) removed from the rewritten calls. */
+  removed: string[]
   manual: ManualEdit[]
   reason?: string
 }
@@ -144,14 +147,13 @@ function walk(dir: string, out: string[], depth: number): void {
 
 /**
  * Cheap text-level pre-filter so ts-morph only parses files that actually
- * import the provider client.
+ * load the provider package.
  */
 function mightContainProvider(src: string, cfg: ProviderConfig): boolean {
-  return (
-    src.includes(`from '${cfg.importedFrom}'`) ||
-    src.includes(`from "${cfg.importedFrom}"`) ||
-    src.includes(`new ${cfg.originalName}(`)
+  const loads = [`'${cfg.importedFrom}'`, `"${cfg.importedFrom}"`].some(
+    (quoted) => src.includes(`from ${quoted}`) || src.includes(`require(${quoted})`) || src.includes(`import(${quoted})`),
   )
+  return loads || src.includes(`new ${cfg.originalName}(`)
 }
 
 function readText(filepath: string): string | null {
@@ -263,6 +265,7 @@ function transformSource(text: string, filepath: string, provider: Provider): Tr
     changed: false,
     autoCalls: 0,
     importChange: null,
+    removed: [],
     manual,
     reason,
   })
@@ -276,15 +279,19 @@ function transformSource(text: string, filepath: string, provider: Provider): Tr
   const sf = project.createSourceFile(`/src/${basename(filepath)}`, text)
 
   const found = findProviderImport(sf, cfg)
-  if (!found) return unchanged(`no ${cfg.originalName} import`)
-  const calls = findNewCalls(sf, found.localName).map((node) => planCall(node, provider, cfg))
-  if (calls.length === 0) return unchanged(`no new ${cfg.originalName}(...) call`)
+  const calls = [
+    ...(found ? findNewCalls(sf, found.localName).map((node) => planCall(node, provider, cfg)) : []),
+    ...findUnsupportedCalls(sf, cfg, found?.localName ?? null).map((call) => unsupportedPlan(call, provider, cfg)),
+  ]
+  if (calls.length === 0) {
+    return unchanged(found ? `no new ${cfg.originalName}(...) call` : `no ${cfg.originalName} import`)
+  }
 
   const autos = calls.filter((c): c is Extract<CallPlan, { kind: 'auto' }> => c.kind === 'auto')
   const manuals = calls.filter((c): c is Extract<CallPlan, { kind: 'manual' }> => c.kind === 'manual')
 
-  if (autos.length === 0) {
-    const importLine = hasFactoryImport(sf, cfg) ? null : factoryImportText(cfg, found.decl)
+  if (autos.length === 0 || !found) {
+    const importLine = hasFactoryImport(sf, cfg) ? null : factoryImportText(cfg, found?.decl ?? null)
     return unchanged(
       'every call needs a manual edit',
       manuals.map((m) => toManualEdit(m, importLine)),
@@ -301,8 +308,37 @@ function transformSource(text: string, filepath: string, provider: Provider): Tr
     changed: true,
     autoCalls: autos.length,
     importChange: change,
+    removed: [...new Set(autos.flatMap((call) => call.removed))],
     // Lines are read after the rewrite: that is the file the user will edit.
     manual: manuals.map((m) => toManualEdit(m, null, linesBefore.get(m))),
+  }
+}
+
+const ESM_ONLY_CAUTION = '@spanlens/sdk is an ES module, so load it with `import` (or `await import()` from CommonJS).'
+
+/**
+ * A call through `require()`, `import()`, or a namespace import is never
+ * rewritten. It is reported with the replacement a supported import would
+ * get, so the user sees exactly what to change.
+ */
+function unsupportedPlan(call: UnsupportedCall, provider: Provider, cfg: ProviderConfig): CallPlan {
+  const inner = planCall(call.node, provider, cfg)
+  const base =
+    inner.kind === 'auto'
+      ? { suggested: inner.replacement, unknownSources: [] as readonly string[], cautions: [] as readonly string[] }
+      : inner.edit
+  return {
+    kind: 'manual',
+    node: call.node,
+    edit: {
+      provider,
+      original: call.node.getText(),
+      suggested: base.suggested,
+      unknownSources: base.unknownSources,
+      mustNotSet: cfg.credentialProps,
+      cautions: call.commonJs ? [...base.cautions, ESM_ONLY_CAUTION] : base.cautions,
+      reason: `The client comes from ${call.source}, which the wizard does not rewrite.`,
+    },
   }
 }
 
@@ -312,7 +348,8 @@ function toManualEdit(
   fallbackLine?: number,
 ): ManualEdit {
   const line = call.node.wasForgotten() ? (fallbackLine ?? 0) : call.node.getStartLineNumber()
-  return { ...call.edit, line, factoryImport }
+  // No replacement means the call must not be switched, so no import either.
+  return { ...call.edit, line, factoryImport: call.edit.suggested === null ? null : factoryImport }
 }
 
 function describeChanges(outcome: TransformOutcome, cfg: ProviderConfig): string[] {
@@ -331,6 +368,9 @@ function describeChanges(outcome: TransformOutcome, cfg: ProviderConfig): string
     }
   })()
   const lines = [importLine, `${outcome.autoCalls} × new ${name}(...) → ${cfg.factoryName}(...)`]
+  if (outcome.removed.length > 0) {
+    lines.push(`options: removed ${outcome.removed.join(', ')} (credentials and gateway settings must not reach Spanlens)`)
+  }
   if (outcome.manual.length > 0) {
     lines.push(`${outcome.manual.length} × new ${name}(...) left unchanged, needs a manual edit`)
   }

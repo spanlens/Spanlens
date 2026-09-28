@@ -107,4 +107,29 @@ describe('runPatchStep verify + rollback', () => {
     expect(printed.join('\n')).toContain('+ createOpenAI(providerOptions)')
     expect(finalOutcome(status).message).not.toMatch(/setup complete/i)
   }, 120_000)
+
+  it('reports a require() client as unfinished instead of finding nothing', async () => {
+    const original = `const OpenAI = require('openai')\nmodule.exports = new OpenAI()\n`
+    writeFileSync(join(dir, 'app', 'route.ts'), 'export {}\n')
+    writeFileSync(join(dir, 'app', 'client.js'), original)
+    const status = await runPatchStep({ cwd: dir, providers: ['openai'], dryRun: false, typecheck: false })
+    expect(status).toBe('needs-manual')
+    expect(readFileSync(join(dir, 'app', 'client.js'), 'utf8')).toBe(original)
+    expect(printed.join('\n')).toContain(`require('openai')`)
+  }, 120_000)
+})
+
+describe('finalOutcome', () => {
+  it('never calls a setup complete when no client was switched over', () => {
+    const outcome = finalOutcome('nothing-found')
+    expect(outcome.message).not.toMatch(/complete/i)
+    expect(outcome.tone).toBe('warning')
+    expect(outcome.showCta).toBe(false)
+    expect(outcome.message).not.toContain(String.fromCharCode(0x2014))
+  })
+
+  it('keeps "setup complete" for a finished patch', () => {
+    expect(finalOutcome('patched').message).toMatch(/setup complete/)
+    expect(finalOutcome('patched').showCta).toBe(true)
+  })
 })
