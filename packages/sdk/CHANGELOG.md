@@ -1,6 +1,6 @@
 # @spanlens/sdk changelog
 
-## Unreleased
+## 0.18.0
 
 Tracing no longer sits on your request path, `flush()` drains every end you scheduled, span bodies follow `logBody`, and self-hosted deployments are picked up from `SPANLENS_BASE_URL`.
 
