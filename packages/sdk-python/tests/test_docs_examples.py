@@ -14,7 +14,7 @@ import json
 import re
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import httpx
 import pytest
@@ -133,11 +133,25 @@ _COMPLETION = {
 @respx.mock
 def test_with_log_body_python_example_keeps_bodies_off_the_span(
     monkeypatch: pytest.MonkeyPatch,
+    provider_http_client: Callable[..., Any],
 ) -> None:
     """The Python withLogBody tab must opt the traced span out too, not just
     the proxy row. A client-level ``default_headers`` opt-out alone is
     invisible to ``observe_openai``, which would record the response."""
-    pytest.importorskip("openai")
+    openai = pytest.importorskip("openai")
+    routed_http_client = provider_http_client(openai)
+
+    class _RespxRoutedOpenAI(openai.OpenAI):
+        """The snippet builds ``OpenAI(...)`` itself, so the respx-answered
+        ``http_client`` is injected here. ``openai>=3`` sends through
+        ``httpx2``, which respx does not patch, and without this the
+        example would call the real api.spanlens.io."""
+
+        def __init__(self, **kwargs: Any) -> None:
+            kwargs.setdefault("http_client", routed_http_client)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr(openai, "OpenAI", _RespxRoutedOpenAI)
     monkeypatch.setenv("SPANLENS_API_KEY", "sl_test_dummy")
     _mock_ingest()
     proxy = respx.post(PROXY_URL).mock(return_value=httpx.Response(200, json=_COMPLETION))
