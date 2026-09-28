@@ -11,6 +11,8 @@ import {
 } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
 import { isUuid } from '../lib/params.js'
+import { acceptInvitation, listMemberEmails } from '../lib/org-members.js'
+import { getOrgSeatPolicy, seatLimitError } from '../lib/org-seats.js'
 
 /**
  * Invitations — email-based org member onboarding.
@@ -29,6 +31,12 @@ import { isUuid } from '../lib/params.js'
  *   - On accept: hash the submitted token → look up → validate expiry +
  *     not already accepted + email match → atomic member INSERT + mark
  *     accepted.
+ *
+ * Seats (C5.2): a seat is a member or an unexpired pending invitation, capped
+ * per plan by SEAT_LIMITS (lib/org-seats.ts). Creating an invitation checks
+ * members + pending; accepting re-checks inside org_accept_invitation, which
+ * counts and inserts under the org lock so two invitees cannot both take the
+ * last seat. Existing members are never removed by a lower limit.
  *
  * Edge runtime note:
  *   We use the Web Crypto-based helpers from `lib/crypto.ts`
@@ -52,6 +60,62 @@ function orgMismatch(c: Context<JwtContext>): boolean {
 // Web Crypto-based SHA-256 is async (`crypto.subtle.digest`). We re-export
 // it under the hashToken name to keep call sites readable.
 const hashToken = sha256Hex
+
+/**
+ * Refuses a new invitation when members + unexpired pending invitations
+ * already fill the plan. Only a soft gate at creation time: two concurrent
+ * invites can both pass, which is fine because the accept RPC enforces the
+ * limit atomically.
+ */
+async function assertSeatForNewInvitation(orgId: string, memberCount: number): Promise<void> {
+  const policy = await getOrgSeatPolicy(orgId)
+  if (policy.plan === null || policy.limit === null) return
+
+  const { count, error } = await supabaseAdmin
+    .from('org_invitations')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', orgId)
+    .is('accepted_at', null)
+    .gt('expires_at', new Date().toISOString())
+  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to check seat usage')
+
+  const used = memberCount + (count ?? 0)
+  if (used >= policy.limit) {
+    throw seatLimitError({ plan: policy.plan, limit: policy.limit }, used, 'admin')
+  }
+}
+
+/**
+ * Shared accept step for the token and id paths: resolve the seat limit, then
+ * join + mark accepted in one locked RPC. Maps every outcome to the same
+ * responses both paths returned before.
+ */
+async function joinViaInvitation(
+  invitationId: string,
+  organizationId: string,
+  userId: string,
+): Promise<{ organizationId: string; role: OrgRole }> {
+  const policy = await getOrgSeatPolicy(organizationId)
+  const outcome = await acceptInvitation(invitationId, userId, policy.limit)
+
+  switch (outcome.status) {
+    case 'joined':
+    case 'already_member':
+      return { organizationId: outcome.organizationId, role: outcome.role }
+    case 'seat_limit':
+      if (policy.plan === null || policy.limit === null) {
+        // The RPC only reports seat_limit when it was given a limit.
+        throw new ApiError('INTERNAL_ERROR', 'Failed to accept invitation')
+      }
+      throw seatLimitError({ plan: policy.plan, limit: policy.limit }, outcome.members, 'invitee')
+    case 'not_found':
+      throw new ApiError('NOT_FOUND', 'Invalid invitation')
+    case 'already_accepted':
+      throw new ApiError('BAD_REQUEST', 'Invitation already accepted')
+    case 'expired':
+      throw new ApiError('BAD_REQUEST', 'Invitation expired')
+  }
+}
 
 // ── POST /api/v1/organizations/:orgId/invitations ─────────────
 orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
@@ -79,18 +143,11 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
 
   // Reject if the email is already a member of THIS org. Other orgs are
   // fine — one user can belong to multiple orgs (future multi-org UI).
-  const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers({ perPage: 200 })
-  const matched = existingUser?.users.find((u) => u.email?.toLowerCase() === email)
-  if (matched) {
-    const { data: alreadyMember } = await supabaseAdmin
-      .from('org_members')
-      .select('user_id')
-      .eq('organization_id', orgId)
-      .eq('user_id', matched.id)
-      .maybeSingle()
-    if (alreadyMember) {
-      throw new ApiError('CONFLICT', 'This user is already a member of the organization')
-    }
+  // The lookup is scoped to this org's members; the old project-wide
+  // listUsers page stopped seeing members once Auth passed 200 users (C5.3).
+  const members = await listMemberEmails(orgId, 'Failed to check existing members')
+  if (members.some((m) => m.email?.toLowerCase() === email)) {
+    throw new ApiError('CONFLICT', 'This user is already a member of the organization')
   }
 
   // Reject duplicate pending invite for the same email/org pair. Use limit(1)
@@ -113,6 +170,8 @@ orgInvitationsRouter.post('/', requireRole('admin'), async (c) => {
   if (pendingRows && pendingRows.length > 0) {
     throw new ApiError('CONFLICT', 'A pending invitation for this email already exists')
   }
+
+  await assertSeatForNewInvitation(orgId, members.length)
 
   const token = randomHex(32)
   const tokenHash = await hashToken(token)
@@ -243,12 +302,13 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
     throw new ApiError('VALIDATION_FAILED', 'Token is required')
   }
 
-  const { data: inv } = await supabaseAdmin
+  const { data: inv, error: invErr } = await supabaseAdmin
     .from('org_invitations')
     .select('id, email, role, organization_id, expires_at, accepted_at')
     .eq('token_hash', await hashToken(body.token))
     .maybeSingle()
 
+  if (invErr) throw new ApiError('INTERNAL_ERROR', 'Failed to load invitation')
   if (!inv) throw new ApiError('NOT_FOUND', 'Invalid invitation')
   if (inv.accepted_at) throw new ApiError('BAD_REQUEST', 'Invitation already accepted')
   if (new Date(inv.expires_at) < new Date()) {
@@ -264,35 +324,10 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
     throw new ApiError('BAD_REQUEST', 'This invitation was sent to a different email')
   }
 
-  // Idempotent: if user is already in the org (another channel?), just mark
-  // the invite accepted and move on rather than erroring.
-  const { data: existingMember } = await supabaseAdmin
-    .from('org_members')
-    .select('user_id')
-    .eq('organization_id', inv.organization_id)
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (!existingMember) {
-    const { error: insertErr } = await supabaseAdmin.from('org_members').insert({
-      organization_id: inv.organization_id,
-      user_id: userId,
-      role: inv.role as OrgRole,
-      invited_by: inv.id ? null : null, // invited_by points at a user, not invite — we don't have inviter id here
-    })
-    if (insertErr) throw new ApiError('INTERNAL_ERROR', 'Failed to add member')
-  }
-
-  const { error: markErr } = await supabaseAdmin
-    .from('org_invitations')
-    .update({ accepted_at: new Date().toISOString() })
-    .eq('id', inv.id)
-  if (markErr) {
-    // Member row already exists at this point — rolling back would leave a
-    // confusing partial state. Log and move on; worst case the invite is
-    // retriable but creates a no-op (idempotent guard above handles it).
-    console.error('Failed to mark invitation accepted', markErr)
-  }
+  // Member INSERT (skipped when already a member, so accepting stays
+  // idempotent), the seat check, and the accepted_at stamp happen in one
+  // transaction under the org lock.
+  const joined = await joinViaInvitation(inv.id, inv.organization_id, userId)
 
   // Skip the workspace-creation onboarding for invited users — they are
   // joining an existing workspace, not creating their own. Stamp
@@ -319,7 +354,7 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
   const ipOnly = auditContextFromHono(c).ipAddress ?? null
   void recordAuditLog(
     {
-      organizationId: inv.organization_id,
+      organizationId: joined.organizationId,
       userId,
       ipAddress: ipOnly,
     },
@@ -327,11 +362,11 @@ invitationsRouter.post('/accept', authJwt, async (c) => {
       action: 'member.invite_accept',
       resourceType: 'org_invitations',
       resourceId: inv.id,
-      metadata: { email: inv.email, role: inv.role },
+      metadata: { email: inv.email, role: joined.role },
     },
   )
 
-  return c.json({ success: true, data: { organizationId: inv.organization_id, role: inv.role } })
+  return c.json({ success: true, data: joined })
 })
 
 // DELETE /api/v1/invitations/:id — admin cancel (auth required)
@@ -425,12 +460,16 @@ meInvitationsRouter.post('/:id/accept', async (c) => {
   const email = c.get('email')
   if (!email) throw new ApiError('BAD_REQUEST', 'User has no email')
 
-  const { data: inv } = await supabaseAdmin
+  const id = c.req.param('id')
+  if (!isUuid(id)) throw new ApiError('NOT_FOUND', 'Invalid invitation')
+
+  const { data: inv, error: invErr } = await supabaseAdmin
     .from('org_invitations')
     .select('id, email, role, organization_id, expires_at, accepted_at')
-    .eq('id', c.req.param('id'))
+    .eq('id', id)
     .maybeSingle()
 
+  if (invErr) throw new ApiError('INTERNAL_ERROR', 'Failed to load invitation')
   if (!inv) throw new ApiError('NOT_FOUND', 'Invalid invitation')
   if (inv.accepted_at) throw new ApiError('BAD_REQUEST', 'Invitation already accepted')
   if (new Date(inv.expires_at) < new Date()) {
@@ -440,27 +479,8 @@ meInvitationsRouter.post('/:id/accept', async (c) => {
     throw new ApiError('BAD_REQUEST', 'This invitation was sent to a different email')
   }
 
-  // Idempotent member INSERT — same shape as the token-based path.
-  const { data: existingMember } = await supabaseAdmin
-    .from('org_members')
-    .select('user_id')
-    .eq('organization_id', inv.organization_id)
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (!existingMember) {
-    const { error: insertErr } = await supabaseAdmin.from('org_members').insert({
-      organization_id: inv.organization_id,
-      user_id: userId,
-      role: inv.role as OrgRole,
-    })
-    if (insertErr) throw new ApiError('INTERNAL_ERROR', 'Failed to add member')
-  }
-
-  await supabaseAdmin
-    .from('org_invitations')
-    .update({ accepted_at: new Date().toISOString() })
-    .eq('id', inv.id)
+  // Same locked join + seat check as the token-based path.
+  const joined = await joinViaInvitation(inv.id, inv.organization_id, userId)
 
   // Stamp onboarded_at — see invitations accept handler comment for why.
   await supabaseAdmin
@@ -475,10 +495,7 @@ meInvitationsRouter.post('/:id/accept', async (c) => {
       { onConflict: 'user_id', ignoreDuplicates: false },
     )
 
-  return c.json({
-    success: true,
-    data: { organizationId: inv.organization_id, role: inv.role },
-  })
+  return c.json({ success: true, data: joined })
 })
 
 // DELETE /api/v1/me/pending-invitations/:id — recipient declines.
