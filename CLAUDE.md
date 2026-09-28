@@ -50,10 +50,12 @@ supabase db reset # 로컬 DB 초기화 (주의: 전체 삭제)
 /api/v1/{stats, requests, users, traces, anomalies, recommendations} → **authJwtOrApiKey** (Supabase JWT 또는 sl_live_* — full/public 둘 다 통과)
 /api/v1/me/key-info → authApiKey (CLI introspection — JWT 없이 sl_live_* 만 검증, scope 응답에 포함)
 /api/* 그 외 → authJwt (Supabase JWT)
-- `/api/v1/*` **write** 라우터 (scoreConfigs, experiments, datasets, security, prompts-playground `/run`, billing checkout/cancel 등) → authJwt(OrApiKey) 다음에 **`requireRole(...roles)`** 추가. `c.get('role')` 기반 org-role 게이트 (`security.ts`는 `admin`만, 나머지는 `admin`+`editor`). viewer JWT는 read만, write는 403 `FORBIDDEN`. GET엔 불필요.
-- **evals.ts는 dual-auth라 plain `requireRole` 금지**: API-key path는 `role`이 null이라 `requireRole('admin','editor')`가 CI(`sl_live_*` eval 실행)를 깨뜨림. evals.ts의 `requireEdit` 미들웨어처럼 **role이 non-null일 때만** 체크 + write 라우트엔 `requireFullScope`로 public 키를 read-only 처리 (evals.ts:30 참고).
+- `/api/v1/*` **write** 라우터 (scoreConfigs, experiments, datasets, security, prompts-playground `/run`, billing checkout/cancel 등) → authJwt(OrApiKey) 다음에 **`requireRole(...roles)`** 추가 (`security.ts`는 `admin`만, 나머지는 `admin`+`editor`). viewer JWT는 read만, write는 403 `FORBIDDEN`. GET엔 불필요. **쓰기 요청에서 requireRole은 cached role을 믿지 않고 `org_members`를 다시 읽는다**(2026-09-29, 강등·제거된 admin이 60초 캐시 창 안에서 스스로 재승격해 권한을 영구 탈환하던 결함 수정). 읽기는 authJwt의 60초 캐시 role 사용.
+- **dual-auth 라우터(evals.ts, anomalies.ts)는 plain `requireRole` 금지** → `middleware/requireEditDualAuth.ts` 사용. API-key 경로는 `apiKeyId`로 식별해 통과(CI `sl_live_*` eval 실행 유지), JWT 호출자는 admin/editor가 아니면 거부(fresh role 재조회 동일). write 라우트엔 `requireFullScope`로 public 키 read-only 처리.
+- authJwt 캐시: **membership 없음(orgId=null) 결과는 캐시하지 않는다**(신규 가입 직후 404 방지). 역할 변경·멤버 제거 후엔 `invalidateAuthCacheForUser(userId)`로 이 인스턴스의 항목을 지운다(process-local이라 다른 인스턴스엔 TTL까지 남음 — 그래서 쓰기는 fresh 재조회가 본체). onboarding bootstrap 직후 web이 `sb-ws` 쿠키를 새 workspace로 설정(`lib/onboarding-bootstrap.ts`).
 DB 쓰기(로깅) → supabaseAdmin (service_role, RLS bypass)
 DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
+**anon/authenticated는 public 스키마 어떤 테이블에도 쓰기 권한이 없다** (마이그레이션 `20260929100000_revoke_client_direct_writes`, 2026-09-29). 모든 쓰기는 서버(supabaseAdmin/pooler) 경유. `public.enforce_client_privileges()`가 쓰기 권한·허용적 write 정책을 회수하고 `ALTER DEFAULT PRIVILEGES`로 앞으로 만들 테이블도 막는다. 새 테이블에 클라이언트 직접 쓰기 정책을 만들지 말 것 — `supabase/tests/direct-write-privileges.sql`이 CI에서 실패시킨다. `requests` 파티션(기존·신규 모두)은 RLS on + 클라이언트 권한 전부 회수(`ensure_requests_partitions`가 새 파티션에도 적용).
 미들웨어 혼용 금지. dual-auth가 필요한 read API는 `authJwtOrApiKey` 한 곳만 사용.
 
 ### 통합 키(unified key) 모델 — 2026-05-05 + 2026-05-05 nested
@@ -85,12 +87,13 @@ DB 읽기(조회) → supabaseClient (anon key, RLS 적용)
 - 기존 마이그레이션 파일 수정 금지 → 새 파일 추가 (YYYYMMDDHHMMSS_desc.sql)
 - supabase/types.ts 직접 수정 금지 → supabase gen types 사용 (Phase 1 step 7에선 손 편집했음 — 다음 변경부터 다시 자동)
 - 마이그레이션 실행 후 반드시 supabase gen types 재실행
+- **마이그레이션 추가 시 `node scripts/generate-init-sql.mjs`로 `supabase/init.sql`도 재생성해 같은 PR에 커밋** — CI `init-sql` job의 drift check(`--check`)와 fresh-install gate(빈 DB에 init.sql 적용)가 누락을 잡는다
 - **Broken migration 복구 절차** (production에 적용 안 된 채 매 deploy fail 중인 경우):
   1. `git rm` 또는 edit 모두 `no-migration-edits` 훅에 차단됨 (의도된 정책)
   2. supabase MCP `execute_sql`로 production `supabase_migrations.schema_migrations`에 fake-apply row INSERT (다음 push에서 supabase가 "이미 적용됨"으로 간주하고 건너뜀)
   3. 신규 timestamp의 마이그레이션 파일 추가 (`YYYYMMDDHHMMSS_desc_v2.sql`)에서 정확한 SQL로 같은 의도 수행 (idempotent: `ON CONFLICT DO NOTHING`)
   4. 신규 마이그레이션 헤더 주석에 "supersedes YYYYMMDDHHMMSS due to <reason>" 명시. 원래 broken 파일은 git history에 유지 (왜 fake-apply했는지 추적 가능)
-  5. **CI에서도 broken migration 제거**: `.github/workflows/ci.yml`의 "Validate migrations apply cleanly" step에 `rm -f supabase/migrations/<broken>.sql` 한 줄 추가. CI runner는 fake-apply 상태가 없는 throwaway DB라서 broken 파일이 그대로면 매번 같은 에러로 재현됨. git 조작이 아닌 filesystem 조작이라 `no-migration-edits` 훅 통과
+  5. **broken migration을 `supabase/superseded-migrations.txt`에 등록** (2026-09-29부터 단일 목록): CI(`ci.yml`, `e2e.yml`), `scripts/generate-init-sql.mjs`(셀프호스팅 init.sql), `scripts/local-db-setup.mjs`가 모두 이 목록을 `scripts/superseded-migrations.mjs`로 읽어 건너뛴다. 예전엔 CI만 하드코딩 `rm`을 하고 init.sql 생성기는 목록이 없어서 셀프호스팅 SQL Editor 설치가 broken INSERT에서 멈추고 `requests` 테이블까지 롤백됐다(C16.1)
   - 사고 이력: 2026-06-09 `20260609150000_register_orphan_span_link.sql`이 `description NOT NULL` 누락으로 4 PR 연속 deploy fail. `20260609170000_register_orphan_span_link_v3.sql`로 대체
 
 **`requests` 테이블 (LLM 호출 로그) — Postgres, 단 접근 경로가 다름:**
@@ -111,6 +114,10 @@ lib/org-activity.ts — org별 마지막 요청 시각 워터마크(Postgres `or
 lib/cron-cadence.ts — `ranSuccessfullyWithin()` / `lastSuccessfulRunAt()` / `cadenceSkipResponse()`. 스케줄러 3중 발사(gotcha #32)를 handler 안에서 debounce. `cron_job_runs` 조회 기반, fail-open
 lib/fallback-replay.ts — `replayFallbackQueue()` / `fallbackQueueSize()`. `requests_fallback` → `requests` 재적재, `ON CONFLICT (created_at, id) DO NOTHING`이라 재실행 안전. cron `/replay-fallback` 5분 간격
 lib/db.ts — supabaseAdmin / supabaseClient 인스턴스
+lib/body-retention.ts — `resolveBodyRetention` / `truncateBodyForStorage`. requests 행과 spans input/output(스트림 주입·ingest)에 **같은** logBody(meta/none)·org sampling·키 마스킹·64KiB cap 결정을 적용하는 단일 출처. span 쪽 본문 저장 경로를 새로 만들면 반드시 경유
+lib/request-filters.ts — `/requests` list와 export가 공유하는 필터 파싱·검증(userId/sessionId/promptVersionId/truncated/status 동의어). 새 필터는 여기에만 추가
+lib/org-members.ts — 역할 변경·멤버 제거·초대 수락·멤버 이메일 조회를 조직 잠금 SQL 함수(`org_change_member_role` 등, service_role 전용)로 실행. last-admin·seat 한도 검사가 경쟁 없이 원자적. lib/org-seats.ts — seat 한도(free 1 / starter 3 / team 10 / enterprise·셀프호스팅 무제한) 강제
+lib/safe-http.ts — 아웃바운드 webhook용 SSRF 방어 fetch. redirect hop마다 재검증 + 연결 시점 DNS 결과 검증(rebinding 차단)
 lib/postgres.ts — `requests` 전용 풀 연결. `pgQuery` / `pgQueryOne` / `pgExecute` / `pgStream`(커서) / `pingPostgres`. 플레이스홀더는 `{name}`이고 `toPositional`이 실행 직전 `$n`으로 바꾼다 — 값이 SQL 문자열에 들어가는 경로가 없다. 세션 타임존은 UTC 고정(`to_char`/`date_trunc`가 조용히 로컬 시각으로 새는 것 방지)
 lib/requests-query.ts — requestsScope / selectRequests / countRequests / streamRequests / getOrgPlan / fetchProviderKeyNames / fetchProviderKeyLastUsed (모든 requests 읽기는 여기 경유)
 lib/stats-queries.ts — getStatsOverview / getStatsModels / getStatsTimeseries / getLatencyPercentiles / getSecuritySummary / getUserAnalytics (구 Postgres RPC 대체)
@@ -121,7 +128,7 @@ lib/params.ts — `isUuid` / `validateOptionalUuid` / `validateOptionalDate` + `
 middleware/authApiKey.ts — sl_live_* 키 검증 + scope 추출 + organizationId/projectId set (full은 projects join, public은 organization_id 직접). 모든 proxy/ingest/OTLP의 첫 게이트.
 middleware/requireFullScope.ts — scope=public이면 403 + `PUBLIC_KEY_WRITE_FORBIDDEN`. authApiKey 다음에 mount해서 write 라우터에만 적용 (proxy/* + ingest/* + OTLP /v1/traces).
 middleware/authJwtOrApiKey.ts — `/api/v1/*` read 라우터용 dual-auth. Authorization 헤더가 `Bearer sl_live_*`면 authApiKey + orgId bridge, 그 외엔 authJwt. 기존 read 핸들러는 `c.get('orgId')`만 읽으면 둘 다 호환.
-middleware/requireRole.ts — `requireRole(...allowed: OrgRole[])`. authJwt 뒤에서 `c.get('role')` 검사, 불일치 시 403 `FORBIDDEN`. write 라우터 전용. dual-auth 라우터(evals)엔 그대로 쓰지 말 것 — null role(API-key path) reject해 CI 깨짐.
+middleware/requireRole.ts — `requireRole(...allowed: OrgRole[])`. authJwt 뒤에서 role 검사, 불일치 시 403 `FORBIDDEN`. 쓰기 메서드에선 `org_members`를 fresh 재조회(cached role 불신). write 라우터 전용. dual-auth 라우터엔 `requireEditDualAuth` 사용.
 parsers/openai.ts — OpenAI 스트림 파서 (마지막 chunk에 usage)
 parsers/anthropic.ts — Anthropic 파서 (message_delta에 usage, OpenAI와 다름!)
 parsers/gemini.ts — Gemini 파서
@@ -156,7 +163,7 @@ apps/web/app/demo/_client-guard.tsx — `DemoClientGuard`. demo subsystem 전용
    - read API (`/api/v1/*`)이고 외부 도구(MCP/BI/embed)에서도 호출 → `authJwtOrApiKey`
    - read API인데 user identity 필요 (audit, members 등) → `authJwt`만
    - write API (`/proxy/*`, `/ingest/*`, OTLP) → `authApiKey` + `requireFullScope`
-   - write API가 org-role 제약 필요 (viewer 차단) → authJwt 뒤에 `requireRole('admin','editor')`. dual-auth write면 evals.ts의 `requireEdit` + `requireFullScope` 조합 재사용.
+   - write API가 org-role 제약 필요 (viewer 차단) → authJwt 뒤에 `requireRole('admin','editor')`. dual-auth write면 `requireEditDualAuth` + `requireFullScope` 조합 재사용.
    - app.ts mount 순서 invariant (2026-07-13 reorder): `/api/v1` wildcard 라우터(evalsRouter/humanEvalsRouter)는 **/api/v1 섹션 맨 마지막**에 mount됨. 새 specific 라우터는 "Wildcard /api/v1 routers — MUST STAY LAST" 주석 블록 **위**에 추가 — wildcard 뒤에 mount하면 wildcard authJwt가 먼저 잡아 dual-auth/public 라우트 무력화 (recommendations 2026-06-04 + feedback PR #304, 두 번 실사고). `src/__tests__/api-v1-mount-order.test.ts` source-guard가 순서 위반을 CI에서 잡음.
 4. UI → apps/web에서 fetch('/api/v1/...') 또는 TanStack Query
 5. 검증 → pnpm typecheck && lint && test
@@ -241,7 +248,7 @@ PORT=3001 (server), 3000 (web)
 
 31. **MCP Registry description 100자 제한**: server.json의 `description`이 100자를 초과하면 publish 시 `422 expected length <= 100`. npm package.json은 길어도 OK이지만 registry는 stricter. 발견 시점에는 description 137자였음. 짧고 핵심만 — 사용자가 registry 검색 결과에서 바로 use case 인지하도록 작성.
 
-32. **🔥 Vercel cron jobs는 vercel.json 변경을 즉시 sync하지 않음 — 새 cron이 며칠씩 안 firing할 수 있음** (2026-06-09 발견, 2026-06-16 업데이트): production 프로젝트가 Pro 플랜이라 40 crons까지 가능하지만, vercel.json `crons` 배열에 새 entry를 추가해도 Vercel 스케줄러가 등록하지 않는 경우 존재. Vercel 측 캐싱 또는 스케줄러 버그로 추정 (support ticket 필요). **증상**: cron_job_runs 테이블에 특정 cron이 한 번도 안 보임. `runtime_logs`에 GET /cron/x 진입 흔적 0. **확인 방법**: supabase MCP로 `SELECT job_name, count(*), max(ran_at) FROM cron_job_runs WHERE ran_at > now() - interval '24 hours' GROUP BY job_name` → vercel.json 정의보다 적게 나오면 sync 깨진 것. **회피 패턴 — 3중 스케줄러**: ① `.github/workflows/cron-server.yml`에 GH Actions cron으로도 등록. 단, GH Actions도 `*/5` 같은 짧은 cadence에선 throttle해서 단독으론 100% 안 됨 (2026-06-15 production `cron_job_runs` 24h 조회 시 `*/5` 스케줄 3.5%, self-monitor 8%, hourly job들 16~33% 발사). ② critical 엔드포인트(`replay-fallback`, `self-monitor`, `maintain-request-partitions`)는 **Better Stack Uptime monitor** 추가로 등록 (Settings → Monitors → Create monitor). URL + `Authorization: Bearer $CRON_SECRET` 헤더 + 3분 / 30분 간격. Better Stack은 외부 인프라라 Vercel/GH 갭에 영향 안 받음 → 사실상 100% 발사. ③ CRON_SECRET은 **Vercel env에서 Sensitive 플래그 해제**해두기 (회수 가능). rotation 필요 시 GH Actions secret + Better Stack header 세 군데 동기화. 사고 사례: `/cron/run-background-migrations` 며칠 firing 안 함 → background_migrations 큐 적체. `/cron/replay-fallback` Vercel + GH 둘 다 throttle → Better Stack monitor 추가로 해결 (PR #365). **`maintain-request-partitions`는 이 목록에서 성격이 다르다**: 다른 크론은 늦게 돌아도 따라잡히지만, 이건 안 돌면 행이 `requests_default`로 떨어지고 그 순간부터 해당 달 정규 파티션 생성이 `ACCESS EXCLUSIVE` 아래 영구 실패해 프록시 쓰기를 막는다. 나중에 실행하는 것으로 복구가 안 되는 유일한 크론이라 vercel(03:20) + GH Actions(03:50) 이중으로 걸었고, Better Stack까지 추가 권장.
+32. **🔥 Vercel cron jobs는 vercel.json 변경을 즉시 sync하지 않음 — 새 cron이 며칠씩 안 firing할 수 있음** (2026-06-09 발견, 2026-06-16 업데이트): production 프로젝트가 Pro 플랜이라 40 crons까지 가능하지만, vercel.json `crons` 배열에 새 entry를 추가해도 Vercel 스케줄러가 등록하지 않는 경우 존재. Vercel 측 캐싱 또는 스케줄러 버그로 추정 (support ticket 필요). **증상**: cron_job_runs 테이블에 특정 cron이 한 번도 안 보임. `runtime_logs`에 GET /cron/x 진입 흔적 0. **확인 방법**: supabase MCP로 `SELECT job_name, count(*), max(ran_at) FROM cron_job_runs WHERE ran_at > now() - interval '24 hours' GROUP BY job_name` → vercel.json 정의보다 적게 나오면 sync 깨진 것. **회피 패턴 — 3중 스케줄러**: ① `.github/workflows/cron-server.yml`에 GH Actions cron으로도 등록. 단, GH Actions도 `*/5` 같은 짧은 cadence에선 throttle해서 단독으론 100% 안 됨 (2026-06-15 production `cron_job_runs` 24h 조회 시 `*/5` 스케줄 3.5%, self-monitor 8%, hourly job들 16~33% 발사). ② critical 엔드포인트(`replay-fallback`, `self-monitor`, `maintain-request-partitions`)는 **Better Stack Uptime monitor** 추가로 등록 (Settings → Monitors → Create monitor). URL + `Authorization: Bearer $CRON_SECRET` 헤더 + 3분 / 30분 간격. Better Stack은 외부 인프라라 Vercel/GH 갭에 영향 안 받음 → 사실상 100% 발사. ③ CRON_SECRET은 **Vercel env에서 Sensitive 플래그 해제**해두기 (회수 가능). rotation 필요 시 GH Actions secret + Better Stack header 세 군데 동기화. 사고 사례: `/cron/run-background-migrations` 며칠 firing 안 함 → background_migrations 큐 적체. `/cron/replay-fallback` Vercel + GH 둘 다 throttle → Better Stack monitor 추가로 해결 (PR #365). **⚠️ 라이브 서버 프로젝트(spanlens-server)는 저장소 루트 `vercel.json`으로 빌드·크론 등록된다**(2026-09-28 배포 로그 확인). `apps/server/vercel.json`에만 있는 크론은 Vercel이 스케줄하지 않고 GH Actions·Better Stack이 발사 중(같은 날 `cron_job_runs` 7일 조회로 전부 실행 확인). 새 크론은 루트 `vercel.json` + `cron-server.yml` 둘 다에 등록. **`maintain-request-partitions`는 이 목록에서 성격이 다르다**: 다른 크론은 늦게 돌아도 따라잡히지만, 이건 안 돌면 행이 `requests_default`로 떨어지고 그 순간부터 해당 달 정규 파티션 생성이 `ACCESS EXCLUSIVE` 아래 영구 실패해 프록시 쓰기를 막는다. 나중에 실행하는 것으로 복구가 안 되는 유일한 크론이라 vercel(03:20) + GH Actions(03:50) 이중으로 걸었고, Better Stack까지 추가 권장.
 
 33. **🔥 프록시 응답 `content-length` strip 필수 — undici가 gzip 해제하지만 압축 length 유지 → body 잘림**: `proxy/utils.ts`의 `STRIP_RESPONSE_HEADERS`에 `content-length` 포함(`content-encoding`과 함께). undici/fetch는 gzip·br을 투명 해제하지만 원본(압축) `content-length`는 그대로 둠 → 클라이언트로 forward 시 Node가 해제된 body를 압축 바이트 수로 truncate → 잘린 JSON. 런타임이 실제 길이 재계산하도록 반드시 strip.
 
@@ -290,7 +297,8 @@ PORT=3001 (server), 3000 (web)
 - `.github/dependabot.yml`에 npm sub-directory entry 추가 금지 — pnpm-lock 갱신 못 함 (gotcha #26)
 - `apps/server/tsconfig.json`의 `compilerOptions.types: ["node"]` 제거 금지 — Docker build 깨짐 (gotcha #28)
 - `requireFullScope` 미들웨어를 read 라우터에 mount 금지 — public 키 사용자 차단
-- requireRole를 evals 같은 dual-auth 라우터에 mount 금지 — null-role API-key path reject해 CI 깨짐.
+- requireRole를 evals 같은 dual-auth 라우터에 mount 금지 — `requireEditDualAuth` 사용.
+- anon/authenticated에 테이블 쓰기 GRANT 또는 허용적 INSERT/UPDATE/DELETE 정책 추가 금지 — 모든 쓰기는 서버 경유 (direct-write-privileges.sql이 가드)
 - `lib/postgres.ts`를 `lib/**` 밖에서 직접 import 금지 — 라우트 코드는 `lib/requests-query.ts` 헬퍼 경유 (ESLint가 차단, gotcha #3)
 - `positionCaseInsensitive` 자리를 `ILIKE`로 치환 금지 — 리터럴 검사 vs 패턴 매치라 `%`·`_`가 든 검색어에서 갈림 (gotcha #20)
 - `fromClickhouseTimestamp` 류 타임스탬프 재작성 헬퍼 부활 금지 — 이미 ISO인 값에 `Z`를 덧붙여 파싱 불가 날짜를 만듦 (gotcha #18)
