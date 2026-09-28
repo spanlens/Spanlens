@@ -166,14 +166,16 @@ INSERT INTO model_prices (
   -- until the table grows a time-of-day column.
   ('deepseek', 'deepseek-flash',                         0.15,  0.60,    0.003,    NULL),
   ('deepseek', 'deepseek-v4-pro',                        0.66,  1.98,    0.022,    NULL),
-  -- Superseded by deepseek-flash on 2026-09-28 at a LOWER rate. Row kept so
-  -- historical requests still price; do not re-add as "missing".
-  ('deepseek', 'deepseek-v4-flash',                      0.22,  0.66,    0.007,    NULL),
-  -- Compatibility aliases, gone from the docs as of 2026-08-21. Kept at their
-  -- last published rates so historical requests still price; the page no longer
-  -- says which v4 model they resolve to, so they are NOT updated on a guess.
-  ('deepseek', 'deepseek-chat',                          0.14,  0.28,    0.0028,   NULL),
-  ('deepseek', 'deepseek-reasoner',                      0.14,  0.28,    0.0028,   NULL),
+  -- Live aliases, NOT delisted models. The docs say both are "still accepted"
+  -- but served by DeepSeek-V4.1-Flash "and billed at the Flash price", so they
+  -- carry deepseek-flash's rates rather than their own retired ones. Freezing
+  -- them at the old 0.22 / 0.66 / 0.007 over-reported input by 47%.
+  ('deepseek', 'deepseek-v4-flash',                      0.15,  0.60,    0.003,    NULL),
+  ('deepseek', 'deepseek-v4-flash-vision-exp',           0.15,  0.60,    0.003,    NULL),
+  -- deepseek-chat / deepseek-reasoner were removed on 2026-09-28. DeepSeek
+  -- publishes a legacy-alias list and these two are absent from it, and we have
+  -- never logged a single deepseek request, so there was no past to protect.
+  -- Do not re-add at 0.14 / 0.28 — that is not a price DeepSeek still charges.
   -- ── xAI / Grok (OpenAI-compatible, api.x.ai/v1) ──────────────────────────
   -- Every Grok model doubles ALL token rates once the prompt reaches 200k —
   -- modelled with the long_* columns at the bottom of this file.

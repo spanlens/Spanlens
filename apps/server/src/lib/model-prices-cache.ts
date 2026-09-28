@@ -214,12 +214,14 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // DeepSeek bills by time of day: peak (01:00-04:00 and 06:00-10:00 UTC) is
   // exactly 2x off-peak. These are the OFF-PEAK rates, correct 17 hours of 24.
   'deepseek-flash':               { prompt: 0.15,  completion: 0.60, cacheRead: 0.003 },
-  'deepseek-v4-flash':            { prompt: 0.22,  completion: 0.66, cacheRead: 0.007 }, // superseded 2026-09
+  // Live aliases onto DeepSeek-V4.1-Flash, billed at the Flash price — not
+  // delisted models, so they carry deepseek-flash's rates, not their retired own.
+  'deepseek-v4-flash':            { prompt: 0.15,  completion: 0.60, cacheRead: 0.003 },
+  'deepseek-v4-flash-vision-exp': { prompt: 0.15,  completion: 0.60, cacheRead: 0.003 },
   'deepseek-v4-pro':              { prompt: 0.66,  completion: 1.98, cacheRead: 0.022 },
-  // Compatibility aliases, dropped from DeepSeek's docs 2026-08-21. Kept at
-  // their last published rates; the docs no longer say which v4 they resolve to.
-  'deepseek-chat':                { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
-  'deepseek-reasoner':            { prompt: 0.14,  completion: 0.28, cacheRead: 0.0028 },
+  // deepseek-chat / deepseek-reasoner removed 2026-09-28: absent from the
+  // legacy-alias list DeepSeek does publish, and we have never logged a single
+  // deepseek request. Do not re-add at 0.14 / 0.28 — not a current price.
   'qwen/qwen3.8-27b':             { prompt: 0.80,  completion: 4.00 },
   'qwen/qwen3.6-27b':             { prompt: 0.60,  completion: 3.00 }, // superseded 2026-09
   // Grok re-rates the WHOLE request at 2x once the prompt reaches 200k.

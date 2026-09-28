@@ -120,8 +120,14 @@ interface ProviderCase {
 const CASES: ProviderCase[] = [
   // groq llama-3.3-70b-versatile: $0.59/1M in + $0.79/1M out → 1*0.59 + 0.5*0.79
   { slug: 'groq', expectedUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', expectedCost: 0.985 },
-  // deepseek-chat: $0.14/1M in + $0.28/1M out → 1*0.14 + 0.5*0.28
-  { slug: 'deepseek', expectedUrl: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-chat', expectedCost: 0.28 },
+  // deepseek-flash: $0.15/1M in + $0.60/1M out → 1*0.15 + 0.5*0.60
+  // (replaced deepseek-chat, which was removed from the price table on
+  // 2026-09-28 — absent from DeepSeek's own legacy-alias list, zero history.)
+  { slug: 'deepseek', expectedUrl: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-flash', expectedCost: 0.45 },
+  // deepseek-v4-flash is a LIVE alias onto the same model, billed at the Flash
+  // price — not a frozen delisted row. Same arithmetic as above; pinning it
+  // here is what catches a future refresh re-freezing it at its retired rates.
+  { slug: 'deepseek', expectedUrl: 'https://api.deepseek.com/v1/chat/completions', model: 'deepseek-v4-flash', expectedCost: 0.45 },
   // grok-4.3 at the LONG tier: the 1M-token prompt below crosses xAI's 200k
   // threshold, which re-rates the whole request at 2x ($2.50/1M in +
   // $5.00/1M out) → 1*2.50 + 0.5*5.00. Short-tier pricing is covered by the
