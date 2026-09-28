@@ -7,7 +7,7 @@ import { sendEmail, renderSecurityAlertEmail } from './resend.js'
 import { emitWebhookEvent } from './webhook-emit.js'
 import { logError } from './structured-logger.js'
 import { resolvePromptVersion } from './resolve-prompt-version.js'
-import { getOrgBodySampleRate, shouldStoreBody } from './org-log-config.js'
+import { resolveBodyRetention, truncateBodyForStorage } from './body-retention.js'
 import { recordOrgActivity } from './org-activity.js'
 
 /**
@@ -75,6 +75,14 @@ export interface RequestLogData {
    */
   logBodyMode?: LogBodyMode
   /**
+   * Body-retention decision the caller already resolved with
+   * resolveBodyRetention(). The stream writers resolve it once and reuse it
+   * for the span copy of the same call, so the row and the span agree under a
+   * partial body_sample_rate. Can only narrow: bodies are still dropped
+   * whenever logBodyMode is not 'full'. Resolved here when absent.
+   */
+  storeBody?: boolean
+  /**
    * Set to true when the proxy gracefully closed the request because it was
    * approaching its Vercel function deadline. The row still records whatever
    * tokens/text we managed to capture; consumers (dashboard, SDK, billing)
@@ -102,45 +110,6 @@ export interface RequestLogData {
    * See lib/proxy-cache.ts for the cache semantics.
    */
   cacheHit?: boolean
-}
-
-/**
- * Bodies above this size are truncated before insertion. TOAST compresses the
- * body columns well, so the inline cap is generous, but rows still stay
- * bounded so a scan over a month of traffic does not drag whole prompts
- * through memory.
- *
- * Larger bodies are replaced with a preview + size metadata. Phase 2 may move
- * full bodies to object storage and link by reference.
- */
-const MAX_BODY_INLINE_BYTES = 64 * 1024
-const PREVIEW_BYTES = 2 * 1024
-
-/**
- * Returns the body shape that will go into the `request_body` /
- * `response_body` column. Above the inline cap, replaces with a preview +
- * size envelope; otherwise returns the body as-is for downstream serialization.
- */
-function maybeTruncateBody(body: unknown): unknown {
-  if (body == null) return null
-
-  let serialized: string
-  try {
-    serialized = typeof body === 'string' ? body : JSON.stringify(body)
-  } catch {
-    return { _error: 'body not JSON-serializable' }
-  }
-
-  const bytes = new TextEncoder().encode(serialized).byteLength
-  if (bytes <= MAX_BODY_INLINE_BYTES) return body
-
-  const preview = serialized.slice(0, PREVIEW_BYTES)
-  return {
-    _truncated: true,
-    _original_size_bytes: bytes,
-    _preview: preview,
-    _note: `Body exceeded ${MAX_BODY_INLINE_BYTES} bytes and was truncated.`,
-  }
 }
 
 /**
@@ -329,10 +298,13 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   // (1 - body_sample_rate) of requests to cut storage. Default 1.0 =
   // store all bodies (unchanged). The security scan above still ran on the full
   // body, so injection/PII flags are recorded even when the body isn't stored.
-  const bodySampleRate = await getOrgBodySampleRate(data.organizationId)
-  const storeBody = shouldStoreBody(logBodyMode === 'full', bodySampleRate, Math.random())
-  const requestBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.requestBody)) : ''
-  const responseBody = storeBody ? maskApiKeysInBody(maybeTruncateBody(data.responseBody)) : ''
+  // The decision lives in lib/body-retention.ts so span writers apply the
+  // same one; a caller-supplied decision can only narrow logBodyMode.
+  const storeBody =
+    logBodyMode === 'full' &&
+    (data.storeBody ?? (await resolveBodyRetention(data.organizationId, logBodyMode)))
+  const requestBody = storeBody ? maskApiKeysInBody(truncateBodyForStorage(data.requestBody)) : ''
+  const responseBody = storeBody ? maskApiKeysInBody(truncateBodyForStorage(data.responseBody)) : ''
   const errorMessage = data.errorMessage ? maskApiKeys(data.errorMessage) : null
 
   const dropIdentifiers = logBodyMode === 'none'
