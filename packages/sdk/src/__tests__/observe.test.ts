@@ -36,6 +36,8 @@ describe('observe()', () => {
     const trace = client.startTrace({ name: 't' })
 
     await observe(trace, { name: 'call' }, async () => ({ text: 'hello' }))
+    // observe() returns before the end PATCH is delivered; flush drains it.
+    await client.flush()
 
     const body = getPatchBody()
     expect(body?.output).toEqual({ text: 'hello' })
@@ -47,6 +49,7 @@ describe('observe()', () => {
 
     const streamLike = { [Symbol.asyncIterator]: () => ({}) }
     await observe(trace, { name: 'call' }, async () => streamLike as unknown as typeof streamLike)
+    await client.flush()
 
     const body = getPatchBody()
     expect(body?.output).toBeUndefined()
@@ -63,6 +66,7 @@ describe('observe()', () => {
     })
 
     expect(accumulated).toBe('full response text')
+    await client.flush()
 
     const patches = getAllPatchBodies()
     // First PATCH: user's manual span.end() with tokens
@@ -80,6 +84,7 @@ describe('observe()', () => {
       await span.end({ status: 'completed', output: 'manual output' })
       return 'return value'
     })
+    await client.flush()
 
     const patches = getAllPatchBodies()
     // Only one PATCH — observe() sees outputCaptured=true and skips
@@ -96,6 +101,7 @@ describe('observe()', () => {
         throw new Error('fail')
       }),
     ).rejects.toThrow('fail')
+    await client.flush()
 
     const body = getPatchBody()
     expect(body?.status).toBe('error')

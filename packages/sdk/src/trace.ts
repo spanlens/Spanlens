@@ -50,8 +50,11 @@ export class TraceHandle {
    * End the trace. Idempotent.
    * `duration_ms` is computed server-side from started_at + ended_at.
    *
-   * Awaits the trace's own creation POST first — otherwise PATCH could
-   * race ahead and target a row that doesn't yet exist (silent 404).
+   * `ended_at` is stamped right now, when end() is called. The PATCH waits for
+   * the trace's own creation POST (otherwise it could race ahead and target a
+   * row that doesn't yet exist, a silent 404) and is registered with the
+   * transport at once, so `client.flush()` drains it even when this promise is
+   * never awaited.
    *
    * Sampling semantics:
    *   - sampled-in trace → behaves exactly as before; the PATCH goes through
@@ -63,11 +66,9 @@ export class TraceHandle {
    *   - sampled-out trace + status='completed' → drop the buffer silently;
    *     no network traffic for this trace's ingest layer.
    */
-  async end(options: EndTraceOptions = {}): Promise<void> {
-    if (this.ended) return
+  end(options: EndTraceOptions = {}): Promise<void> {
+    if (this.ended) return Promise.resolve()
     this.ended = true
-
-    await this._creationPromise.catch(() => undefined)
 
     const status = options.status ?? (options.errorMessage ? 'error' : 'completed')
 
@@ -78,26 +79,32 @@ export class TraceHandle {
     if (options.errorMessage !== undefined) body['error_message'] = options.errorMessage
     if (options.metadata !== undefined) body['metadata'] = options.metadata
 
+    const path = `/ingest/traces/${this.traceId}`
+    const created = this._creationPromise.catch(() => undefined)
+
     if (this._sampling.sampled) {
       // Fast path — identical to pre-P3.8 behaviour.
-      await this.transport.patch(`/ingest/traces/${this.traceId}`, body)
-      return
-    }
-
-    // Sampled-out path. The trace's `transport` here is the BufferingTransport
-    // that has been queuing every span POST/PATCH so far.
-    const buffering = this.transport as BufferingTransport
-
-    if (status === 'error') {
-      // Tail-based bypass: replay the buffered ops via the real transport,
-      // then send the end-PATCH directly to the real transport so it doesn't
-      // get re-buffered.
-      await buffering.flushBuffered()
-      await this._sampling.realTransport.patch(`/ingest/traces/${this.traceId}`, body)
-      return
+      return this.transport.track(
+        created.then(() => this.transport.patch(path, body)).then(() => undefined),
+      )
     }
 
     // Completed / running with no error → drop everything. Nothing to send.
+    if (status !== 'error') return Promise.resolve()
+
+    // Sampled-out error. The trace's `transport` is the BufferingTransport that
+    // has been queuing every span POST/PATCH so far. Tail-based bypass: replay
+    // the buffered ops via the real transport (flushBuffered first waits for
+    // span ends that were scheduled but not yet queued), then send the
+    // end-PATCH directly to the real transport so it isn't re-buffered.
+    const buffering = this.transport as BufferingTransport
+    const real = this._sampling.realTransport
+    return real.track(
+      created
+        .then(() => buffering.flushBuffered())
+        .then(() => real.patch(path, body))
+        .then(() => undefined),
+    )
   }
 }
 

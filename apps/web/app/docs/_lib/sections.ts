@@ -290,7 +290,7 @@ export const DOCS_SECTIONS: DocsSection[] = [
             title: 'Vercel AI SDK integration',
             href: '/docs/integrations/vercel-ai',
             description:
-              'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Two callbacks spread into the AI SDK options log every call automatically.',
+              'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Every span records the full multi-step token totals and closes reliably.',
           },
           {
             title: 'OpenAI Assistants API integration',

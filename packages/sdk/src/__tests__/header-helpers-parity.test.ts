@@ -20,6 +20,11 @@ import * as openrouter from '../integrations/openrouter.js'
  *
  * These tests pin (a) presence on every subpath and (b) reference identity
  * with the canonical implementation — a re-export, not a copy.
+ *
+ * `@spanlens/sdk/gemini` is the one deliberate exception for the helper
+ * FUNCTIONS: `@google/generative-ai` only sends `customHeaders`, so its
+ * helpers wrap the canonical ones in that shape (pinned at the bottom). The
+ * header-name constants are still shared with every other subpath.
  */
 
 const HELPER_NAMES = [
@@ -44,7 +49,6 @@ const HEADER_CONSTANTS = [
 const MODULES = [
   { name: 'openai', mod: openai },
   { name: 'anthropic', mod: anthropic },
-  { name: 'gemini', mod: gemini },
   { name: 'groq', mod: groq },
   { name: 'deepseek', mod: deepseek },
   { name: 'xai', mod: xai },
@@ -55,6 +59,29 @@ const MODULES = [
 ] as const
 
 describe('X-Spanlens-* header helper parity across integrations', () => {
+  it('@spanlens/sdk/gemini re-exports the header-name constants and cacheHeaderValue', () => {
+    for (const constant of HEADER_CONSTANTS) {
+      expect((gemini as Record<string, unknown>)[constant]).toBe(headers[constant])
+    }
+    expect(gemini.cacheHeaderValue).toBe(headers.cacheHeaderValue)
+  })
+
+  it('@spanlens/sdk/gemini helpers carry the canonical headers as customHeaders', () => {
+    const cases = [
+      [gemini.withPromptVersion('greeter@latest'), headers.withPromptVersion('greeter@latest')],
+      [gemini.withUser('u1'), headers.withUser('u1')],
+      [gemini.withSession('s1'), headers.withSession('s1')],
+      [gemini.withLogBody('meta'), headers.withLogBody('meta')],
+      [gemini.withCache(600), headers.withCache(600)],
+    ] as const
+    for (const [geminiShape, canonical] of cases) {
+      expect(geminiShape).toEqual({
+        customHeaders: canonical.headers,
+        headers: canonical.headers,
+      })
+    }
+  })
+
   for (const { name, mod } of MODULES) {
     describe(`@spanlens/sdk/${name}`, () => {
       it('re-exports the canonical helper functions (same reference, no copies)', () => {

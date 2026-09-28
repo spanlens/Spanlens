@@ -20,7 +20,7 @@
  *   ingestion layer.
  */
 
-import type { Transport } from './transport.js'
+import { createPendingRegistry, type Transport } from './transport.js'
 
 /**
  * Cap on buffered ops per sampled-out trace. Bounds worst-case memory if a
@@ -36,7 +36,9 @@ export interface BufferingTransport extends Transport {
   /**
    * Replay every buffered op against the real transport, preserving FIFO
    * order. Used by `TraceHandle.end()` when the trace was sampled-out but
-   * resolved with `status: 'error'`.
+   * resolved with `status: 'error'`. Lifecycle work scheduled through
+   * `track()` (span creations and ends chained behind a parent) is awaited
+   * first, so a span ended without `await` is still part of the replay.
    *
    * After this call the buffer is cleared and the transport keeps buffering
    * subsequent ops (the only expected post-flush call is the trace's own
@@ -86,6 +88,8 @@ export function shouldSample(sampleRate: number, rng: () => number = Math.random
 export function makeBufferingTransport(real: Transport): BufferingTransport {
   const buffer: Array<{ method: 'post' | 'patch'; path: string; body: unknown }> = []
   let overflowed = false
+  // Span creations / ends scheduled on this trace but not queued yet.
+  const scheduled = createPendingRegistry()
 
   const push = (method: 'post' | 'patch', path: string, body: unknown): void => {
     if (buffer.length < MAX_BUFFER_SIZE) {
@@ -104,13 +108,17 @@ export function makeBufferingTransport(real: Transport): BufferingTransport {
       push('patch', path, body)
       return Promise.resolve(null)
     },
-    flush() {
+    track(work) {
+      return scheduled.add(work)
+    },
+    flush(options) {
       // Defer to the real transport's flush. Buffered ops are NOT flushed by
       // this method (it's just for in-flight network calls) — `flushBuffered`
       // is the explicit replay entry point.
-      return real.flush()
+      return real.flush(options)
     },
     async flushBuffered() {
+      await scheduled.drain()
       // Replay serially so trace POST commits before any span POST hits the
       // server's ownership check. The same ordering invariant the real
       // transport relies on via `_creationPromise` chains in trace.ts/span.ts.

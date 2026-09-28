@@ -2,11 +2,13 @@
  * Lightweight fetch wrapper for ingest calls.
  *
  * - Never throws (observability must not crash user code).
- * - Retries transient failures (network error, 429, 5xx) with exponential
- *   back-off up to MAX_RETRIES attempts.
- * - Tracks in-flight requests so callers can await flush() before process exit.
+ * - Retries transient failures (network error, 5xx) with exponential
+ *   back-off: MAX_RETRIES attempts in total, 200 ms then 400 ms apart.
+ * - Tracks in-flight requests AND scheduled lifecycle work (a span PATCH that
+ *   is still waiting for its creation POST) so flush() can drain both.
  */
 
+import { resolveApiBaseUrl } from './env.js'
 import type { SpanlensConfig } from './types.js'
 
 const DOCS_QUICK_START_URL = 'https://www.spanlens.io/docs/quick-start'
@@ -154,22 +156,96 @@ function tryParseApiError(
   })
 }
 
+export interface FlushOptions {
+  /**
+   * Stop waiting after this many ms even if deliveries are still in flight.
+   * Omit to wait until everything scheduled so far has settled (each call is
+   * itself bounded by `timeoutMs` and the retry schedule).
+   */
+  timeoutMs?: number
+}
+
 export interface Transport {
   post(path: string, body: unknown): Promise<unknown>
   patch(path: string, body: unknown): Promise<unknown>
-  /** Resolves when all in-flight ingest calls have settled. */
-  flush(): Promise<void>
+  /**
+   * Register lifecycle work that will issue ingest calls later (for example a
+   * span PATCH chained behind its creation POST). Registration is synchronous,
+   * so a flush() that starts right after scheduling still waits for it.
+   * Returns the same promise.
+   */
+  track<T>(work: Promise<T>): Promise<T>
+  /**
+   * Resolves once every call and every tracked piece of work that was
+   * scheduled before flush() was called has settled. Work scheduled later
+   * (for example by other requests on the same client) is not waited for.
+   */
+  flush(options?: FlushOptions): Promise<void>
 }
 
+/** Total attempts per call: the first try plus two retries. */
 const MAX_RETRIES = 3
 
-/** ms to wait before the nth retry: 200, 400, 800 */
+/** ms to wait before retry number `attempt` (1-based): 200, then 400. */
 function retryDelayMs(attempt: number): number {
   return 200 * Math.pow(2, attempt - 1)
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Pending-work registry shared by the network transport and the sampling
+ * buffer. `add` is synchronous so work is visible to a flush() that starts in
+ * the same tick.
+ *
+ * `drain` waits for one snapshot: the work registered when it was called.
+ * That already covers every lifecycle step scheduled so far, because span and
+ * trace ends register their whole chain (wait for the creation POST, then
+ * PATCH) at the moment end() is called, not when the POST settles. Waiting
+ * for work added later would tie one request's flush to every other request
+ * on a shared client: under steady traffic it would never return.
+ */
+export interface PendingRegistry {
+  add<T>(work: Promise<T>): Promise<T>
+  drain(options?: FlushOptions): Promise<void>
+}
+
+export function createPendingRegistry(): PendingRegistry {
+  const pending = new Set<Promise<unknown>>()
+
+  function add<T>(work: Promise<T>): Promise<T> {
+    pending.add(work)
+    work
+      .finally(() => pending.delete(work))
+      .catch(() => {
+        /* the owner of `work` handles its rejection */
+      })
+    return work
+  }
+
+  async function drain(options: FlushOptions = {}): Promise<void> {
+    if (pending.size === 0) return
+    const settled = Promise.allSettled([...pending]).then(() => true)
+    if (options.timeoutMs === undefined) {
+      await settled
+      return
+    }
+    if (options.timeoutMs <= 0) return
+    await raceTimeout(settled, options.timeoutMs)
+  }
+
+  return { add, drain }
+}
+
+/** Resolves `true` when `work` settles first, `false` when `ms` elapses first. */
+function raceTimeout(work: Promise<boolean>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms)
+  })
+  return Promise.race([work, expired]).finally(() => clearTimeout(timer))
 }
 
 /**
@@ -193,13 +269,13 @@ function safeOnError(
 }
 
 export function createTransport(config: SpanlensConfig): Transport {
-  const baseUrl = (config.baseUrl ?? 'https://api.spanlens.io').replace(/\/$/, '')
+  const baseUrl = resolveApiBaseUrl(config.baseUrl)
   const timeoutMs = config.timeoutMs ?? 3000
   const silent = config.silent ?? true
   const onError = config.onError
 
-  // Set of Promises for all in-flight calls — used by flush().
-  const pending = new Set<Promise<unknown>>()
+  // Every in-flight call and scheduled lifecycle step, used by flush().
+  const pending = createPendingRegistry()
 
   // Actionable-hint dedupe: a broken key fails on EVERY span, so without
   // dedupe a single misconfiguration floods the console. One warn per
@@ -344,15 +420,10 @@ export function createTransport(config: SpanlensConfig): Transport {
     return null
   }
 
-  function tracked(promise: Promise<unknown>): Promise<unknown> {
-    pending.add(promise)
-    promise.finally(() => pending.delete(promise)).catch(() => { /* handled inside */ })
-    return promise
-  }
-
   return {
-    post: (path, body) => tracked(callWithRetry('POST', path, body)),
-    patch: (path, body) => tracked(callWithRetry('PATCH', path, body)),
-    flush: () => Promise.allSettled([...pending]).then(() => undefined),
+    post: (path, body) => pending.add(callWithRetry('POST', path, body)),
+    patch: (path, body) => pending.add(callWithRetry('PATCH', path, body)),
+    track: (work) => pending.add(work),
+    flush: (options) => pending.drain(options),
   }
 }

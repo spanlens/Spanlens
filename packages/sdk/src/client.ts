@@ -1,4 +1,4 @@
-import { createTransport, type Transport } from './transport.js'
+import { createTransport, type FlushOptions, type Transport } from './transport.js'
 import { createTrace, TraceHandle } from './trace.js'
 import { makeBufferingTransport, shouldSample, validateSampleRate } from './sampler.js'
 import { createEvalsApi, type EvalsApi } from './evals.js'
@@ -125,14 +125,23 @@ export class SpanlensClient {
   }
 
   /**
-   * Waits for all in-flight ingest calls to settle.
-   * Call this before process exit to ensure no spans are dropped.
+   * Waits until every ingest call scheduled before this call has settled:
+   * in-flight POST/PATCHes and span and trace ends that were never awaited
+   * (including ones still waiting for their creation POST). Work scheduled
+   * after flush() is called, for example by other requests sharing this
+   * client, is not waited for, so steady traffic cannot hold it open. Call
+   * this before a short-lived process exits or a serverless handler returns.
+   *
+   * Pass `timeoutMs` to cap the wait (for example to stay inside a serverless
+   * time budget); flush() then stops waiting at the deadline and any call
+   * still in flight keeps running in the background.
    *
    * @example
    * process.on('beforeExit', () => client.flush())
+   * await client.flush({ timeoutMs: 2000 })
    */
-  async flush(): Promise<void> {
-    return this.transport.flush()
+  async flush(options?: FlushOptions): Promise<void> {
+    return this.transport.flush(options)
   }
 
   /** Exposed for wrappers (openai/anthropic auto-instrumentation). */

@@ -5,7 +5,7 @@ import { DocsJsonLd } from '@/app/docs/_components/docs-jsonld'
 export const metadata = {
   title: 'Vercel AI SDK integration · Spanlens Docs',
   description:
-    'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Two callbacks spread into the AI SDK options log every call automatically.',
+    'Trace generateText, streamText, generateObject, and streamObject with Spanlens. Every span records the full multi-step token totals and closes reliably.',
   alternates: { canonical: '/docs/integrations/vercel-ai' },
   openGraph: openGraphFor('/docs/integrations/vercel-ai'),
 }
@@ -16,16 +16,17 @@ export default function VercelAiIntegration() {
       <DocsJsonLd meta={metadata} />
       <h1>Vercel AI SDK integration</h1>
       <p className="lead">
-        Vercel AI SDK exposes <code>onStepFinish</code> and <code>onFinish</code>{' '}
-        callbacks on every call shape (<code>generateText</code>,{' '}
-        <code>streamText</code>, <code>generateObject</code>,{' '}
-        <code>streamObject</code>).{' '}
-        <code>createSpanlensTracker</code> returns those two callbacks ready to
-        spread directly into the AI SDK options, so a 2-line change records the
-        span, token usage, model name, and multi-step tool topology to{' '}
-        <a href="/traces">/traces</a> without touching the rest of the call.
-        Works with AI SDK 4.x and 5.x via a duck-typed payload check, no peer
-        dependency on the <code>ai</code> package.
+        <code>createSpanlensTracker</code> opens a span when you create it and
+        closes it when the AI SDK call is done, recording token usage, model
+        name, and multi-step tool topology to <a href="/traces">/traces</a>{' '}
+        without touching the rest of the call. Streaming calls (
+        <code>streamText</code>, <code>streamObject</code>) close the span
+        through their <code>onFinish</code> and <code>onError</code> callbacks.
+        Awaited calls (<code>generateText</code>, <code>generateObject</code>)
+        have no <code>onFinish</code> callback in AI SDK 4.x and 5.x, so you
+        pass the result to <code>tracker.end()</code> instead. Works with AI SDK
+        4.x and 5.x via a duck-typed payload check, no peer dependency on the{' '}
+        <code>ai</code> package.
       </p>
 
       <h2>Install</h2>
@@ -33,6 +34,7 @@ export default function VercelAiIntegration() {
 # the integration is exposed as a sub-path import, no extra peer dep`}</CodeBlock>
 
       <h2>Minimal setup</h2>
+      <h3>generateText and generateObject</h3>
       <CodeBlock language="ts">{`import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { SpanlensClient } from '@spanlens/sdk'
@@ -44,14 +46,45 @@ const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
 const result = await generateText({
   model: openai('gpt-4o'),
   messages: [{ role: 'user', content: 'Summarise the latest release notes.' }],
-  onStepFinish: tracker.onStepFinish,  // optional, captures intermediate tool steps
-  onFinish:     tracker.onFinish,       // required, closes the span with token totals
+  onStepFinish: tracker.onStepFinish, // optional, counts tool steps and sums their usage
+}).catch(async (err) => {
+  await tracker.onError(err)          // closes the span as an error
+  throw err
+})
+await tracker.end(result)             // required, closes the span with the run's totals`}</CodeBlock>
+
+      <h3>streamText and streamObject</h3>
+      <CodeBlock language="ts">{`import { streamText } from 'ai'
+
+const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+
+const result = streamText({
+  model: openai('gpt-4o'),
+  messages: [{ role: 'user', content: 'Summarise the latest release notes.' }],
+  onStepFinish: tracker.onStepFinish, // optional, counts tool steps and sums their usage
+  onFinish: tracker.onFinish,         // required, closes the span once the stream ends
+  onError: tracker.onError,           // recommended, closes the span if the stream fails
 })`}</CodeBlock>
       <p>
         A fresh trace is opened the moment{' '}
         <code>createSpanlensTracker</code> is called, so latency is measured
         from the user&apos;s perspective (not just from when the model started
-        emitting). The span closes when <code>onFinish</code> fires.
+        emitting). The span closes when <code>tracker.end()</code> or{' '}
+        <code>onFinish</code> runs, or when <code>onError</code> reports a
+        failure.
+      </p>
+      <p>
+        Closing the span never waits on Spanlens. <code>end()</code>,{' '}
+        <code>onFinish</code>, and <code>onError</code> record the end time
+        on the span and on the trace the tracker opened the moment they run,
+        send the updates in the background, and return right away. A slow or
+        unreachable Spanlens server adds nothing to your response time, and an
+        ingest error never lands in your <code>catch</code>. In a serverless
+        route, call <code>await client.flush()</code> before returning (or
+        hand it to <code>waitUntil</code>) so the updates are delivered before
+        the function freezes. If you would rather wait for delivery inline,
+        pass <code>awaitIngest: true</code> to{' '}
+        <code>createSpanlensTracker</code>.
       </p>
 
       <h2>What gets captured</h2>
@@ -67,7 +100,7 @@ const result = await generateText({
           <tr>
             <td><code>generateText</code></td>
             <td>single span, prompt + completion tokens, model, latency, finish reason</td>
-            <td>token usage read from <code>response.usage</code></td>
+            <td>closed by <code>tracker.end(result)</code>; token totals read from the result</td>
           </tr>
           <tr>
             <td><code>streamText</code></td>
@@ -78,11 +111,12 @@ const result = await generateText({
             <td><code>generateObject</code> / <code>streamObject</code></td>
             <td>span output carries the structured object as text via{' '}
               <code>JSON.stringify(...)</code></td>
-            <td>token usage is identical to the text-mode siblings</td>
+            <td>close <code>generateObject</code> with <code>tracker.end(result)</code>,{' '}
+              <code>streamObject</code> with <code>onFinish</code></td>
           </tr>
           <tr>
             <td>Multi-step tool calls (<code>maxSteps</code> &gt; 1)</td>
-            <td><code>steps</code> count in span metadata; one final span per call</td>
+            <td><code>steps</code> count in span metadata; token totals cover every step</td>
             <td>individual tool calls are not split out (keeps the trace tree small)</td>
           </tr>
         </tbody>
@@ -106,7 +140,7 @@ const result = await generateText({
       <h2>Attaching to a long-lived trace</h2>
       <p>
         By default the tracker opens a fresh trace on each AI call and closes
-        it when <code>onFinish</code> fires. To group multiple{' '}
+        it together with the span. To group multiple{' '}
         <code>generateText</code> turns under a single trace (chat sessions,
         agent loops, RAG pipelines), pass an existing trace at construction, and
         the tracker leaves its lifecycle entirely to the caller:
@@ -119,14 +153,15 @@ const result = await generateText({
 for (const userMessage of conversation) {
   const tracker = createSpanlensTracker({ client, trace, modelName: 'gpt-4o' })
 
-  await generateText({
+  const result = await generateText({
     model: openai('gpt-4o'),
     messages: history.concat({ role: 'user', content: userMessage }),
-    onFinish: tracker.onFinish,
   })
+  await tracker.end(result)
 }
 
-await trace.end({ status: 'completed' })`}</CodeBlock>
+await trace.end({ status: 'completed' })
+await client.flush() // before a serverless handler returns`}</CodeBlock>
       <p>
         Each turn lands as a child <code>llm.gpt-4o</code> span under the parent
         trace, so the chat appears as a single waterfall on{' '}
@@ -135,11 +170,16 @@ await trace.end({ status: 'completed' })`}</CodeBlock>
 
       <h2>Pairing with the proxy for accurate cost</h2>
       <p>
-        The tracker reads token totals from the AI SDK callback payload, which
-        is reliable on non-streaming calls but occasionally drifts on the early
-        AI SDK 5.x betas. For authoritative billing-grade cost numbers, route
-        the underlying provider through the Spanlens proxy and the matching
-        Request row will always carry the canonical figure:
+        The tracker records the token totals the AI SDK reports for the call.
+        From AI SDK 5.0 on, <code>usage</code> in the finish payload covers
+        only the final step and <code>totalUsage</code> covers the whole run,
+        so the tracker uses <code>totalUsage</code> when it is present, then
+        the sum of the steps it saw through <code>onStepFinish</code>, then{' '}
+        <code>usage</code> (already the combined total on AI SDK 4.x). These
+        are the counts the SDK saw, not the provider&apos;s bill. For
+        authoritative billing-grade cost numbers, route the underlying
+        provider through the Spanlens proxy and the matching Request row will
+        always carry the canonical figure:
       </p>
       <CodeBlock language="ts">{`import { createOpenAI } from '@ai-sdk/openai'
 
@@ -150,8 +190,9 @@ const openai = createOpenAI({
 
 const result = await generateText({
   model: openai('gpt-4o'),
-  // ... onFinish: tracker.onFinish, etc.
-})`}</CodeBlock>
+  // ... onStepFinish: tracker.onStepFinish, etc.
+})
+await tracker.end(result)`}</CodeBlock>
       <p>
         With the proxy in place, every model call lands as a Request in{' '}
         <a href="/requests">/requests</a> with the authoritative cost, and the
@@ -201,19 +242,38 @@ const result = await generateText({
         <code>inputTokens</code> / <code>outputTokens</code>. The tracker
         accepts both shapes via a fallback chain, so a zero count usually means
         the underlying provider didn&apos;t emit usage at all (some streaming
-        responses on the AI SDK 5.x betas, certain Bedrock backends). Routing
-        through the Spanlens proxy (see above) recovers the authoritative
-        number from the raw stream.
+        providers, certain Bedrock backends). Routing through the Spanlens
+        proxy (see above) recovers the authoritative number from the raw
+        stream.
+      </p>
+
+      <h3>Span stays running after generateText</h3>
+      <p>
+        <code>generateText</code> and <code>generateObject</code> accept no{' '}
+        <code>onFinish</code> callback in AI SDK 4.x and 5.x, so passing{' '}
+        <code>tracker.onFinish</code> to them is silently ignored and the span
+        never closes. Await the call, pass the result to{' '}
+        <code>tracker.end(result)</code>, and call{' '}
+        <code>tracker.onError(err)</code> when the call throws.
+      </p>
+
+      <h3>Span stays running in a serverless function</h3>
+      <p>
+        The tracker sends its updates in the background, and a serverless
+        runtime can freeze the instance as soon as your handler returns. Call{' '}
+        <code>await client.flush()</code> before returning, or pass it to{' '}
+        <code>waitUntil</code>. It waits for the updates your request already
+        scheduled, not for traffic that arrives afterwards.
       </p>
 
       <h3>Trace closes before tool calls finish</h3>
       <p>
-        The auto-managed trace closes when <code>onFinish</code> fires, which
-        is at the end of the AI SDK call, not the end of your application
-        logic. If you kick off background work (DB writes, downstream API
-        calls) after the LLM returns, pass an external trace via{' '}
-        <code>trace=</code> and call <code>trace.end()</code> yourself when
-        all work is done. See <em>Attaching to a long-lived trace</em>.
+        The auto-managed trace closes together with the span, which is at the
+        end of the AI SDK call, not the end of your application logic. If you
+        kick off background work (DB writes, downstream API calls) after the
+        LLM returns, pass an existing trace in the <code>trace</code> option
+        and call <code>trace.end()</code> yourself when all work is done. See{' '}
+        <em>Attaching to a long-lived trace</em>.
       </p>
 
       <h3>Multi-step trace looks flat</h3>
@@ -233,7 +293,7 @@ const result = await generateText({
         on the framework side). If your TS config rejects implicit unknowns,
         cast the callbacks explicitly:{' '}
         <code>
-          onFinish: tracker.onFinish as Parameters&lt;typeof generateText&gt;[0][&apos;onFinish&apos;]
+          onFinish: tracker.onFinish as Parameters&lt;typeof streamText&gt;[0][&apos;onFinish&apos;]
         </code>
         .
       </p>

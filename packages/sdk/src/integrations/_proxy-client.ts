@@ -14,14 +14,7 @@
 
 import OpenAI from 'openai'
 import type { ClientOptions } from 'openai'
-
-function readEnv(name: string): string | undefined {
-  // Node + Vercel Edge both expose process.env; guard for browser bundles.
-  if (typeof process !== 'undefined' && process.env) {
-    return process.env[name]
-  }
-  return undefined
-}
+import { readEnv, resolveProxyBaseUrl } from '../env.js'
 
 /**
  * Build an OpenAI-SDK client whose requests flow through a Spanlens proxy
@@ -29,9 +22,10 @@ function readEnv(name: string): string | undefined {
  *
  * @param providerLabel Capitalized helper name used in the missing-key error
  *   (e.g. `'Groq'` → "...pass { apiKey } to createGroq()").
- * @param defaultProxyUrl Default `baseURL` (the hosted Spanlens proxy route).
+ * @param defaultProxyUrl The hosted Spanlens proxy route. When
+ *   `SPANLENS_BASE_URL` is set, its path is appended to that origin instead.
  * @param options Forwards to `new OpenAI(options)`. `apiKey` defaults to
- *   `SPANLENS_API_KEY`; override `baseURL` for self-hosted deployments.
+ *   `SPANLENS_API_KEY`; an explicit `baseURL` wins over everything.
  *
  * @throws Error if `apiKey` is missing (env + explicit both unset).
  */
@@ -52,6 +46,6 @@ export function makeSpanlensProxyClient(
   return new OpenAI({
     ...options,
     apiKey,
-    baseURL: options.baseURL ?? defaultProxyUrl,
+    baseURL: options.baseURL ?? resolveProxyBaseUrl(defaultProxyUrl),
   })
 }
