@@ -470,7 +470,9 @@ def test_observe_ollama_full_opt_in_captures_output():
     assert _span_patches()[-1]["output"] == fake_response
 
 
+@respx.mock
 def test_observe_rejects_unknown_log_body_before_running_fn():
+    _mock_ingest_routes()
     calls: list[int] = []
 
     with _client() as client:
