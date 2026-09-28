@@ -1,16 +1,24 @@
 import type { Metadata } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
-import { Schibsted_Grotesk } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 
 // Display face for headlines and card titles. Geist stays the body face and
 // Geist Mono the label/code face; Schibsted Grotesk only carries the display
-// ramp, which is why just the heavy weights are pulled. next/font self-hosts
-// the files at build time, so no request leaves the page at runtime.
-const displayFont = Schibsted_Grotesk({
-  subsets: ['latin'],
-  weight: ['600', '700', '800'],
+// ramp (600 to 800 in use).
+//
+// The file is committed instead of loaded through next/font/google, which
+// downloads it from Google Fonts during every build. That download failed
+// three times on 2026-09-28 (a Vercel preview, CI, and the web Docker build),
+// and each time the whole build failed with it. This is the latin subset of
+// the variable font (weight axis 400 to 900) from @fontsource-variable/
+// schibsted-grotesk 5.3.0, under the SIL Open Font License
+// (fonts/SchibstedGrotesk-OFL.txt).
+const displayFont = localFont({
+  src: './fonts/schibsted-grotesk-latin-wght-normal.woff2',
+  weight: '400 900',
+  style: 'normal',
   variable: '--font-display',
   display: 'swap',
 })
