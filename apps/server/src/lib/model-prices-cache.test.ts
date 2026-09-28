@@ -137,6 +137,7 @@ describe('model-prices-cache', () => {
       'gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4-turbo', 'gpt-5.6-sol',
       'claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5', 'claude-opus-5',
       'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3.6-flash',
+      'gpt-6-astra', 'gpt-6-sol', 'claude-opus-5-5', 'claude-fable-5-1',
     ]
     for (const model of required) {
       expect(cache.FALLBACK_PRICES[model], `missing fallback for ${model}`).toBeDefined()
@@ -144,14 +145,15 @@ describe('model-prices-cache', () => {
   })
 
   test('GPT-5.6 fallback rates match the published table on BOTH tiers', () => {
-    // OpenAI cut terra and luna on 2026-08 but left sol untouched, so a spot
-    // check of "the flagship" would have passed while every terra request was
-    // over-reported by 25% and every luna request by 5x. Pin the whole family,
-    // both tiers, so a partial move fails here instead of on a customer bill.
-    // Source: developers.openai.com/api/docs/pricing (verified 2026-08-11).
+    // This family has now moved twice, and never all at once. In 2026-08
+    // OpenAI cut terra and luna and left sol; in 2026-09 it cut sol (5 -> 4
+    // input, 30 -> 20 output, long 10/45 -> 8/30) and left the other two. A
+    // spot check of "the flagship" passes in one direction and fails in the
+    // other, so pin every member on both tiers.
+    // Source: developers.openai.com/api/docs/pricing (verified 2026-09-28).
     const expected = {
-      'gpt-5.6-sol':   { prompt: 5.0,  completion: 30,   cacheRead: 0.5,  cacheWrite: 6.25,
-                         longPrompt: 10,  longCompletion: 45,  longCacheRead: 1.0,  longCacheWrite: 12.5 },
+      'gpt-5.6-sol':   { prompt: 4.0,  completion: 20,   cacheRead: 0.4,  cacheWrite: 5.0,
+                         longPrompt: 8,   longCompletion: 30,  longCacheRead: 0.8,  longCacheWrite: 10 },
       'gpt-5.6-terra': { prompt: 2.0,  completion: 12,   cacheRead: 0.2,  cacheWrite: 2.5,
                          longPrompt: 4,   longCompletion: 18,  longCacheRead: 0.4,  longCacheWrite: 5.0 },
       'gpt-5.6-luna':  { prompt: 0.2,  completion: 1.2,  cacheRead: 0.02, cacheWrite: 0.25,
@@ -181,7 +183,7 @@ describe('model-prices-cache', () => {
     // by 50%. Source: ai.google.dev/gemini-api/docs/pricing?hl=en (2026-08-21).
     const introductory = { prompt: 0.75, completion: 3.75, cacheRead: 0.075 }
 
-    for (const model of ['gemini-3.6-flash', 'gemini-3.7-flash']) {
+    for (const model of ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash']) {
       const actual = cache.FALLBACK_PRICES[model]
       expect(actual, `missing fallback for ${model}`).toBeDefined()
       expect(actual, model).toEqual(introductory)
@@ -189,6 +191,15 @@ describe('model-prices-cache', () => {
       // one from a neighbouring row would silently double long requests.
       expect(actual?.longThreshold, `${model} must have no long-context tier`).toBeUndefined()
     }
+
+    // Robotics ER 2 is on the same introductory window (1.00 / 5.00 / 0.10
+    // through 2026-12-31, then 2.00 / 10.00 / 0.20). Both rows actually shipped
+    // with the 2027 column in 2026-08 and over-reported by 2x for six weeks,
+    // so pin them here rather than trusting the flash rows to stand in.
+    expect(cache.FALLBACK_PRICES['gemini-robotics-er-2-preview'])
+      .toEqual({ prompt: 1.0, completion: 5, cacheRead: 0.1 })
+    expect(cache.FALLBACK_PRICES['gemini-robotics-er-2-streaming-preview'])
+      .toEqual({ prompt: 1.0, completion: 5 })
   })
 
   test('grok-4.6 doubles every axis at 200k and does not inherit 4.5 cache rate', () => {
@@ -210,6 +221,79 @@ describe('model-prices-cache', () => {
     }
 
     expect(cache.FALLBACK_PRICES['grok-4.5']?.cacheRead, 'grok-4.5 cache rate is distinct').toBe(0.3)
+  })
+
+  test('Anthropic cache reads are read, not derived as 0.1x input', () => {
+    // Cache read was 0.1x base input for every Claude model until the 5.1
+    // generation. It is not any more: Fable 5.1 and Mythos 5.1 read at 0.025x
+    // and Opus 5.5 at 0.05x. A helper that "knows" the 0.1x rule would
+    // over-charge their cache hits by 4x and 2x. Pin the real multipliers.
+    // Source: platform.claude.com pricing (verified 2026-09-28).
+    const expected = {
+      'claude-fable-5-1':  { prompt: 10, cacheRead: 0.25, multiplier: 0.025 },
+      'claude-mythos-5-1': { prompt: 10, cacheRead: 0.25, multiplier: 0.025 },
+      'claude-opus-5-5':   { prompt: 4,  cacheRead: 0.2,  multiplier: 0.05 },
+      // The 0.1x models, pinned alongside so a blanket "fix" to either rule fails.
+      'claude-fable-5':    { prompt: 10, cacheRead: 1.0,  multiplier: 0.1 },
+      'claude-opus-5':     { prompt: 5,  cacheRead: 0.5,  multiplier: 0.1 },
+      'claude-sonnet-5':   { prompt: 2,  cacheRead: 0.2,  multiplier: 0.1 },
+    } as const
+
+    for (const [model, e] of Object.entries(expected)) {
+      const actual = cache.FALLBACK_PRICES[model]
+      expect(actual, `missing fallback for ${model}`).toBeDefined()
+      expect(actual?.prompt, `${model} input`).toBe(e.prompt)
+      expect(actual?.cacheRead, `${model} cache read`).toBeCloseTo(e.cacheRead, 10)
+      expect(actual?.cacheRead, `${model} cache multiplier`).toBeCloseTo(e.prompt * e.multiplier, 10)
+    }
+  })
+
+  test('GPT-6 fallback holds the 272k tier shape: 2x input, 1.5x output', () => {
+    // The long tier is NOT a flat doubling, which is the easy thing to assume
+    // and wrong: input, cached input and cache write all double, but output
+    // goes up 1.5x (astra 50 -> 75, sol 10 -> 15, luna 0.50 -> 0.75). Same
+    // shape as the whole GPT-5.6 family. Doubling output instead would
+    // over-report every >272k request by 33%.
+    // Source: developers.openai.com/api/docs/pricing (verified 2026-09-28).
+    const expected = {
+      'gpt-6-astra': { prompt: 10,  completion: 50,  cacheRead: 1.0,  cacheWrite: 12.5 },
+      'gpt-6-sol':   { prompt: 2.0, completion: 10,  cacheRead: 0.2,  cacheWrite: 2.5 },
+      'gpt-6-luna':  { prompt: 0.1, completion: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+      // Cut in 2026-09 from 5 / 30 / 0.5 / 6.25; its long tier followed down.
+      'gpt-5.6-sol': { prompt: 4.0, completion: 20,  cacheRead: 0.4,  cacheWrite: 5.0 },
+    } as const
+
+    for (const [model, short] of Object.entries(expected)) {
+      const actual = cache.FALLBACK_PRICES[model]
+      expect(actual, `missing fallback for ${model}`).toBeDefined()
+      expect(actual?.longThreshold, `${model} threshold`).toBe(272000)
+      expect(actual?.prompt, `${model} input`).toBe(short.prompt)
+      expect(actual?.completion, `${model} output`).toBe(short.completion)
+      expect(actual?.cacheRead, `${model} cache read`).toBe(short.cacheRead)
+      expect(actual?.cacheWrite, `${model} cache write`).toBe(short.cacheWrite)
+    }
+
+    // The 2x / 1.5x split holds across GPT-6 and GPT-5.6 alike.
+    for (const model of ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna',
+                         'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
+      const p = cache.FALLBACK_PRICES[model]
+      expect(p?.longPrompt, `${model} long input is 2x`).toBeCloseTo((p?.prompt ?? 0) * 2, 10)
+      expect(p?.longCacheRead, `${model} long cache read is 2x`).toBeCloseTo((p?.cacheRead ?? 0) * 2, 10)
+      expect(p?.longCacheWrite, `${model} long cache write is 2x`).toBeCloseTo((p?.cacheWrite ?? 0) * 2, 10)
+      expect(p?.longCompletion, `${model} long output is 1.5x`).toBeCloseTo((p?.completion ?? 0) * 1.5, 10)
+    }
+  })
+
+  test('Daybreak aliases mirror the rows they point at', () => {
+    // These are moving pointers: OpenAI repoints them at each new flagship, and
+    // only the twice-monthly price audit can catch that. What this test CAN
+    // catch is the internal failure — someone updating gpt-5.6-sol or
+    // gpt-5.6-cyber and leaving the alias on the old numbers.
+    // Targets as of 2026-09-28: blue -> gpt-5.6-sol, red -> gpt-5.6-cyber.
+    expect(cache.FALLBACK_PRICES['gpt-daybreak-blue-latest'])
+      .toEqual(cache.FALLBACK_PRICES['gpt-5.6-sol'])
+    expect(cache.FALLBACK_PRICES['gpt-daybreak-red-latest'])
+      .toEqual(cache.FALLBACK_PRICES['gpt-5.6-cyber'])
   })
 
   test('FALLBACK_PRICES stays provider-unambiguous', () => {

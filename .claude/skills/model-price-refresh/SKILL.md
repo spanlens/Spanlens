@@ -197,13 +197,28 @@ over-reported every Sonnet 5 request by 50%.
 
 Currently pending:
 
-- **2027-01-01** — `gemini-3.6-flash` and `gemini-3.7-flash` step off
-  introductory pricing (0.75 / 3.75 / cache 0.075) to 1.50 / 7.50 / 0.15.
-  Missing this under-reports both by 50%; applying it early over-reports by
-  2x. Both sides are pinned by a test in `model-prices-cache.test.ts`.
+- **2027-01-01** — five Gemini rows step off introductory pricing.
+  `gemini-3.6-flash`, `gemini-3.7-flash` and `gemini-3.8-flash` go
+  0.75 / 3.75 / cache 0.075 → 1.50 / 7.50 / 0.15;
+  `gemini-robotics-er-2-preview` goes 1.00 / 5.00 / 0.10 → 2.00 / 10.00 / 0.20
+  and `gemini-robotics-er-2-streaming-preview` 1.00 / 5.00 → 2.00 / 10.00.
+  Missing it under-reports all five by 50%; applying it early over-reports by
+  2x. Both sides are pinned by tests in `model-prices-cache.test.ts`.
+  **Read the "through December 31, 2026" column, not the "starting January 1,
+  2027" one.** Taking the wrong column is now the single most repeated mistake
+  in this routine: it shipped on `gemini-3.6-flash` in 2026-08 and again on
+  both Robotics ER 2 rows in the same seed, each a silent 2x over-report.
 - **Every run** — re-check the moving pointers, which go stale without any
-  announcement: `daybreak-blue-latest` / `daybreak-red-latest` (OpenAI
-  repoints these at each new flagship) and Mistral's `*-latest` family.
+  announcement: `gpt-daybreak-blue-latest` / `gpt-daybreak-red-latest` (seeded
+  since 2026-09; OpenAI repoints them at each new flagship, and only this audit
+  can notice) and Mistral's `*-latest` family.
+- **Every run** — diff *every member* of a flagship family, not the headline
+  one. In 2026-08 OpenAI cut `gpt-5.6-terra` and `gpt-5.6-luna` and left `sol`;
+  in 2026-09 it cut `sol` and left the other two.
+- **Next run** — confirm two ids that could not be read off a page and were
+  seeded on the vendor's own naming convention: `claude-mythos-5-1` (invite-only
+  models are omitted from Anthropic's models overview) and `zai-glm-5-3`
+  (Mistral's pricing page stopped rendering API ids in 2026-09).
 
 Resolved, kept as a record of why:
 
