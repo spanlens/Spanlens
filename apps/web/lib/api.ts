@@ -154,7 +154,61 @@ export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function apiDownload(path: string, filename: string): Promise<void> {
+/**
+ * The response started but did not finish: the connection dropped, or the
+ * server aborted it because the export failed partway through (a streamed
+ * export has already answered 200 by then, so aborting is the only signal it
+ * has). Nothing was saved.
+ */
+export class DownloadInterruptedError extends Error {
+  constructor(message = 'The download was interrupted before it finished, so nothing was saved.') {
+    super(message)
+    this.name = 'DownloadInterruptedError'
+  }
+}
+
+export interface DownloadOptions {
+  /** Called with the running byte count as the body arrives. */
+  onProgress?: (receivedBytes: number) => void
+}
+
+/** Reads the whole body, reporting progress, or throws DownloadInterruptedError. */
+async function readBody(res: Response, onProgress?: (receivedBytes: number) => void): Promise<Uint8Array[]> {
+  if (!res.body) return [new Uint8Array(await res.arrayBuffer())]
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      received += value.byteLength
+      onProgress?.(received)
+    }
+  } catch {
+    // No Content-Length check on top: the browser already fails a body cut
+    // short of it, and under gzip/brotli the header counts compressed bytes,
+    // which would flag small complete bodies as truncated.
+    throw new DownloadInterruptedError()
+  }
+  return chunks
+}
+
+/**
+ * Downloads an authenticated export and saves it under `filename`.
+ *
+ * The body is read here rather than with `res.blob()` so progress can be shown
+ * and so a body that fails partway through rejects with
+ * DownloadInterruptedError instead of saving a truncated file. The file is
+ * still assembled in memory before the browser saves it; streaming straight
+ * to disk needs the File System Access API, which only Chromium ships.
+ */
+export async function apiDownload(
+  path: string,
+  filename: string,
+  options: DownloadOptions = {},
+): Promise<{ bytes: number }> {
   const token = await getAuthToken()
   const res = await fetch(path, {
     headers: {
@@ -166,7 +220,8 @@ export async function apiDownload(path: string, filename: string): Promise<void>
     const body = await res.json().catch(() => ({}))
     throw new ApiError(extractErrorMessage(body, res.status), res.status, extractErrorCode(body))
   }
-  const blob = await res.blob()
+  const chunks = await readBody(res, options.onProgress)
+  const blob = new Blob(chunks as BlobPart[], { type: res.headers.get('content-type') ?? '' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -175,6 +230,7 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   a.click()
   document.body.removeChild(a)
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return { bytes: blob.size }
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {

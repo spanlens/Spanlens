@@ -1,5 +1,6 @@
 import { Pool, types, type PoolClient, type QueryResultRow } from 'pg'
 import QueryStream from 'pg-query-stream'
+import { PgStreamBusyError } from './pg-stream-busy.js'
 
 /**
  * Direct Postgres access for the `requests` log table.
@@ -40,6 +41,11 @@ import QueryStream from 'pg-query-stream'
  * instance keeps a tiny pool — Vercel scales instances horizontally, so a
  * large per-instance pool multiplies into connection exhaustion rather than
  * throughput.
+ *
+ * Cursors (`pgStream`) get a pool of their own. A streamed export reads its
+ * cursor only as fast as the client downloads, so it can hold a connection
+ * for minutes; on the shared pool that would take one of the two slots the
+ * proxy's request logging and every dashboard read depend on.
  */
 
 /**
@@ -62,7 +68,28 @@ types.setTypeParser(types.builtins.TIMESTAMPTZ, (value: string) => new Date(valu
 const DEFAULT_STATEMENT_TIMEOUT_MS = 60_000
 const DEFAULT_POOL_MAX = 2
 
+/** Concurrent cursors per instance, and so the size of their pool. */
+const DEFAULT_STREAM_POOL_MAX = 1
+
+/**
+ * Lifetime budget for one cursor, applied with `SET LOCAL` inside the cursor's
+ * own transaction (see `pgStream` for why the session timeout cannot be used).
+ * 290s leaves ten seconds of the function's 300s maxDuration (vercel.json) for
+ * the response to finish, the same margin the proxy's stream deadline keeps.
+ */
+const DEFAULT_STREAM_STATEMENT_TIMEOUT_MS = 290_000
+
 let _pool: Pool | null = null
+
+interface StreamPool {
+  readonly pool: Pool
+  /** How many cursors may be open at once. Equal to the pool's size. */
+  readonly slots: number
+  /** Cursors currently open. Lives on the pool record so a reset starts at 0. */
+  active: number
+}
+
+let _streamPool: StreamPool | null = null
 
 /**
  * Per-backend session setup, keyed weakly so a discarded client takes its
@@ -109,15 +136,31 @@ function readPositiveInt(name: string, fallback: number): number {
 }
 
 /**
- * The connection pool. Not exported — call sites use `pgQuery` / `pgStream`
- * so the parameter shim and the tenant-scoping helpers stay on the only
- * path in.
+ * The shared connection pool. Not exported — call sites use `pgQuery` /
+ * `pgStream` so the parameter shim and the tenant-scoping helpers stay on the
+ * only path in.
  */
 function pool(): Pool {
   if (_pool) return _pool
-  _pool = new Pool({
+  _pool = createPool(readPositiveInt('PG_POOL_MAX', DEFAULT_POOL_MAX))
+  return _pool
+}
+
+/**
+ * The cursor pool, sized by PG_STREAM_POOL_MAX. Separate from `pool()` so a
+ * slow download can never hold a connection that request logging needs.
+ */
+function streamPool(): StreamPool {
+  if (_streamPool) return _streamPool
+  const slots = readPositiveInt('PG_STREAM_POOL_MAX', DEFAULT_STREAM_POOL_MAX)
+  _streamPool = { pool: createPool(slots), slots, active: 0 }
+  return _streamPool
+}
+
+function createPool(max: number): Pool {
+  const created = new Pool({
     connectionString: readConnectionString(),
-    max: readPositiveInt('PG_POOL_MAX', DEFAULT_POOL_MAX),
+    max,
     // Supavisor hands the backend to another client between transactions;
     // holding an idle connection open past a few seconds wastes a slot.
     idleTimeoutMillis: 10_000,
@@ -148,7 +191,7 @@ function pool(): Pool {
   // so without the handshake below the caller's first query is enqueued while
   // this one is still in flight. node-postgres tolerates that by queueing, but
   // it warns, and it is slated for removal in pg 9.
-  _pool.on('connect', (client) => {
+  created.on('connect', (client) => {
     const setup = client
       .query(
         `SET TIME ZONE 'UTC'; ` +
@@ -165,19 +208,20 @@ function pool(): Pool {
       })
     SESSION_READY.set(client, setup)
   })
-  _pool.on('error', (err) => {
+  created.on('error', (err) => {
     // An idle client erroring out is normal with a pooler in front; log it
     // without the connection string and let the pool replace the client.
     console.error('[postgres] idle client error:', err.message)
   })
-  return _pool
+  return created
 }
 
-/** Test hook. Closes the pool so a suite can swap the environment. */
+/** Test hook. Closes both pools so a suite can swap the environment. */
 export async function resetPostgresPool(): Promise<void> {
-  const existing = _pool
+  const existing = [_pool, _streamPool?.pool]
   _pool = null
-  if (existing) await existing.end()
+  _streamPool = null
+  await Promise.all(existing.map((p) => p?.end()))
 }
 
 export interface PgQuery {
@@ -293,9 +337,44 @@ export async function pgTransaction<T>(
 export interface PgStreamOptions extends PgQuery {
   /** Rows fetched per round trip. Trades memory against round trips. */
   readonly batchSize?: number
+  /**
+   * Budget for the cursor's whole life, from the first batch to the last,
+   * including any time spent waiting on the consumer. Defaults to
+   * PG_STREAM_STATEMENT_TIMEOUT_MS, or 290s.
+   */
+  readonly statementTimeoutMs?: number
 }
 
 const DEFAULT_STREAM_BATCH = 500
+
+function streamStatementTimeoutMs(override: number | undefined): number {
+  const raw =
+    override ?? readPositiveInt('PG_STREAM_STATEMENT_TIMEOUT_MS', DEFAULT_STREAM_STATEMENT_TIMEOUT_MS)
+  // Interpolated into SET LOCAL below (SET takes no bind parameters), so it
+  // must be a plain positive integer whatever the caller passed.
+  return Math.max(1, Math.floor(raw))
+}
+
+/**
+ * Claims a cursor slot or throws PgStreamBusyError. Never waits: with a pool
+ * sized to the slot count, waiting could only end in a checkout timeout.
+ */
+function acquireStreamSlot(): StreamPool {
+  const target = streamPool()
+  if (target.active >= target.slots) throw new PgStreamBusyError(target.slots)
+  target.active += 1
+  return target
+}
+
+/** Ends a transaction that did not commit. False if the client is unusable. */
+async function rollbackQuietly(client: PoolClient): Promise<boolean> {
+  try {
+    await client.query('ROLLBACK')
+    return true
+  } catch {
+    return false
+  }
+}
 
 /**
  * Streams a result set through a server-side cursor.
@@ -305,27 +384,67 @@ const DEFAULT_STREAM_BATCH = 500
  * rather than everything going through PostgREST (the other half being the
  * analytic SQL above).
  *
- * The cursor holds one pooled connection for the life of the iteration, so
- * callers must finish or abandon it promptly; the `finally` releases the
- * client even when the consumer breaks out early.
+ * ## Its own transaction and its own timeout
+ *
+ * node-postgres cursors fetch each batch with Execute + Flush and send no
+ * Sync until the cursor closes, so to the server the whole cursor is one
+ * statement, and statement_timeout counts from the first batch to the last,
+ * including every pause while the consumer is not reading. A backpressured
+ * export spends most of its life in those pauses, so the session's 60s
+ * timeout ended any download slower than a minute partway through
+ * ("canceling statement due to statement timeout").
+ *
+ * The cursor therefore runs inside BEGIN ... COMMIT with a `SET LOCAL
+ * statement_timeout` sized to the function budget. SET LOCAL reverts when the
+ * transaction ends, so the pooled connection goes back with the session value
+ * it came with (the same reason pingPostgres uses it). Supavisor's transaction
+ * mode keeps one backend for the whole transaction, as a cursor needs.
+ *
+ * ## Its own pool
+ *
+ * Cursors check out from a separate pool (PG_STREAM_POOL_MAX, default 1), so
+ * a long download never occupies a connection the shared pool needs. When
+ * every slot is taken the stream fails at once with PgStreamBusyError, before
+ * it asks for a connection.
+ *
+ * The slot and the client are held for the life of the iteration, and the
+ * `finally` blocks give both back when the consumer finishes, breaks out
+ * early, or throws. A transaction that did not commit is rolled back first,
+ * and a client that cannot roll back is discarded rather than returned with a
+ * transaction still open.
  */
 export async function* pgStream<T extends QueryResultRow>(
   opts: PgStreamOptions,
 ): AsyncGenerator<T, void, undefined> {
   const { text, values } = toPositional(opts.query, opts.params ?? {})
-  // Not `withClient`: the cursor has to hold its client across yields, which
-  // outlives any callback shape. The readiness wait is the same.
-  const client: PoolClient = await pool().connect()
+  const timeoutMs = streamStatementTimeoutMs(opts.statementTimeoutMs)
+  const slot = acquireStreamSlot()
   try {
-    await SESSION_READY.get(client)
-    const stream = client.query(
-      new QueryStream(text, values, { batchSize: opts.batchSize ?? DEFAULT_STREAM_BATCH }),
-    )
-    for await (const row of stream) {
-      yield row as T
+    // Not `withClient`: the cursor has to hold its client across yields, which
+    // outlives any callback shape. The readiness wait is the same.
+    const client: PoolClient = await slot.pool.connect()
+    let committed = false
+    try {
+      await SESSION_READY.get(client)
+      await client.query('BEGIN')
+      await client.query(`SET LOCAL statement_timeout = ${timeoutMs}`)
+      const stream = client.query(
+        new QueryStream(text, values, { batchSize: opts.batchSize ?? DEFAULT_STREAM_BATCH }),
+      )
+      for await (const row of stream) {
+        yield row as T
+      }
+      await client.query('COMMIT')
+      committed = true
+    } finally {
+      // Runs on completion, on error, and on `return()` from a consumer that
+      // stopped early. The client queues ROLLBACK behind the cursor's own
+      // close, so it reaches the server after the portal is gone.
+      const reusable = committed || (await rollbackQuietly(client))
+      client.release(reusable ? undefined : new Error('cursor transaction did not end cleanly'))
     }
   } finally {
-    client.release()
+    slot.active -= 1
   }
 }
 

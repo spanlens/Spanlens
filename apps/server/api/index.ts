@@ -24,6 +24,8 @@ initSentry()
 export const runtime = 'nodejs'
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  // Hoisted so the catch below can cancel a body it never got to pump.
+  let webRes: Response | undefined
   try {
     // 1. Build URL — Vercel terminates TLS at the edge, use forwarded headers
     const proto =
@@ -64,7 +66,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       headers,
       ...(body !== null ? { body: body as Uint8Array } : {}),
     })
-    const webRes = await app.fetch(webReq)
+    webRes = await app.fetch(webReq)
 
     // 5. Write response headers (skip hop-by-hop headers Node.js manages)
     const resHeaders: Record<string, string | string[]> = {}
@@ -130,7 +132,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     captureError(err, { url: req.url, method: req.method })
     if (!res.headersSent) {
       res.writeHead(500, { 'content-type': 'text/plain' })
+      res.end('Internal Server Error')
+    } else if (!res.writableEnded) {
+      // The status line already promised success and part of the body is on
+      // the wire. Appending an error string would hand the client a 200 whose
+      // body ends in "Internal Server Error", which a browser saves as a
+      // complete CSV. Destroying the socket drops the chunked terminator, so
+      // the client's body read fails and the download is marked failed.
+      res.destroy(err instanceof Error ? err : new Error(String(err)))
     }
-    res.end('Internal Server Error')
+    // A body we never finished pumping may still hold resources until it is
+    // read or cancelled; an export's holds a database cursor, which occupies
+    // the instance's only export connection by default. Cancelling an errored
+    // or already-released body is a harmless rejection.
+    await webRes?.body?.cancel().catch(() => {})
   }
 }

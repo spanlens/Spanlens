@@ -247,7 +247,7 @@ export const DOCS_SECTIONS: DocsSection[] = [
             title: 'Data Export',
             href: '/docs/features/export',
             description:
-              'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON. Streamed exports handle millions of rows.',
+              'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON. Streamed exports go up to a million rows.',
           },
         ],
       },

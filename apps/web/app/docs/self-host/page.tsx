@@ -293,6 +293,25 @@ const openai = createOpenAI({
             </td>
           </tr>
           <tr>
+            <td><code>PG_STREAM_POOL_MAX</code></td>
+            <td>No</td>
+            <td>
+              How many streamed CSV/JSONL exports one server runs at once, default 1. Each holds
+              a connection of its own for the whole download, separate from the pool above, so
+              exports never take the connections request logging needs. An export that finds
+              them all busy gets a 429 with Retry-After.
+            </td>
+          </tr>
+          <tr>
+            <td><code>PG_STREAM_STATEMENT_TIMEOUT_MS</code></td>
+            <td>No</td>
+            <td>
+              Time budget for one streamed export, default 290000, including the time spent
+              waiting for the client to read. The default suits a 300-second function limit.
+              Raise it on your own server if large exports over slow links need longer.
+            </td>
+          </tr>
+          <tr>
             <td><code>RESEND_API_KEY</code></td>
             <td>No</td>
             <td>
