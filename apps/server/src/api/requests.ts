@@ -12,7 +12,8 @@ import {
 } from '../lib/replay-providers.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
-import { parsePageLimit, validateOptionalUuid, validateOptionalDate, isUuid } from '../lib/params.js'
+import { parsePageLimit, isUuid } from '../lib/params.js'
+import { parseRequestFilters } from '../lib/request-filters.js'
 import {
   requestsScope,
   selectRequests,
@@ -63,20 +64,11 @@ requestsRouter.get('/', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  // UUID + date params are bound as {name} placeholders and resolved to $n
-  // placeholders. A malformed value (e.g. ?projectId=abc, ?from=garbage) fails
-  // the binding and throws a raw 500 — validate up front so these documented
-  // external surfaces (MCP/BI tools pass arbitrary filter args) get a clean 400.
-  const projectId       = validateOptionalUuid(c.req.query('projectId'), 'projectId')
-  const provider        = c.req.query('provider')
-  const model           = c.req.query('model')
-  const from            = validateOptionalDate(c.req.query('from'), 'from')
-  const to              = validateOptionalDate(c.req.query('to'), 'to')
-  const providerKeyId   = validateOptionalUuid(c.req.query('providerKeyId'), 'providerKeyId')
-  const promptVersionId = validateOptionalUuid(c.req.query('promptVersionId'), 'promptVersionId')
-  const userIdFilter    = c.req.query('userId')
-  const sessionIdFilter = c.req.query('sessionId')
-  const status          = c.req.query('status')
+  // Filters are shared with the export (lib/request-filters.ts) so the two
+  // cannot drift. Malformed uuid/date values are a clean 400 there, since
+  // these documented external surfaces (MCP/BI tools pass arbitrary filter
+  // args) would otherwise get a raw 500 from the bound-parameter cast.
+  const { sql: combinedFilters, params } = parseRequestFilters((name) => c.req.query(name))
   const sortByRaw       = c.req.query('sortBy')
   const sortDirRaw      = c.req.query('sortDir')
   const { page, limit, offset } = parsePageLimit(c.req.query('page'), c.req.query('limit'))
@@ -89,38 +81,6 @@ requestsRouter.get('/', async (c) => {
   const orderDir = sortDirRaw === 'asc' ? 'ASC' : 'DESC'
   // NULLS LAST mimics Supabase's nullsFirst: false.
   const orderBy = `${sortCol} ${orderDir} NULLS LAST`
-
-  // Assemble the dynamic WHERE. Each fragment is a parametrized
-  // condition — never interpolate user input into the SQL string itself.
-  const filters: string[] = []
-  const params: Record<string, unknown> = {}
-
-  if (projectId)       { filters.push('project_id = {projectId}'); params['projectId'] = projectId }
-  if (provider)        { filters.push('provider = {provider}'); params['provider'] = provider }
-  if (model)           { filters.push('position(lower({model}) in lower(model)) > 0'); params['model'] = model }
-  if (providerKeyId)   { filters.push('provider_key_id = {providerKeyId}'); params['providerKeyId'] = providerKeyId }
-  if (promptVersionId) { filters.push('prompt_version_id = {promptVersionId}'); params['promptVersionId'] = promptVersionId }
-  if (userIdFilter)    { filters.push('user_id = {userId}'); params['userId'] = userIdFilter }
-  if (sessionIdFilter) { filters.push('session_id = {sessionId}'); params['sessionId'] = sessionIdFilter }
-  if (from)            { filters.push('created_at >= {from}::timestamptz'); params['from'] = from }
-  if (to)              { filters.push('created_at <= {to}::timestamptz'); params['to'] = to }
-
-  // Accept friendly `success`/`error` synonyms alongside the original
-  // `ok`/`4xx`/`5xx` enum so callers without HTTP intuition (MCP tools,
-  // BI dashboards) can filter without knowing status-code ranges.
-  if (status === 'ok' || status === 'success')   filters.push('status_code < 400')
-  else if (status === '4xx')                     filters.push('status_code >= 400 AND status_code < 500')
-  else if (status === '5xx')                     filters.push('status_code >= 500')
-  else if (status === 'error')                   filters.push('status_code >= 400')
-
-  // ?truncated=true  → only rows that hit the stream deadline
-  // ?truncated=false → only rows that completed cleanly
-  // (omit) → no filter
-  const truncatedRaw = c.req.query('truncated')
-  if (truncatedRaw === 'true')  filters.push('truncated = true')
-  else if (truncatedRaw === 'false') filters.push('truncated = false')
-
-  const combinedFilters = filters.length > 0 ? filters.join(' AND ') : undefined
 
   try {
     let rows: RequestRow[]

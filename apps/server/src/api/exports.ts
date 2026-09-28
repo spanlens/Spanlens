@@ -3,6 +3,8 @@ import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { detectAnomalies } from '../lib/anomaly.js'
 import { requestsScope, selectRequests, streamRequests } from '../lib/requests-query.js'
+import { encodeRowStream, type RowStreamOptions } from '../lib/export-stream.js'
+import { parseRequestFilters } from '../lib/request-filters.js'
 import { ApiError } from '../lib/errors.js'
 
 export const exportsRouter = new Hono<JwtContext>()
@@ -17,9 +19,9 @@ const MAX_EXPORT_ROWS = 10_000
 
 /**
  * Row cap for the streamed `/requests?format=csv|jsonl` endpoints. The
- * streaming path holds at most one cursor batch in memory at a
- * time, so a much larger cap is safe — enough for a year of Pro-plan data
- * (millions of rows).
+ * streaming path reads the cursor only as fast as the client downloads, so
+ * memory stays bounded by the encoder's queue (lib/export-stream.ts) plus one
+ * cursor batch whatever the cap, and a much larger cap is safe.
  *
  * Picked at 1M because:
  *   - It satisfies P3.11's "100만 row export < 100MB" success criterion with
@@ -33,11 +35,18 @@ const MAX_EXPORT_ROWS = 10_000
  */
 const MAX_EXPORT_ROWS_STREAM = 1_000_000
 
+/**
+ * Column order is the CSV header order, and the header is a contract: scripts
+ * index into it. New columns go at the end. `user_id` / `session_id` /
+ * `prompt_version_id` were appended so an export filtered on them can be
+ * checked (and re-split) after the fact.
+ */
 const EXPORT_COLUMNS = [
   'id', 'project_id', 'provider', 'model',
   'prompt_tokens', 'completion_tokens', 'total_tokens',
   'cost_usd', 'latency_ms', 'status_code',
   'error_message', 'trace_id', 'created_at',
+  'user_id', 'session_id', 'prompt_version_id',
 ] as const
 
 type ExportColumn = (typeof EXPORT_COLUMNS)[number]
@@ -131,30 +140,20 @@ export async function* withIsoCreatedAt<Row extends Record<string, unknown>>(
 /**
  * Builds a streaming CSV response (header row + one line per source row).
  *
- * The async iterable is consumed lazily inside the ReadableStream `start`
- * callback — no buffering. Each row is enqueued as a single
- * Uint8Array chunk; the Node response handler in `api/index.ts` writes each
- * chunk to the socket with backpressure handling.
+ * Rows are pulled from the source only as fast as the consumer reads, and
+ * cancelling the stream releases the source (lib/export-stream.ts has the
+ * why). `options` exists for tests; the route uses the defaults.
  */
 export function buildCsvStream<Row extends Record<string, unknown>>(
   cols: readonly string[],
   rows: AsyncIterable<Row>,
+  options: RowStreamOptions = {},
 ): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder()
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        controller.enqueue(encoder.encode(cols.join(',') + '\n'))
-        for await (const row of rows) {
-          const line = cols.map((col) => escapeCsv(row[col])).join(',') + '\n'
-          controller.enqueue(encoder.encode(line))
-        }
-        controller.close()
-      } catch (err) {
-        controller.error(err)
-      }
-    },
-  })
+  return encodeRowStream(
+    rows,
+    (row) => cols.map((col) => escapeCsv(row[col])).join(',') + '\n',
+    { ...options, preamble: cols.join(',') + '\n' },
+  )
 }
 
 /**
@@ -163,28 +162,67 @@ export function buildCsvStream<Row extends Record<string, unknown>>(
  * preserves typing better than CSV and round-trips cleanly through `jq`,
  * `pandas.read_json(lines=True)`, BigQuery, ClickHouse, etc.
  */
-export function buildJsonlStream<Row>(rows: AsyncIterable<Row>): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder()
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      try {
-        for await (const row of rows) {
-          controller.enqueue(encoder.encode(JSON.stringify(row) + '\n'))
-        }
-        controller.close()
-      } catch (err) {
-        controller.error(err)
+export function buildJsonlStream<Row>(
+  rows: AsyncIterable<Row>,
+  options: RowStreamOptions = {},
+): ReadableStream<Uint8Array> {
+  return encodeRowStream(rows, (row) => JSON.stringify(row) + '\n', options)
+}
+
+/**
+ * Reads the first row before the response is committed, and hands back an
+ * iterator that replays it and then continues from the source.
+ *
+ * A streamed export answers 200 the moment the Response is returned, so
+ * anything that fails afterwards can only abort the connection. The common
+ * failures (connection checkout, the query itself, a statement timeout on the
+ * first batch) all happen before the first row arrives, so waiting for that
+ * row turns them into a proper 500.
+ *
+ * Deliberately a plain iterator object, not an async generator: `return()` on
+ * a generator that has not started yet skips its body, so a wrapper generator
+ * cancelled before its first read would never forward `return()`, and the
+ * cursor this function has already opened would keep its pooled connection.
+ */
+async function primeRows<Row>(rows: AsyncIterable<Row>): Promise<AsyncIterableIterator<Row>> {
+  const source = rows[Symbol.asyncIterator]()
+  let pending: IteratorResult<Row, unknown> | null = await source.next()
+  const primed: AsyncIterableIterator<Row> = {
+    async next() {
+      if (pending !== null) {
+        const first = pending
+        pending = null
+        if (first.done) return { done: true, value: undefined }
+        return first
       }
+      return source.next()
     },
-  })
+    async return() {
+      pending = null
+      await source.return?.()
+      return { done: true, value: undefined }
+    },
+    [Symbol.asyncIterator]() {
+      return primed
+    },
+  }
+  return primed
 }
 
 // GET /api/v1/exports/requests
-// Query: format (csv|json|jsonl), projectId, provider, model, providerKeyId,
-//        status (ok|4xx|5xx), from, to, limit
+// Query: format (csv|json|jsonl), limit, plus the list endpoint's filters:
+//        projectId, provider, model, providerKeyId, promptVersionId, userId,
+//        sessionId, status (ok|success|4xx|5xx|error|all),
+//        truncated (true|false|all), from, to.
+//
+// Malformed filters are a 400 before any query runs (parseRequestFilters),
+// which matters most on the streamed formats: once their 200 is out, a failure
+// can only abort the connection.
 //
 // Memory profile:
-//   - csv / jsonl: streamed. At most one cursor batch in memory.
+//   - csv / jsonl: streamed with backpressure. The cursor is read only as fast
+//                  as the client downloads (lib/export-stream.ts), so memory is
+//                  one queue of encoded output plus one cursor batch.
 //                  Row cap: 1M (MAX_EXPORT_ROWS_STREAM).
 //   - json:        materialised wrapper object. Row cap: 10k (MAX_EXPORT_ROWS).
 //                  Use jsonl for larger JSON exports.
@@ -192,33 +230,17 @@ exportsRouter.get('/requests', async (c) => {
   const orgId = c.get('orgId')
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  const format        = parseFormat(c.req.query('format'))
-  const projectId     = c.req.query('projectId')
-  const provider      = c.req.query('provider')
-  const model         = c.req.query('model')
-  const providerKeyId = c.req.query('providerKeyId')
-  const status        = c.req.query('status')   // 'ok' | '4xx' | '5xx'
-  const from          = c.req.query('from')
-  const to            = c.req.query('to')
+  const format = parseFormat(c.req.query('format'))
+  // Strict: an unknown status/truncated value would otherwise export every row.
+  const { sql: filterSql, params } = parseRequestFilters((name) => c.req.query(name), {
+    strictEnums: true,
+  })
 
   // Cap depends on format — streamed formats allow much larger exports.
   const maxRows = format === 'json' ? MAX_EXPORT_ROWS : MAX_EXPORT_ROWS_STREAM
   const rawLimit = parseInt(c.req.query('limit') ?? String(maxRows), 10)
   const limit    = Math.min(maxRows, Math.max(1, isNaN(rawLimit) ? maxRows : rawLimit))
 
-  const filters: string[] = []
-  const params: Record<string, unknown> = {}
-  if (projectId)     { filters.push('project_id = {projectId}'); params['projectId'] = projectId }
-  if (provider)      { filters.push('provider = {provider}'); params['provider'] = provider }
-  if (model)         { filters.push('position(lower({model}) in lower(model)) > 0'); params['model'] = model }
-  if (providerKeyId) { filters.push('provider_key_id = {providerKeyId}'); params['providerKeyId'] = providerKeyId }
-  if (from)          { filters.push('created_at >= {from}::timestamptz'); params['from'] = from }
-  if (to)            { filters.push('created_at <= {to}::timestamptz'); params['to'] = to }
-  if (status === 'ok')  filters.push('status_code < 400')
-  if (status === '4xx') filters.push('status_code >= 400 AND status_code < 500')
-  if (status === '5xx') filters.push('status_code >= 500')
-
-  const filterSql = filters.length > 0 ? filters.join(' AND ') : undefined
   const dateStr = new Date().toISOString().slice(0, 10)
 
   let scope: Awaited<ReturnType<typeof requestsScope>>
@@ -264,10 +286,10 @@ exportsRouter.get('/requests', async (c) => {
   // ── Streaming path: CSV or JSONL. ────────────────────────────────────────────
   //
   // `streamRequests` is an async generator backed by a server-side Postgres
-  // cursor — peak memory is one batch, independent of `limit`. The
-  // `buildCsvStream` / `buildJsonlStream` helpers transform rows on-the-fly
-  // inside the ReadableStream `start` callback, so backpressure propagates
-  // from the Node socket → Web stream controller → cursor.
+  // cursor. The encoders pull from it only while their queue is below its
+  // high-water mark, so backpressure runs from the Node socket (api/index.ts
+  // stops calling read()) through the stream to the cursor, and cancelling
+  // the body releases the cursor's connection (lib/export-stream.ts).
   const rawRowsIter = streamRequests<ExportRow>({
     scope,
     select: EXPORT_COLUMNS.join(', '),
@@ -280,7 +302,13 @@ exportsRouter.get('/requests', async (c) => {
   // Coerce string-encoded numerics on the way out. Wrapping rather than
   // mapping inline preserves backpressure and cursor cancellation, because
   // each row is re-yielded from the original iterator.
-  const rowsIter = withIsoCreatedAt(rawRowsIter)
+  let rowsIter: AsyncIterableIterator<ExportRow>
+  try {
+    rowsIter = await primeRows(withIsoCreatedAt(rawRowsIter))
+  } catch (err) {
+    console.error('[exports:requests] stream open failed:', err instanceof Error ? err.message : err)
+    throw new ApiError('INTERNAL_ERROR', 'Failed to export requests')
+  }
 
   if (format === 'jsonl') {
     return new Response(buildJsonlStream(rowsIter), {

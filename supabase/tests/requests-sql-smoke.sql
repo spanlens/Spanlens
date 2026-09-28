@@ -222,6 +222,43 @@ FROM public.organizations o
 WHERE o.id = '00000000-0000-4000-8000-00000000f002'
 ON CONFLICT (created_at, id) DO NOTHING;
 
+\echo '  +  list / export filter chain: inferred parameter types, export columns'
+-- lib/request-filters.ts builds one WHERE for GET /requests and for the
+-- CSV/JSONL export. node-postgres sends parameters untyped, so Postgres has to
+-- infer uuid for the three id filters, text for user and session, an integer
+-- for the retention days, and timestamptz only through the explicit cast.
+-- PREPARE reproduces that inference; the export's column list, cursor order
+-- and row cap come along.
+PREPARE request_filters AS
+SELECT id, project_id, provider, model,
+       prompt_tokens, completion_tokens, total_tokens,
+       cost_usd, latency_ms, status_code,
+       error_message, trace_id, created_at,
+       user_id, session_id, prompt_version_id
+FROM public.requests
+WHERE organization_id = $1
+  AND created_at >= now() - make_interval(days => $2)
+  AND project_id = $3
+  AND provider = $4
+  AND position(lower($5) in lower(model)) > 0
+  AND provider_key_id = $6
+  AND prompt_version_id = $7
+  AND user_id = $8
+  AND session_id = $9
+  AND created_at >= $10::timestamptz
+  AND created_at <= $11::timestamptz
+  AND status_code >= 400
+  AND truncated = false
+ORDER BY created_at DESC
+LIMIT 1000000;
+EXECUTE request_filters(
+  '00000000-0000-4000-8000-00000000f002', 14,
+  '00000000-0000-4000-8000-00000000f003', 'openai', 'mini',
+  '00000000-0000-4000-8000-00000000f004', '00000000-0000-4000-8000-00000000f005',
+  'user-1', 'sess-1', '2026-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z'
+);
+DEALLOCATE request_filters;
+
 ROLLBACK;
 
 \echo '── all shapes parsed and planned ──'
