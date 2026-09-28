@@ -24,7 +24,9 @@ npx @spanlens/cli init --dry-run
 npx @spanlens/cli init --server-url https://spanlens.yourcompany.com
 ```
 
-Points the wizard at your own Spanlens server, the host that serves `/api` and `/proxy`. The wizard validates your key against it and writes its origin (no path, no trailing slash) to `SPANLENS_BASE_URL`. The `@spanlens/sdk` factories read that variable and send requests to `/proxy/openai/v1`, `/proxy/anthropic`, or `/proxy/gemini` on your server; the wizard prints those exact addresses when it finishes. A path in the URL you pass is ignored with a warning. `--server-url=<url>` works too.
+Points the wizard at your own Spanlens server, the host that serves `/api` and `/proxy`. The wizard validates your key against it and writes its origin (no path, no trailing slash) to `SPANLENS_BASE_URL`. The `@spanlens/sdk` factories read that variable from version 0.18.0 on and send requests to `/proxy/openai/v1`, `/proxy/anthropic`, or `/proxy/gemini` on your server; the wizard prints those exact addresses when it finishes. A path in the URL you pass is ignored with a warning. `--server-url=<url>` works too.
+
+Older `@spanlens/sdk` versions ignore `SPANLENS_BASE_URL` and would send your requests and your self-hosted key to the hosted service. So before it writes anything, the wizard checks the version installed in your project. It offers to upgrade an older one, and if you decline, or the newest published version is still older than 0.18.0, it stops without touching your env file or your code.
 
 ## What it does
 
@@ -42,8 +44,8 @@ Points the wizard at your own Spanlens server, the host that serves `/api` and `
   ? Paste your Spanlens key › sl_live_*************
 
   ✓ Key valid · project chatbot-prod · providers: openai, anthropic, gemini
-  ✓ Updated SPANLENS_API_KEY in .env.local
   ✓ Installed @spanlens/sdk (pnpm add @spanlens/sdk)
+  ✓ Updated SPANLENS_API_KEY in .env.local
 
   ✓ Found 3 patches to apply
     • [openai] app/api/chat/route.ts
@@ -106,7 +108,22 @@ Points the wizard at your own Spanlens server, the host that serves `/api` and `
 + const genAI = createGemini()
 ```
 
-Options that carry a provider credential or the upstream address are stripped (`apiKey` and `baseURL`, plus `authToken`, `credentials`, `config`, and `profile` for Anthropic), since every factory reads `SPANLENS_API_KEY` from env and routes through the Spanlens proxy. Other options (`timeout`, `organization`, `defaultHeaders`, etc.) stay put.
+Options that carry a provider credential or the upstream address are stripped (`apiKey` and `baseURL`, plus `authToken`, `credentials`, `config`, and `profile` for Anthropic), since every factory reads `SPANLENS_API_KEY` from env and routes through the Spanlens proxy. Other options (`timeout`, `organization`, `maxRetries`, etc.) stay put. The client can come from a default import or a named one (`import { OpenAI } from 'openai'`); both are rewritten, for OpenAI and Anthropic alike.
+
+### Headers and query parameters
+
+`defaultHeaders` and `defaultQuery` stay, minus any entry that carries a credential: `Authorization`, `x-api-key`, `api-key`, names with key, token, or secret in them, and every gateway header such as `Helicone-*`, `x-portkey-*`, or `cf-aig-*`. The provider SDKs send these after their own auth header, so an `Authorization` left in place would replace your Spanlens key and send your OpenAI key to Spanlens. The preview lists every entry the wizard removes:
+
+```diff
+- const openai = new OpenAI({
+-   apiKey: process.env.OPENAI_API_KEY,
+-   baseURL: 'https://oai.helicone.ai/v1',
+-   defaultHeaders: { 'Helicone-Auth': `Bearer ${process.env.HELICONE_API_KEY}` },
+- })
++ const openai = createOpenAI()
+```
+
+Helicone metadata headers such as `Helicone-User-Id` are dropped too; see the [Helicone migration guide](https://www.spanlens.io/docs/migrate/from-helicone) for their Spanlens counterparts.
 
 ### Imports the file still needs
 
@@ -135,7 +152,14 @@ Only inline object options whose keys are all written out are rewritten. When th
   Before you make this change, `providerOptions` must not set apiKey, baseURL, adminAPIKey, or workloadIdentity.
 ```
 
-In that case the wizard ends with "Almost there" instead of "setup complete".
+The wizard also leaves a call for you, with the same kind of instructions, when:
+
+- `defaultHeaders` or `defaultQuery` comes from a variable or a helper call, or a header value looks like a key
+- the options pass a custom `fetch`, or `fetchOptions` sets `headers`, since either can add its own credentials
+- the client is created from `require()`, a dynamic `import()`, or a namespace import such as `import * as oai from 'openai'`
+- the client talks to Azure OpenAI (an Azure `baseURL`, an `api-key` header, or an `api-version` query). `createOpenAI()` would send those requests to OpenAI, so the wizard points you at the Azure route in the [proxy docs](https://www.spanlens.io/docs/proxy) instead of suggesting a rewrite
+
+In any of these cases the wizard ends with "Almost there" instead of "setup complete". If it finds no client at all, it says setup is not finished and shows the factory imports to use.
 
 ## Safety checks
 
