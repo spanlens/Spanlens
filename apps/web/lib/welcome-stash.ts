@@ -104,6 +104,22 @@ export function consumeWelcomeStash(currentUserId: string): string | null {
   return parsed.apiKey
 }
 
+/**
+ * Whether a well-formed stash is waiting, WITHOUT consuming it. Onboarding
+ * uses this to decide whether the dashboard will be able to show the user
+ * their key: after a 409 bootstrap (no key issued) or a failed write it will
+ * not, and the page has to send them to Projects for a new one instead.
+ */
+export function hasWelcomeStash(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    return raw !== null && isWelcomeStash(JSON.parse(raw))
+  } catch {
+    return false
+  }
+}
+
 /** Unconditional remove. Used by sign-out and as a defensive clear. */
 export function clearWelcomeStash(): void {
   if (typeof window === 'undefined') return
