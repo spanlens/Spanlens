@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `spanlens init` now finds the provider SDKs in a Poetry project on Python 3.9 and 3.10. Without `tomllib` the wizard fell back to picking quoted strings out of `pyproject.toml`, which misses Poetry's `anthropic = "^0.30"` style dependency tables, so it detected no providers there. It now uses `tomli` when installed and otherwise reads the Poetry dependency tables and the PEP 621 arrays section by section, ignoring unrelated tables.
+
 ## 0.9.0
 
 ### Added
