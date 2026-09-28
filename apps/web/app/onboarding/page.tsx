@@ -8,7 +8,7 @@ import {
   type PendingInvitation,
 } from '@/lib/queries/use-pending-invitations'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
-import { writeWelcomeStash } from '@/lib/welcome-stash'
+import { applyBootstrapResult, type BootstrapResponse } from '@/lib/onboarding-bootstrap'
 import { TrackOnce } from '@/components/track-once'
 import { cn } from '@/lib/utils'
 import {
@@ -38,13 +38,6 @@ import {
  */
 
 type Step = 'pending' | 'workspace' | 'survey'
-
-interface BootstrapResponse {
-  data?: {
-    apiKey?: string
-    userId?: string
-  }
-}
 
 const USE_CASES = [
   { id: 'chatbot',         label: 'Chatbot',          hint: 'Customer support, internal Q&A, AI assistants' },
@@ -135,12 +128,11 @@ export default function OnboardingPage() {
         throw err
       })
 
-      // Bind the cached key to the userId from the same bootstrap response
-      // so a logout-without-dismiss can't surface this key to whoever signs
-      // in next on the same tab. See lib/welcome-stash.ts for the contract.
-      if (res?.data?.apiKey && res.data.userId) {
-        writeWelcomeStash(res.data.apiKey, res.data.userId)
-      }
+      // Stash the one-time API key and point the workspace cookie at the new
+      // workspace BEFORE the survey step's hard navigation to /dashboard, so
+      // the dashboard's first API calls resolve it instead of 404ing on a
+      // stale "no workspace" auth cache entry. See lib/onboarding-bootstrap.ts.
+      applyBootstrapResult(res)
       setStep('survey')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create workspace.')
