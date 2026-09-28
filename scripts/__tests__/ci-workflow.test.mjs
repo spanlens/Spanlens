@@ -78,3 +78,43 @@ test('ci.yml runs the real-Postgres integration suite after migrations are appli
   assert.ok(reset !== -1, 'db reset step missing')
   assert.ok(integration > reset, 'test:integration must run after db reset')
 })
+
+/**
+ * Splits a workflow into its jobs: name → the job's lines, comments dropped.
+ * A job starts at a two-space-indented key under `jobs:`.
+ */
+function jobsOf(text) {
+  const lines = text.split('\n')
+  const start = lines.findIndex((line) => line === 'jobs:')
+  const jobs = new Map()
+  let current = null
+  for (const line of lines.slice(start + 1)) {
+    const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line)
+    if (header) {
+      current = header[1]
+      jobs.set(current, [])
+    } else if (current && !line.trimStart().startsWith('#')) {
+      jobs.get(current).push(line)
+    }
+  }
+  return new Map([...jobs].map(([name, body]) => [name, body.join('\n')]))
+}
+
+function jobRunning(jobs, needle) {
+  return [...jobs].find(([, body]) => body.includes(needle))?.[0]
+}
+
+test('ci.yml checks init.sql drift in its own job, so a stale file cannot skip the other gates', () => {
+  // Steps in one job run in order and stop at the first failure. With the
+  // drift check inline, a stale init.sql skipped the fresh-install gate, the
+  // SQL tests, the migration validation and the Docker build behind it.
+  const jobs = jobsOf(ci)
+  const drift = jobRunning(jobs, 'generate-init-sql.mjs --check')
+  assert.ok(drift, 'no job runs the init.sql drift check')
+  for (const gate of ['supabase start', 'supabase db reset --no-seed', 'docker/build-push-action']) {
+    const owner = jobRunning(jobs, gate)
+    assert.ok(owner, `no job runs ${gate}`)
+    assert.notEqual(owner, drift, `${gate} shares a job with the drift check`)
+  }
+  assert.doesNotMatch(jobs.get(drift), /^\s+needs:/m, 'the drift job must not wait on another job')
+})

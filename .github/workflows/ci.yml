@@ -101,13 +101,6 @@ jobs:
       - name: Build (server)
         run: pnpm --filter server build
 
-      # supabase/init.sql is what self-hosters paste into the SQL Editor. It
-      # is generated from supabase/migrations/ and used to drift silently:
-      # three migrations were missing and a superseded, broken one was still
-      # in it. Regenerate with `node scripts/generate-init-sql.mjs`.
-      - name: Check supabase/init.sql is up to date
-        run: node scripts/generate-init-sql.mjs --check
-
       # Sprint 7 regression guard: a broken migration sat in main for 4 PRs
       # before the Deploy production workflow caught it (PR #273's
       # 20260609150000 missed the NOT NULL `description` column on
@@ -232,3 +225,25 @@ jobs:
           # Single platform to keep this guard fast; the publish
           # workflow on main still does linux/amd64 + linux/arm64.
           platforms: linux/amd64
+
+  # supabase/init.sql is what self-hosters paste into the SQL Editor. It is
+  # generated from supabase/migrations/ and used to drift silently: three
+  # migrations were missing and a superseded, broken one was still in it.
+  # Regenerate with `node scripts/generate-init-sql.mjs`.
+  #
+  # A job of its own on purpose. Steps in one job stop at the first failure,
+  # so an inline check turned a stale init.sql into a skipped fresh-install
+  # gate, skipped SQL tests, skipped migration validation and a skipped
+  # Docker build. The generator only needs Node built-ins, so no install.
+  init-sql:
+    name: supabase/init.sql is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Check supabase/init.sql against supabase/migrations/
+        run: node scripts/generate-init-sql.mjs --check
