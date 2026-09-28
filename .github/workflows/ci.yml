@@ -116,6 +116,15 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -f supabase/tests/requests-sql-smoke.sql
 
+          # Same reason for the webhook retry claim: lib/webhook-dispatch.ts
+          # is unit-tested against an in-memory stand-in for
+          # claim_webhook_deliveries(), so only this step proves the SQL
+          # (due filter, lease, attempt count, dead-letter sweeps, EXECUTE
+          # lockdown) against Postgres.
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/tests/webhook-claim-smoke.sql
+
           supabase stop --no-backup
 
       # Sprint 7 regression guard — apps/web/Dockerfile silently missed

@@ -128,34 +128,75 @@ GET    /api/v1/webhooks/:id/deliveries    # Last 10 delivery records`}</CodeBloc
 
       <h2>Payload structure</h2>
       <p>
-        Spanlens sends the following JSON body as an HTTP POST to your endpoint when an event fires.
+        Spanlens sends a JSON body as an HTTP POST to your endpoint when an event fires. Every body
+        carries <code>event</code>, <code>webhook_id</code>, and <code>timestamp</code>, which is
+        when the event was first dispatched and stays the same on retries. Next to those sits one
+        object that describes what happened.
       </p>
       <CodeBlock language="json">{`{
-  "event": "request.created",
-  "created_at": "2026-05-15T09:01:23Z",
-  "data": {
-    "id": "req_01j9xyz...",
-    "project_id": "proj_01j9...",
-    "model": "gpt-4o-mini-2024-07-18",
+  "request": {
+    "id": "3f0c2a8e-...",
     "provider": "openai",
-    "input_tokens": 512,
-    "output_tokens": 128,
-    "cost_usd": 0.000096,
-    "duration_ms": 843
-  }
+    "model": "gpt-4o-mini-2024-07-18",
+    "prompt_tokens": 512,
+    "completion_tokens": 128,
+    "total_tokens": 640,
+    "cost_usd": 0.000154,
+    "latency_ms": 843,
+    "status_code": 200,
+    "trace_id": null,
+    "created_at": "2026-05-15T09:01:23.000Z"
+  },
+  "event": "request.created",
+  "timestamp": "2026-05-15T09:01:23.512Z",
+  "webhook_id": "8d0c41f2-..."
 }`}</CodeBlock>
       <p>
-        The shape of the <code>data</code> field varies by event type.{' '}
-        <code>request.created</code> contains a summary of the request row;{' '}
-        <code>trace.completed</code> contains trace metadata; and{' '}
-        <code>alert.triggered</code> contains the triggered rule and its current value.
+        <code>trace.completed</code> sends a <code>trace</code> object with <code>id</code>,{' '}
+        <code>status</code>, <code>ended_at</code>, and <code>duration_ms</code>.{' '}
+        <code>alert.triggered</code> sends an <code>alert</code> object with <code>id</code>,{' '}
+        <code>name</code>, <code>type</code>, <code>threshold</code>, <code>current_value</code>,
+        and <code>window_minutes</code>, plus an <code>organization</code> object with its{' '}
+        <code>name</code>. A test delivery has <code>event</code> set to <code>test</code> and no
+        event object.
       </p>
 
-      <h2>Signature verification</h2>
+      <h2>Delivery headers</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Header</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Content-Type</code></td>
+            <td><code>application/json</code></td>
+          </tr>
+          <tr>
+            <td><code>X-Spanlens-Signature</code></td>
+            <td>
+              <code>sha256=</code> followed by the hex HMAC-SHA256 of the raw body. See{' '}
+              <a href="#signature-verification">signature verification</a>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>X-Spanlens-Delivery-Id</code></td>
+            <td>
+              A UUID for the delivery. Every retry of the same event sends the same value, so use it
+              to drop duplicates. See <a href="#retries">retries and duplicates</a>.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 id="signature-verification">Signature verification</h2>
       <p>
-        Every delivery includes an <code>X-Spanlens-Signature</code> header. The value is an
-        HMAC-SHA256 digest of the raw request body using the <code>secret</code> issued at
-        registration. Always verify the signature to reject forged requests.
+        Every delivery includes an <code>X-Spanlens-Signature</code> header. Its value is{' '}
+        <code>sha256=</code> followed by the hex HMAC-SHA256 digest of the raw request body, keyed
+        with the <code>secret</code> issued at registration. Always verify the signature to reject
+        forged requests.
       </p>
 
       <h3>Node.js verification example</h3>
@@ -171,9 +212,14 @@ export function verifySpanlensSignature(
     .update(rawBody, 'utf8')
     .digest('hex')
 
+  // The header looks like "sha256=<hex digest>"
+  const prefix = 'sha256='
+  if (!signatureHeader.startsWith(prefix)) return false
+  const received = signatureHeader.slice(prefix.length)
+
   // Use timingSafeEqual to prevent timing attacks
   const a = Buffer.from(expected, 'hex')
-  const b = Buffer.from(signatureHeader, 'hex')
+  const b = Buffer.from(received, 'hex')
   if (a.length !== b.length) return false
   return crypto.timingSafeEqual(a, b)
 }
@@ -194,24 +240,80 @@ app.post('/hooks/spanlens', express.raw({ type: 'application/json' }), (req, res
         <code>express.raw()</code> or an equivalent middleware.
       </p>
 
+      <h2 id="retries">Retries and duplicates</h2>
+      <p>
+        An attempt succeeds when your endpoint answers with a 2xx status within 10 seconds. Any
+        other status, a timeout, a connection error, or a redirect that Spanlens will not follow
+        counts as a failed attempt.
+      </p>
+      <p>
+        Spanlens makes up to 5 attempts per event: the original delivery and 4 retries. Each retry
+        waits at least 1, 2, 4, and 8 minutes after the attempt before it. Retries are sent by a
+        job that runs every 5 minutes, so a retry can arrive a few minutes after it becomes due,
+        and the whole sequence takes roughly 20 to 30 minutes. If the fifth attempt also fails, the
+        delivery is dead-lettered and not tried again. Pending retries also stop when you disable
+        or delete the webhook.
+      </p>
+      <p>
+        Retries have a 24 hour limit, counted from the first attempt. If retries are held up on the
+        Spanlens side and a delivery is still waiting 24 hours after its event, it is dead-lettered
+        with the reason <code>expired</code> rather than sent a day late.
+      </p>
+      <p>
+        Delivery is at least once. A retry can reach you even after an earlier attempt was
+        processed, for example when your endpoint did the work but answered too slowly. Every
+        attempt for the same event carries the same <code>X-Spanlens-Delivery-Id</code>, so record
+        the IDs you have handled and skip repeats. Events are not guaranteed to arrive in order.
+      </p>
+
+      <h3>Redirects</h3>
+      <p>
+        Spanlens follows up to 3 redirects and sends the same signed POST, body and headers
+        included, to each new location. Every location has to pass the same checks as the URL you
+        registered: it must use HTTPS and must not resolve to a private, loopback, link-local, or
+        cloud metadata address. The address is checked again at the moment Spanlens connects, so a
+        DNS record that changes after the first check cannot get around it. A redirect that fails
+        these checks, or a fourth redirect in a row, fails the attempt. Registering the final URL
+        saves the extra round trips.
+      </p>
+
       <h2>Delivery history</h2>
       <p>
-        <code>GET /api/v1/webhooks/:id/deliveries</code> returns the last 10 delivery records.
-        Each record includes the HTTP status code, the first 500 characters of the response body,
-        and the delivery timestamp. If you see repeated 4xx or 5xx responses, check your server
-        logs alongside the delivery history.
+        <code>GET /api/v1/webhooks/:id/deliveries</code> returns the 10 most recent delivery
+        records, newest first. Each record describes one event and the result of its latest
+        attempt: <code>status</code>, <code>http_status</code>, <code>error_message</code>, and{' '}
+        <code>duration_ms</code>, plus <code>attempt_count</code>, <code>next_retry_at</code> while
+        a retry is pending, and <code>dlq_at</code> with <code>dlq_reason</code> once the delivery
+        has been dead-lettered. The record <code>id</code> is the value sent as{' '}
+        <code>X-Spanlens-Delivery-Id</code>. The response body from your endpoint is not stored, so
+        check your server logs alongside the delivery history when you see repeated 4xx or 5xx
+        responses.
       </p>
-      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/webhooks/wh_01j9abc.../deliveries \\
+      <CodeBlock language="bash">{`curl https://api.spanlens.io/api/v1/webhooks/<webhook-id>/deliveries \\
   -H "Authorization: Bearer <JWT>"`}</CodeBlock>
-      <CodeBlock language="json">{`[
-  {
-    "id": "del_01j9...",
-    "event": "request.created",
-    "status_code": 200,
-    "response_body": "{\"ok\":true}",
-    "delivered_at": "2026-05-15T09:01:24Z"
-  }
-]`}</CodeBlock>
+      <CodeBlock language="json">{`{
+  "success": true,
+  "data": [
+    {
+      "id": "6f1c3a9e-...",
+      "webhook_id": "8d0c41f2-...",
+      "event_type": "request.created",
+      "status": "failed",
+      "http_status": 503,
+      "error_message": "HTTP 503",
+      "duration_ms": 412,
+      "attempt_count": 2,
+      "next_retry_at": "2026-05-15T09:04:24.000Z",
+      "dlq_at": null,
+      "dlq_reason": null,
+      "delivered_at": "2026-05-15T09:01:24.000Z"
+    }
+  ]
+}`}</CodeBlock>
+      <p className="text-sm text-muted-foreground">
+        Abridged. Records also carry the stored <code>payload</code> and internal bookkeeping
+        fields.
+      </p>
 
       <h2>Test delivery</h2>
       <p>
@@ -260,16 +362,18 @@ app.post('/hooks/spanlens', express.raw({ type: 'application/json' }), (req, res
           <strong>20 webhooks per organization maximum.</strong>
         </li>
         <li>
-          <strong>No retries.</strong> If your server returns a non-2xx status or times out (10s),
-          the delivery is recorded as failed and is not retried. Implement idempotency on your
-          receiver side.
+          <strong>Up to 5 attempts per event.</strong> A delivery that still fails after 4 retries,
+          roughly 20 to 30 minutes after the first attempt, is dead-lettered and not sent again.
+          Deliveries are at least once, so deduplicate on <code>X-Spanlens-Delivery-Id</code>. See{' '}
+          <a href="#retries">retries and duplicates</a>.
         </li>
         <li>
-          <strong>Only the last 10 delivery records are kept</strong> per webhook. Store delivery
-          logs on your server if you need a complete audit trail.
+          <strong>The deliveries endpoint returns the 10 most recent records</strong> per webhook.
+          Store delivery logs on your server if you need a complete audit trail.
         </li>
         <li>
-          <strong>HTTPS required.</strong> HTTP URLs are rejected at registration time.
+          <strong>HTTPS required.</strong> HTTP URLs are rejected at registration time, and
+          redirects to HTTP URLs are not followed.
         </li>
       </ul>
 
