@@ -400,6 +400,145 @@ describe('openai proxy — embeddings (RAG cost tracking)', () => {
   })
 })
 
+describe('openai proxy — Responses API usage (XVERIFY C7.3)', () => {
+  const RESPONSES_USAGE = {
+    input_tokens: 1000,
+    input_tokens_details: { cached_tokens: 0 },
+    output_tokens: 200,
+    output_tokens_details: { reasoning_tokens: 0 },
+    total_tokens: 1200,
+  }
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  test('non-streaming POST /v1/responses records input/output tokens and a real cost', async () => {
+    mockUpstream(jsonResponse({
+      id: 'resp_1',
+      object: 'response',
+      status: 'completed',
+      model: 'gpt-4o-2024-08-06',
+      output: [{ type: 'message', content: [{ type: 'output_text', text: 'hi' }] }],
+      usage: RESPONSES_USAGE,
+    }))
+    const app = await buildApp()
+
+    await app.request('/proxy/openai/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o', input: 'hi' }),
+    })
+    await drainPendingTasks()
+
+    const row = proxyState.loggerCalls[0]!
+    expect(row['model']).toBe('gpt-4o-2024-08-06')
+    expect(row['promptTokens']).toBe(1000)
+    expect(row['completionTokens']).toBe(200)
+    expect(row['totalTokens']).toBe(1200)
+    // gpt-4o: 1000 * $2.50/1M + 200 * $10/1M = $0.0045 (was recorded as $0)
+    expect(row['costUsd']).toBeCloseTo(0.0045, 9)
+  })
+
+  test('a successful response whose usage cannot be read records cost as null, never $0', async () => {
+    mockUpstream(jsonResponse({
+      id: 'resp_2',
+      object: 'response',
+      model: 'gpt-4o-2024-08-06',
+      usage: { some_future_field: 1234 },
+    }))
+    const app = await buildApp()
+
+    await app.request('/proxy/openai/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o', input: 'hi' }),
+    })
+    await drainPendingTasks()
+
+    const row = proxyState.loggerCalls[0]!
+    expect(row['promptTokens']).toBe(0)
+    expect(row['costUsd']).toBeNull()
+  })
+
+  test('streaming /v1/responses: no stream_options injected, usage read from response.completed', async () => {
+    const completed = {
+      type: 'response.completed',
+      response: {
+        id: 'resp_3', object: 'response', status: 'completed',
+        model: 'gpt-4o-2024-08-06', usage: RESPONSES_USAGE,
+      },
+    }
+    const sse = [
+      'event: response.created',
+      `data: ${JSON.stringify({ type: 'response.created', response: { id: 'resp_3', status: 'in_progress', usage: null } })}`,
+      '',
+      'event: response.output_text.delta',
+      `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: 'Hi there' })}`,
+      '',
+      'event: response.completed',
+      `data: ${JSON.stringify(completed)}`,
+      '',
+      '',
+    ].join('\n')
+    mockUpstream(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }))
+    const app = await buildApp()
+
+    const res = await app.request('/proxy/openai/v1/responses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o', input: 'hi', stream: true }),
+    })
+    await res.text()
+    await drainPendingTasks()
+
+    // The Responses API has no stream_options.include_usage parameter; usage
+    // arrives on the terminal event on its own.
+    const sentBody = JSON.parse(proxyState.fetchCalls[0]!.body!) as Record<string, unknown>
+    expect(sentBody['stream_options']).toBeUndefined()
+
+    expect(proxyState.loggerCalls).toHaveLength(1)
+    const row = proxyState.loggerCalls[0]!
+    expect(row['model']).toBe('gpt-4o-2024-08-06')
+    expect(row['promptTokens']).toBe(1000)
+    expect(row['completionTokens']).toBe(200)
+    expect(row['costUsd']).toBeCloseTo(0.0045, 9)
+  })
+
+  test('streaming /v1/chat/completions still injects include_usage and keeps caller stream_options', async () => {
+    const sse = [
+      `data: ${JSON.stringify({ object: 'chat.completion.chunk', model: 'gpt-4o-mini-2024-07-18', choices: [{ delta: { content: 'ok' } }] })}`,
+      '',
+      `data: ${JSON.stringify({ object: 'chat.completion.chunk', model: 'gpt-4o-mini-2024-07-18', choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}`,
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n')
+    mockUpstream(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }))
+    const app = await buildApp()
+
+    const res = await app.request('/proxy/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: true,
+        stream_options: { include_obfuscation: false },
+      }),
+    })
+    await res.text()
+    await drainPendingTasks()
+
+    const sentBody = JSON.parse(proxyState.fetchCalls[0]!.body!) as Record<string, unknown>
+    expect(sentBody['stream_options']).toEqual({ include_obfuscation: false, include_usage: true })
+    expect(proxyState.loggerCalls[0]!['promptTokens']).toBe(10)
+  })
+})
+
 describe('openai proxy — response passthrough', () => {
   test('response body bytes are returned verbatim to caller', async () => {
     const upstreamBody = JSON.stringify({
