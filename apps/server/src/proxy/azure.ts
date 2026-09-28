@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -39,7 +40,7 @@ azureProxy.use('*', enforceQuota)
 azureProxy.use('*', customerRateLimit)
 
 azureProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
@@ -79,7 +80,7 @@ azureProxy.all('/*', async (c) => {
     headers,
     body: chooseFetchBody(c, parsed, true),
     provider: 'azure',
-    handlerStartMs,
+    requestStartMs,
   })
 
   const logBase = buildLogBase({
@@ -100,7 +101,7 @@ azureProxy.all('/*', async (c) => {
     // The 'azure' provider tag on logBase is what gets logged, which is what
     // keeps Azure spend separable from direct OpenAI spend.
     return runLineBufferedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'azure',
+      c, upstreamRes, requestStartMs, provider: 'azure',
       onComplete: (lines, truncated) =>
         logOpenAIStream(lines, { ...logBase, model }, { truncated }),
     })

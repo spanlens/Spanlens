@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -45,7 +46,7 @@ groqProxy.use('*', enforceQuota)
 groqProxy.use('*', customerRateLimit)
 
 groqProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   // requireFullScope rejects 'public' keys and the DB CHECK constraint forces
   // 'full' keys to carry a project_id, so this narrowing is safe.
@@ -70,7 +71,7 @@ groqProxy.all('/*', async (c) => {
     headers,
     body: chooseFetchBody(c, parsed, true),
     provider: 'groq',
-    handlerStartMs,
+    requestStartMs,
   })
 
   const logBase = buildLogBase({
@@ -88,7 +89,7 @@ groqProxy.all('/*', async (c) => {
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
     return runLineBufferedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'groq',
+      c, upstreamRes, requestStartMs, provider: 'groq',
       onComplete: (lines, truncated) =>
         logOpenAIStream(lines, { ...logBase, model }, { truncated }),
     })

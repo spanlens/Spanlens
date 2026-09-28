@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -44,7 +45,7 @@ openaiProxy.use('*', enforceQuota)
 openaiProxy.use('*', customerRateLimit)
 
 openaiProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   // requireFullScope rejects 'public' keys and the DB CHECK constraint forces
   // 'full' keys to carry a project_id, so this narrowing is safe.
@@ -75,7 +76,7 @@ openaiProxy.all('/*', async (c) => {
   if (cache.expiredKeyHash) fireAndForget(c, deleteExpiredCacheEntry(cache.expiredKeyHash))
   if (cache.state.mode === 'hit') {
     const hit = cache.state.entry
-    const latencyMs = Date.now() - handlerStartMs
+    const latencyMs = Date.now() - requestStartMs
     const hitLogBase = buildLogBase({
       c, provider: 'openai',
       organizationId, projectId, apiKeyId,
@@ -119,7 +120,7 @@ openaiProxy.all('/*', async (c) => {
     headers,
     body: chooseFetchBody(c, parsed, true),
     provider: 'openai',
-    handlerStartMs,
+    requestStartMs,
   })
 
   const logBase = buildLogBase({
@@ -139,7 +140,7 @@ openaiProxy.all('/*', async (c) => {
     // Caching was requested but streaming responses are never cached.
     if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runLineBufferedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'openai',
+      c, upstreamRes, requestStartMs, provider: 'openai',
       onComplete: (lines, truncated) =>
         logOpenAIStream(lines, { ...logBase, model }, { truncated }),
     })

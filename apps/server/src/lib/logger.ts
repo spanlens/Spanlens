@@ -42,8 +42,13 @@ export interface RequestLogData {
   /** Subset of promptTokens that wrote a cache entry (Anthropic cache_creation_input_tokens). */
   cacheWriteTokens?: number
   costUsd: number | null
+  /** Upstream time (ms): request sent to the provider until its response headers arrive. */
   latencyMs: number
-  /** Pre-fetch proxy overhead: auth + key decryption + body parsing (ms). Target p95 < 50ms. */
+  /**
+   * Pre-fetch proxy overhead (ms), from the request reaching the proxy until
+   * the upstream call: auth, rate limits, quota, key decryption, body parsing.
+   * Target p95 < 50ms. See middleware/requestStart.ts.
+   */
   proxyOverheadMs?: number | null
   statusCode: number
   requestBody: unknown

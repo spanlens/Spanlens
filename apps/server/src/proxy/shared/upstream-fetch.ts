@@ -20,9 +20,18 @@ const UPSTREAM_TIMEOUT_MS = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '3500
 
 export interface UpstreamFetchResult {
   upstreamRes: Response
-  /** Wall-clock from initiating fetch to receiving response headers. */
+  /**
+   * Upstream time: from sending the request to the provider until its
+   * response headers arrive. For a stream that is time to first byte; the
+   * generation after it is not included.
+   */
   latencyMs: number
-  /** Pre-fetch overhead inside our handler: auth, key decrypt, body parse. */
+  /**
+   * Everything Spanlens did before calling the provider, measured from the
+   * request reaching the proxy (middleware/requestStart.ts): auth, rate
+   * limits, quota, key decryption, body parsing, the security scan and the
+   * cache lookup.
+   */
   proxyOverheadMs: number
 }
 
@@ -32,8 +41,8 @@ export interface UpstreamFetchOptions {
   headers: Headers
   body: string | null
   provider: ProxyProvider
-  /** Set to Date.now() at the very start of the request handler. */
-  handlerStartMs: number
+  /** When the request reached the proxy: getRequestStartMs(c). */
+  requestStartMs: number
 }
 
 export async function fetchUpstreamWithTimeout(
@@ -71,6 +80,6 @@ export async function fetchUpstreamWithTimeout(
   return {
     upstreamRes,
     latencyMs: Date.now() - startMs,
-    proxyOverheadMs: startMs - opts.handlerStartMs,
+    proxyOverheadMs: startMs - opts.requestStartMs,
   }
 }

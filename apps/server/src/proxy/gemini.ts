@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -35,7 +36,7 @@ geminiProxy.use('*', enforceQuota)
 geminiProxy.use('*', customerRateLimit)
 
 geminiProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
@@ -88,7 +89,7 @@ geminiProxy.all('/*', async (c) => {
   if (cache.expiredKeyHash) fireAndForget(c, deleteExpiredCacheEntry(cache.expiredKeyHash))
   if (cache.state.mode === 'hit') {
     const hit = cache.state.entry
-    const hitLatencyMs = Date.now() - handlerStartMs
+    const hitLatencyMs = Date.now() - requestStartMs
     const hitLogBase = buildLogBase({
       c, provider: 'gemini',
       organizationId, projectId, apiKeyId,
@@ -126,7 +127,7 @@ geminiProxy.all('/*', async (c) => {
     headers,
     body: chooseFetchBody(c, parsed, false),
     provider: 'gemini',
-    handlerStartMs,
+    requestStartMs,
   })
 
   const logBase = buildLogBase({
@@ -146,7 +147,7 @@ geminiProxy.all('/*', async (c) => {
     // Caching was requested but streaming responses are never cached.
     if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runChunkAccumulatedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'gemini',
+      c, upstreamRes, requestStartMs, provider: 'gemini',
       onComplete: async (buffer, truncated) => {
         const text = extractGeminiStreamText(buffer.split('\n'))
 

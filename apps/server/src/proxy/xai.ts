@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -42,7 +43,7 @@ xaiProxy.use('*', enforceQuota)
 xaiProxy.use('*', customerRateLimit)
 
 xaiProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
@@ -65,7 +66,7 @@ xaiProxy.all('/*', async (c) => {
     headers,
     body: chooseFetchBody(c, parsed, true),
     provider: 'xai',
-    handlerStartMs,
+    requestStartMs,
   })
 
   const logBase = buildLogBase({
@@ -83,7 +84,7 @@ xaiProxy.all('/*', async (c) => {
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
     return runLineBufferedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'xai',
+      c, upstreamRes, requestStartMs, provider: 'xai',
       onComplete: (lines, truncated) =>
         logOpenAIStream(lines, { ...logBase, model }, { truncated }),
     })

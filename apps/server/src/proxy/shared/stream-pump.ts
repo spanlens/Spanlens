@@ -26,7 +26,7 @@ import type { ProxyProvider } from './provider-key.js'
 export interface StreamPumpInput {
   c: Context
   upstreamRes: Response
-  handlerStartMs: number
+  requestStartMs: number
   provider: ProxyProvider
   /**
    * Called after the stream completes with the captured line buffer and
@@ -53,7 +53,7 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
   return stream(input.c, async (honoStream) => {
     const reader = upstreamBody.getReader()
     const decoder = new TextDecoder()
-    const deadline = makeStreamDeadline(input.handlerStartMs)
+    const deadline = makeStreamDeadline(input.requestStartMs)
     let buffer = ''
     const lines: string[] = []
     let truncated = false
@@ -112,7 +112,7 @@ export function runLineBufferedStreamPump(input: StreamPumpInput): Response {
 export interface ChunkAccumulatedStreamPumpInput {
   c: Context
   upstreamRes: Response
-  handlerStartMs: number
+  requestStartMs: number
   provider: ProxyProvider
   onComplete: (buffer: string, truncated: boolean) => Promise<unknown>
 }
@@ -133,7 +133,7 @@ export function runChunkAccumulatedStreamPump(input: ChunkAccumulatedStreamPumpI
   return stream(input.c, async (honoStream) => {
     const reader = upstreamBody.getReader()
     const decoder = new TextDecoder()
-    const deadline = makeStreamDeadline(input.handlerStartMs)
+    const deadline = makeStreamDeadline(input.requestStartMs)
     const chunks: string[] = []
     let truncated = false
 

@@ -65,7 +65,7 @@ describe('runLineBufferedStreamPump — client disconnect (real hono StreamingAp
       runLineBufferedStreamPump({
         c,
         upstreamRes: upstream.response,
-        handlerStartMs: Date.now(),
+        requestStartMs: Date.now(),
         provider: 'openai',
         onComplete,
       }),
@@ -101,7 +101,7 @@ describe('runLineBufferedStreamPump — client disconnect (real hono StreamingAp
       runLineBufferedStreamPump({
         c,
         upstreamRes: upstream.response,
-        handlerStartMs: Date.now(),
+        requestStartMs: Date.now(),
         provider: 'openai',
         onComplete,
       }),
@@ -134,7 +134,7 @@ describe('runChunkAccumulatedStreamPump — client disconnect (real hono Streami
       runChunkAccumulatedStreamPump({
         c,
         upstreamRes: upstream.response,
-        handlerStartMs: Date.now(),
+        requestStartMs: Date.now(),
         provider: 'gemini',
         onComplete,
       }),

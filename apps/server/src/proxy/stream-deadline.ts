@@ -42,9 +42,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Total handler budget in milliseconds, including pre-fetch overhead. Default
- * 290 000ms leaves a 10s grace window under Vercel Pro's 300s ceiling for
- * `waitUntil` to drain the log/alert chain.
+ * Total budget in milliseconds, counted from the request reaching the proxy
+ * (middleware/requestStart.ts), so auth / rate-limit / quota time and the
+ * pre-fetch overhead are inside it. Default 290 000ms leaves a 10s grace
+ * window under Vercel Pro's 300s ceiling for `waitUntil` to drain the
+ * log/alert chain.
  */
 export const STREAM_DEADLINE_MS = parseInt(
   process.env['STREAM_DEADLINE_MS'] ?? '290000',
@@ -56,8 +58,8 @@ export interface StreamDeadline {
   deadlineAtMs: number
 }
 
-export function makeStreamDeadline(handlerStartMs: number, budgetMs = STREAM_DEADLINE_MS): StreamDeadline {
-  return { deadlineAtMs: handlerStartMs + budgetMs }
+export function makeStreamDeadline(requestStartMs: number, budgetMs = STREAM_DEADLINE_MS): StreamDeadline {
+  return { deadlineAtMs: requestStartMs + budgetMs }
 }
 
 export type ReadOutcome<T> =
