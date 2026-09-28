@@ -26,8 +26,8 @@ const WIZARD_OUTPUT = `Spanlens setup
   ? Paste your Spanlens key > sl_live_*************
 
   Key valid - project chatbot-prod - providers: openai, anthropic, gemini
-  Updated SPANLENS_API_KEY in .env.local
   Installed @spanlens/sdk (pnpm add @spanlens/sdk)
+  Updated SPANLENS_API_KEY in .env.local
 
   Found 3 patches to apply
     - [openai] app/api/chat/route.ts
@@ -39,6 +39,7 @@ const WIZARD_OUTPUT = `Spanlens setup
         1 x new GoogleGenerativeAI(...) -> createGemini(...)
 
   ? Apply these changes? > yes
+  Recording the TypeScript baseline: no errors
   Patched 3 files
   TypeScript check passed
 
@@ -63,6 +64,26 @@ const GEMINI_DIFF = `- import { GoogleGenerativeAI } from '@google/generative-ai
 - const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
 + import { createGemini } from '@spanlens/sdk/gemini'
 + const genAI = createGemini()`
+
+const SHARED_IMPORT_DIFF = `- import OpenAI, { APIError } from 'openai'
++ import { APIError } from 'openai'
++ import { createOpenAI } from '@spanlens/sdk/openai'
+- const openai = new OpenAI()
++ const openai = createOpenAI()
+  export const isApiError = (e: unknown) => e instanceof APIError`
+
+const MANUAL_EDIT_OUTPUT = `[openai] lib/openai.ts:4  The options come from \`providerOptions\`, which the wizard cannot inspect.
+  + import { createOpenAI } from '@spanlens/sdk/openai'
+  - new OpenAI(providerOptions)
+  + createOpenAI(providerOptions)
+  Before you make this change, \`providerOptions\` must not set apiKey, baseURL, adminAPIKey, or workloadIdentity.`
+
+const HEADER_DIFF = `- const openai = new OpenAI({
+-   apiKey: process.env.OPENAI_API_KEY,
+-   baseURL: 'https://oai.helicone.ai/v1',
+-   defaultHeaders: { 'Helicone-Auth': \`Bearer \${process.env.HELICONE_API_KEY}\` },
+- })
++ const openai = createOpenAI()`
 
 const DRY_RUN_CMD = `npx @spanlens/cli init --dry-run`
 const SELF_HOST_CMD = `npx @spanlens/cli init --server-url https://spanlens.yourcompany.com`
@@ -134,8 +155,9 @@ export default function CliDocs() {
         <code>new Anthropic(...)</code>, and <code>new GoogleGenerativeAI(...)</code> in
         your codebase into the matching <code>@spanlens/sdk</code> factory. The
         wizard validates your key against the dashboard, picks up which providers
-        are registered on your project, and runs <code>tsc --noEmit</code> before
-        committing so you do not ship a broken build.
+        are registered on your project, and type-checks the result. If the rewrite
+        introduces a TypeScript error, it puts every patched file back the way it
+        was instead of leaving you with a broken build.
       </p>
 
       <div className="my-6 rounded-lg border border-accent-border bg-accent-bg p-4 text-sm">
@@ -178,16 +200,26 @@ export default function CliDocs() {
       <CodeBlock language="bash">{WIZARD_OUTPUT}</CodeBlock>
       <p>
         The wizard never writes to disk until you answer <code>yes</code> on the
-        confirmation prompt. The <code>tsc --noEmit</code> check after patching
-        is mandatory; if any rewrite breaks a type, the wizard refuses to
-        complete and reports which file failed.
+        confirmation prompt. Every rewritten file is compiled in memory first, and
+        a file whose rewrite would leave a name unresolved is not written at all.
+        In a TypeScript project the wizard then runs your own{' '}
+        <code>tsc --noEmit</code> before and after the patch. Errors that were
+        already there are ignored; if the patch adds new ones, the wizard restores
+        every patched file, prints the errors, and exits with status 1 instead of
+        reporting that setup is complete.
       </p>
 
       <h2 id="before-after">Before / after</h2>
       <p>
-        Each provider follows the same pattern: drop the import, drop the
-        explicit <code>apiKey</code>, keep every other option (<code>timeout</code>,{' '}
-        <code>organization</code>, <code>defaultHeaders</code>, etc.).
+        Each provider follows the same pattern: swap the constructor for the
+        factory, drop the options that carry a provider credential or the upstream
+        address (<code>apiKey</code> and <code>baseURL</code>, plus{' '}
+        <code>authToken</code>, <code>credentials</code>, <code>config</code>, and{' '}
+        <code>profile</code> for Anthropic), and keep every other option
+        (<code>timeout</code>, <code>organization</code>, <code>maxRetries</code>,
+        etc.). The client can come from a default import or a named one such as{' '}
+        <code>{"import { OpenAI } from 'openai'"}</code>; both are rewritten, for
+        OpenAI and Anthropic alike.
       </p>
       <h3>OpenAI</h3>
       <CodeBlock language="diff">{OPENAI_DIFF}</CodeBlock>
@@ -195,6 +227,84 @@ export default function CliDocs() {
       <CodeBlock language="diff">{ANTHROPIC_DIFF}</CodeBlock>
       <h3>Gemini</h3>
       <CodeBlock language="diff">{GEMINI_DIFF}</CodeBlock>
+
+      <h3 id="headers">Headers and query parameters</h3>
+      <p>
+        <code>defaultHeaders</code> and <code>defaultQuery</code> stay, minus
+        any entry that carries a credential: <code>Authorization</code>,{' '}
+        <code>x-api-key</code>, <code>api-key</code>, names with key, token, or
+        secret in them, and every gateway header such as{' '}
+        <code>Helicone-*</code>, <code>x-portkey-*</code>, or{' '}
+        <code>cf-aig-*</code>. The provider SDKs send these after their own
+        auth header, so an <code>Authorization</code> left in place would
+        replace your Spanlens key and send your OpenAI key to Spanlens instead.
+        The preview lists every entry the wizard removes. A migration from
+        Helicone therefore comes out clean:
+      </p>
+      <CodeBlock language="diff">{HEADER_DIFF}</CodeBlock>
+      <p>
+        Helicone metadata headers such as <code>Helicone-User-Id</code> are
+        dropped too. Their Spanlens counterparts are listed in the{' '}
+        <Link href="/docs/migrate/from-helicone" className="text-accent hover:underline">
+          Helicone migration guide
+        </Link>
+        .
+      </p>
+
+      <h3 id="imports">Imports the file still needs</h3>
+      <p>
+        The provider import is only removed when nothing else in the file uses
+        it. If you also import <code>APIError</code> or <code>toFile</code>, only
+        the client binding goes. If <code>OpenAI</code> still appears as a type,
+        in a namespace type such as{' '}
+        <code>OpenAI.Chat.Completions.ChatCompletionMessageParam</code>, or in an{' '}
+        <code>instanceof</code> check, the import stays as it is and the factory
+        import is added next to it.
+      </p>
+      <CodeBlock language="diff">{SHARED_IMPORT_DIFF}</CodeBlock>
+
+      <h3 id="manual-edits">Calls the wizard leaves for you</h3>
+      <p>
+        The wizard only rewrites options it can read in full: an inline object
+        whose keys are all written out. When the options come from a variable, a
+        spread such as <code>{'{ ...opts }'}</code>, or a computed key, it cannot
+        tell whether they still carry your provider key or a{' '}
+        <code>baseURL</code>. Passing them through would either send your provider
+        key to Spanlens or send requests straight to the provider, so the wizard
+        leaves that call unchanged and prints the exact edit to make:
+      </p>
+      <CodeBlock language="bash">{MANUAL_EDIT_OUTPUT}</CodeBlock>
+      <p>The same happens when:</p>
+      <ul>
+        <li>
+          <code>defaultHeaders</code> or <code>defaultQuery</code> comes from a
+          variable or a helper call, or a header value looks like a key.
+        </li>
+        <li>
+          The options pass a custom <code>fetch</code>, or{' '}
+          <code>fetchOptions</code> sets <code>headers</code>. Either can add its
+          own credentials.
+        </li>
+        <li>
+          The client is created from <code>require()</code>, a dynamic{' '}
+          <code>import()</code>, or a namespace import such as{' '}
+          <code>{"import * as oai from 'openai'"}</code>.
+        </li>
+        <li>
+          The client talks to Azure OpenAI (an Azure <code>baseURL</code>, an{' '}
+          <code>api-key</code> header, or an <code>api-version</code> query).{' '}
+          <code>createOpenAI()</code> would send those requests to OpenAI, so the
+          wizard points you at the Azure route in the{' '}
+          <Link href="/docs/proxy" className="text-accent hover:underline">proxy docs</Link>{' '}
+          instead of suggesting a rewrite.
+        </li>
+      </ul>
+      <p>
+        Until you make those edits, requests from those calls do not go through
+        Spanlens, and the wizard says setup is almost done rather than complete.
+        If it finds no client at all, it says setup is not finished and shows the
+        factory imports to use.
+      </p>
 
       <h2 id="python">Python CLI</h2>
       <p>
@@ -297,9 +407,22 @@ export default function CliDocs() {
           <tr>
             <td><code>--server-url &lt;url&gt;</code></td>
             <td>
-              Point at a self-hosted Spanlens instance. Validation, dashboard
-              links, and the generated <code>SPANLENS_BASE_URL</code> all use
-              your URL instead of <code>spanlens.io</code>.
+              Point at a self-hosted Spanlens server: the host that serves{' '}
+              <code>/api</code> and <code>/proxy</code>. The wizard validates your
+              key against it and writes its origin, with no path and no trailing
+              slash, to <code>SPANLENS_BASE_URL</code>. The{' '}
+              <code>@spanlens/sdk</code> factories read that variable from
+              version 0.18.0 on and send requests to{' '}
+              <code>/proxy/openai/v1</code>, <code>/proxy/anthropic</code>, or{' '}
+              <code>/proxy/gemini</code> on your server, and the wizard lists
+              those exact addresses when it finishes. Older SDK versions ignore
+              the variable and would send your requests and your key to the
+              hosted service, so the wizard checks the installed version first.
+              It offers to upgrade an older one, and stops without writing your
+              env file or touching your code if you decline or no newer version
+              is available. If you paste a URL with a path, the path is ignored
+              with a warning. Both <code>--server-url &lt;url&gt;</code> and{' '}
+              <code>--server-url=&lt;url&gt;</code> work.
               <CodeBlock language="bash">{SELF_HOST_CMD}</CodeBlock>
             </td>
           </tr>
@@ -321,7 +444,7 @@ export default function CliDocs() {
       <h2 id="troubleshooting">Troubleshooting</h2>
       <h3>The wizard says my key is invalid</h3>
       <p>
-        The CLI calls <code>POST /api/v1/keys/validate</code> on the Spanlens
+        The CLI calls <code>GET /api/v1/me/key-info</code> on the Spanlens
         server before writing anything. Common causes:
       </p>
       <ul>
@@ -335,11 +458,16 @@ export default function CliDocs() {
 
       <h3>TypeScript check fails after patching</h3>
       <p>
-        The wizard aborts with the file that failed. Almost always this is a
-        custom field on the original constructor that we did not migrate (for
-        example, a private adapter wrapping <code>new OpenAI</code>). Open the
-        file, finish the migration by hand, and re-run with{' '}
-        <code>--dry-run</code> to confirm there is nothing left to patch.
+        The wizard restores every file it patched, prints the new errors, and
+        exits with status 1, so your working tree is back where it started. The
+        most common cause is a skipped SDK install: without{' '}
+        <code>@spanlens/sdk</code> in <code>node_modules</code>, the new import
+        cannot resolve. Install it and run the wizard again. Otherwise, switch
+        the listed files to the factories by hand and re-run with{' '}
+        <code>--dry-run</code> to confirm there is nothing left to patch. If the
+        wizard could not run <code>tsc</code> at all (TypeScript not installed,
+        or the check took longer than two minutes), it keeps the patch and asks
+        you to run <code>tsc --noEmit</code> yourself.
       </p>
 
       <h3>Wizard does not detect my framework</h3>

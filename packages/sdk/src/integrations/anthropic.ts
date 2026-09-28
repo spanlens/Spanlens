@@ -49,6 +49,10 @@ export function createAnthropic(options: ClientOptions = {}): Anthropic {
 
   return new Anthropic({
     ...options,
+    // Left undefined, @anthropic-ai/sdk falls back to ANTHROPIC_AUTH_TOKEN and
+    // sends it as `Authorization: Bearer`. The proxy reads Authorization before
+    // x-api-key, so that token would reach Spanlens and the call would fail.
+    authToken: options.authToken ?? null,
     apiKey,
     baseURL: options.baseURL ?? resolveProxyBaseUrl(DEFAULT_SPANLENS_ANTHROPIC_PROXY),
   })
