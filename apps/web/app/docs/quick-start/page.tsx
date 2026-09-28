@@ -171,6 +171,10 @@ const result = await model.generateContent('Hi')`}</CodeBlock>
 
       <h2 id="verify">Verify it works</h2>
       <p>
+        Want a complete example? Follow the <a href="/docs/customer-cost-walkthrough">first customer cost breakdown</a> to
+        send three tagged requests and compare costs for two example customers.
+      </p>
+      <p>
         Make any LLM call from your app, then visit <a href="/requests">/requests</a>. A new row
         should appear within a few seconds with model, tokens, cost, latency, and the full request /
         response bodies.

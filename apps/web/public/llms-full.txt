@@ -42,7 +42,7 @@ from spanlens.integrations.openai import create_openai
 client = create_openai()
 ```
 
-Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys (your OpenAI/Anthropic key) are stored AES-256-GCM encrypted server-side and never logged. Synchronous per-request proxy overhead is about 0.015 ms at p99, measured over 100,000 warm iterations (see the Benchmarks section below). Logging itself is async and off the critical path, so if Spanlens ever fails the original request still completes.
+Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys are stored AES-256-GCM encrypted server-side. Streaming responses are supported, and request logs are saved asynchronously. See the Benchmarks section for measured header-transform CPU work and the measurement method.
 
 ## Plans
 
@@ -53,12 +53,12 @@ Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the A
 
 ## Frequently asked questions
 
-- How does instrumentation work? Swap the provider SDK for our drop-in. Same surface, same types. We record the full request and response on the wire, with no extra round-trip and no sampling by default.
-- What about latency overhead? Two distinct numbers, do not conflate them. Synchronous proxy overhead (the CPU cost added to your call in-line) is about 0.015 ms at p99. Actual log ingestion runs async in a worker, off the critical path, so it never delays your response. If ingestion ever fails, the original request completes anyway. Spanlens never sits on the critical path.
+- How does instrumentation work? Change your provider baseURL or use our drop-in SDK to capture request logs, cost, and latency. Streaming responses are supported, and request logs are saved asynchronously.
+- What about latency overhead? Request logs are saved asynchronously, reducing the time spent waiting for log storage during request handling. See https://www.spanlens.io/benchmarks for measured CPU work and the measurement method.
 - How do you handle PII? PII detectors (SSN, credit card, email, IBAN, passport) run at log time and flag matches for review in the Security dashboard, without blocking the request. API keys that slip into prompts are auto-masked before the row lands on disk. For workloads where prompt bodies must not be stored at all, opt out per-call with `X-Spanlens-Log-Body: meta`.
 - Do you support OpenTelemetry? Yes. OTLP/HTTP ingest and export. Your existing OTel tracing flows into the same span store; LLM spans get LLM-specific attributes on top.
 - What's the data retention? Free is 14 days. Pro is 90 days, Team is 365 days. Enterprise and self-hosted are configurable, including unlimited.
-- Can I export my data? Anytime. JSON, CSV, Parquet. Or pipe the raw stream to S3, BigQuery, or your warehouse via our sink connectors.
+- Can I export my data? Export request data in CSV, JSON, or JSONL for analysis and reporting.
 - Can Spanlens tell me if a prompt actually got better? Yes. Evals scores responses with an LLM-as-judge on a 0 to 1 scale, per prompt version. Pair it with Experiments to replay a dataset across versions and models, so you compare quality, cost, and latency on the same inputs before you roll out.
 - Does Spanlens work for a whole team? Projects isolate workloads, roles and invitations manage access, and audit logs record every change. Team and Enterprise add Slack, webhooks, unlimited alerts, and SSO.
 
@@ -90,13 +90,13 @@ Each row links to a full feature-by-feature comparison.
 
 ## Benchmarks
 
-Reproducible proxy-overhead benchmark, measured over 100,000 warm iterations. Numbers are synchronous per-request CPU overhead added by the Spanlens proxy, not end-to-end network latency.
+Reproducible header-transform and response-construction CPU benchmark, measured over 100,000 warm local iterations. Authentication, database lookups, and network time are excluded.
 
 - Median (p50): 0.008 ms (about 8 microseconds)
 - p99: 0.015 ms (about 15 microseconds)
 - Mean: 0.008 ms (about 8 microseconds)
 
-Every request Spanlens logs also carries a live `proxy_overhead_ms` value, so overhead is observed on real traffic, not only in the benchmark. Run it yourself: `pnpm --filter server exec tsx scripts/bench-proxy-overhead.ts`. Full methodology: https://www.spanlens.io/benchmarks
+Run it yourself: `pnpm --filter server exec tsx scripts/bench-proxy-overhead.ts`. Full methodology: https://www.spanlens.io/benchmarks
 
 ## Framework integrations
 

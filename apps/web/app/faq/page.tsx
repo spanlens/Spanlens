@@ -55,7 +55,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'How do I integrate Spanlens?',
-        a: 'Three options. (1) Drop-in SDK: swap import { OpenAI } from "openai" with import { createOpenAI } from "@spanlens/sdk/openai". Same surface, every call captured. (2) Proxy: change your provider baseURL to https://api.spanlens.io/proxy/openai/v1 and put your Spanlens key in the Authorization header. Works in any language. (3) OpenTelemetry: point your existing OTLP/HTTP exporter at Spanlens. p99 ingestion overhead is under 3ms.',
+        a: 'Three options. (1) Drop-in SDK: use createOpenAI from @spanlens/sdk/openai. (2) Proxy: change your provider baseURL to https://api.spanlens.io/proxy/openai/v1 and put your Spanlens key in the Authorization header. (3) OpenTelemetry: point your existing OTLP/HTTP exporter at Spanlens. The proxy supports streaming responses and saves request logs asynchronously.',
       },
       {
         q: 'Does Spanlens support Anthropic and Gemini?',
@@ -105,7 +105,7 @@ const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'What about latency overhead?',
-        a: 'p99 ingestion overhead is under 3ms. Logging happens async in a worker after the response is already streamed back to your client. If Spanlens itself ever fails, the original request still completes. The proxy passes through with no logging side effect. Spanlens never sits on the critical path.',
+        a: 'Request logs are saved asynchronously, reducing the time spent waiting for log storage during request handling. See spanlens.io/benchmarks for measured CPU work and the measurement method.',
       },
       {
         q: 'Does Spanlens have SOC 2 or ISO 27001?',
@@ -118,7 +118,7 @@ const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'Can I export my data?',
-        a: 'Anytime. JSON, CSV, and Parquet exports are available from the dashboard. For higher-volume needs, pipe the raw stream to S3, BigQuery, or your warehouse via sink connectors. Exports are not metered and do not affect your request quota.',
+        a: 'Export request data in CSV, JSON, or JSONL for analysis and reporting.',
       },
       {
         q: 'How long is data retained?',

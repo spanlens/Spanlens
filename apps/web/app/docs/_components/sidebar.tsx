@@ -19,6 +19,7 @@ const NAV: NavGroup[] = [
     items: [
       { title: 'Overview', href: '/docs' },
       { title: 'Quick start', href: '/docs/quick-start' },
+      { title: 'First customer cost breakdown', href: '/docs/customer-cost-walkthrough' },
       { title: 'Why Spanlens', href: '/docs/why' },
     ],
   },

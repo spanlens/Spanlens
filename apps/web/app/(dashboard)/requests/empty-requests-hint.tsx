@@ -84,10 +84,10 @@ export function EmptyRequestsHint() {
           Add provider key →
         </Link>
         <Link
-          href="/docs/quick-start"
+          href="/docs/customer-cost-walkthrough"
           className="font-mono text-[11.5px] text-text-muted hover:text-text transition-colors"
         >
-          Quick start →
+          First customer cost breakdown →
         </Link>
       </div>
     </div>
