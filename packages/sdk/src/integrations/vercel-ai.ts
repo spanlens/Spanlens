@@ -11,6 +11,12 @@
  *   - `generateText` / `generateObject` (AI SDK 4.x and 5.x) have no
  *     `onFinish`; await the call and pass the result to `tracker.end()`.
  *
+ * Closing never waits on Spanlens. `onFinish`, `end()` and `onError` stamp
+ * `ended_at` on the span (and on the trace the tracker created) the moment
+ * they run, queue the PATCHes in the background, and resolve right away.
+ * `await client.flush()` before a serverless handler returns, or pass
+ * `awaitIngest: true` to wait for delivery inline.
+ *
  * Token totals: AI SDK 5.x and later hand `onFinish` the LAST step's `usage`
  * plus the run's sum in `totalUsage`. The tracker prefers `totalUsage`, then
  * the sum of every step seen by `onStepFinish`, then `usage` (which already is
@@ -33,27 +39,26 @@
  *
  * @example generateText
  *   const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
- *   try {
- *     const result = await generateText({
- *       model: openai('gpt-4o'),
- *       messages: [...],
- *       onStepFinish: tracker.onStepFinish,
- *     })
- *     await tracker.end(result)
- *   } catch (err) {
- *     await tracker.onError(err)
+ *   const result = await generateText({
+ *     model: openai('gpt-4o'),
+ *     messages: [...],
+ *     onStepFinish: tracker.onStepFinish,
+ *   }).catch((err) => {
+ *     void tracker.onError(err) // ends the span on failure
  *     throw err
- *   }
+ *   })
+ *   void tracker.end(result)
  *
  * @example Attach to an existing trace
  *   const trace = client.startTrace({ name: 'my_workflow' })
  *   const tracker = createSpanlensTracker({ client, trace, modelName: 'gpt-4o' })
- *   await tracker.end(await generateText({ ... }))
- *   await trace.end()
+ *   void tracker.end(await generateText({ ... }))
+ *   void trace.end()
  */
 
 import { SpanlensClient } from '../client.js'
 import type { TraceHandle } from '../trace.js'
+import type { EndSpanOptions } from '../types.js'
 
 export interface SpanlensVercelAIOptions {
   /** Spanlens client instance. */
@@ -72,6 +77,14 @@ export interface SpanlensVercelAIOptions {
    * `metadata.model` if available.
    */
   modelName?: string
+  /**
+   * Make `onFinish`, `end()` and `onError` wait until the span (and the
+   * auto-created trace) end PATCHes are delivered. Default `false`: they
+   * resolve at once and delivery runs in the background (`client.flush()`
+   * drains it). Turning this on adds every ingest round trip, and on failure
+   * its retries, to the caller's latency.
+   */
+  awaitIngest?: boolean
 }
 
 /**
@@ -124,7 +137,11 @@ export interface VercelAIFinishEvent {
 export interface SpanlensVercelAITracker {
   /** Pass to `onStepFinish` — counts steps and sums their usage for multi-step runs. */
   onStepFinish: (event: VercelAIStepFinishEvent) => Promise<void>
-  /** Pass to `onFinish` (`streamText` / `streamObject`) — closes the span with the run's total usage. */
+  /**
+   * Pass to `onFinish` (`streamText` / `streamObject`). Closes the span with
+   * the run's total usage and resolves without waiting for delivery unless
+   * `awaitIngest` is set.
+   */
   onFinish: (event: VercelAIFinishEvent) => Promise<void>
   /**
    * Close the span from an awaited `generateText` / `generateObject` result.
@@ -188,7 +205,7 @@ function outputOf(event: VercelAIFinishEvent): string | undefined {
 export function createSpanlensTracker(
   options: SpanlensVercelAIOptions,
 ): SpanlensVercelAITracker {
-  const { client, traceName = 'ai.generate', modelName } = options
+  const { client, traceName = 'ai.generate', modelName, awaitIngest = false } = options
 
   const isLocalTrace = options.trace === undefined
   const trace = options.trace ?? client.startTrace({ name: traceName })
@@ -201,6 +218,25 @@ export function createSpanlensTracker(
   let stepTokens: TokenCounts | null = null
   let settled = false
 
+  /**
+   * End the span and, when the tracker created it, the trace in the same
+   * tick, so both `ended_at` values are the moment the call finished rather
+   * than the moment an earlier PATCH was delivered. Both ends are registered
+   * with the transport right away, so `client.flush()` drains them.
+   */
+  function close(spanEnd: EndSpanOptions, status: 'completed' | 'error'): Promise<void> {
+    const spanEnded = span.end(spanEnd)
+    const traceEnded = isLocalTrace ? trace.end({ status }) : Promise.resolve()
+    const delivered = Promise.all([spanEnded, traceEnded]).then(() => undefined)
+    if (awaitIngest) return delivered
+    // Delivery failures were already reported through the client's onError;
+    // under silent:false they must not escape as unhandled rejections either.
+    delivered.catch(() => {})
+    return Promise.resolve()
+  }
+
+  // async so a malformed event rejects instead of throwing synchronously
+  // inside an AI SDK callback; close() itself never waits on delivery.
   async function finish(event: VercelAIFinishEvent): Promise<void> {
     if (settled) return
     settled = true
@@ -211,20 +247,19 @@ export function createSpanlensTracker(
     const tokens = toTokenCounts(event.totalUsage) ?? stepTokens ?? toTokenCounts(event.usage)
     const output = outputOf(event)
 
-    await span.end({
-      status: isError ? 'error' : 'completed',
-      ...(output !== undefined ? { output } : {}),
-      ...(tokens ?? {}),
-      metadata: {
-        model: resolvedModel,
-        ...(finishReason ? { finishReason } : {}),
-        ...(stepCount > 1 ? { steps: stepCount } : {}),
+    return close(
+      {
+        status: isError ? 'error' : 'completed',
+        ...(output !== undefined ? { output } : {}),
+        ...(tokens ?? {}),
+        metadata: {
+          model: resolvedModel,
+          ...(finishReason ? { finishReason } : {}),
+          ...(stepCount > 1 ? { steps: stepCount } : {}),
+        },
       },
-    })
-
-    if (isLocalTrace) {
-      await trace.end({ status: isError ? 'error' : 'completed' })
-    }
+      isError ? 'error' : 'completed',
+    )
   }
 
   return {
@@ -252,15 +287,10 @@ export function createSpanlensTracker(
           : event
       const errorMessage = raw instanceof Error ? raw.message : String(raw)
 
-      await span.end({
-        status: 'error',
-        errorMessage,
-        metadata: { model: modelName ?? 'unknown' },
-      })
-
-      if (isLocalTrace) {
-        await trace.end({ status: 'error' })
-      }
+      return close(
+        { status: 'error', errorMessage, metadata: { model: modelName ?? 'unknown' } },
+        'error',
+      )
     },
   }
 }

@@ -125,13 +125,16 @@ export class SpanlensClient {
   }
 
   /**
-   * Waits until every ingest call scheduled so far has settled: in-flight
-   * POST/PATCHes, span and trace ends that were never awaited (including ones
-   * still waiting for their creation POST), and anything scheduled while
-   * flush() was waiting. Call this before a short-lived process exits.
+   * Waits until every ingest call scheduled before this call has settled:
+   * in-flight POST/PATCHes and span and trace ends that were never awaited
+   * (including ones still waiting for their creation POST). Work scheduled
+   * after flush() is called, for example by other requests sharing this
+   * client, is not waited for, so steady traffic cannot hold it open. Call
+   * this before a short-lived process exits or a serverless handler returns.
    *
    * Pass `timeoutMs` to cap the wait (for example to stay inside a serverless
-   * time budget); calls still in flight at the deadline are abandoned.
+   * time budget); flush() then stops waiting at the deadline and any call
+   * still in flight keeps running in the background.
    *
    * @example
    * process.on('beforeExit', () => client.flush())

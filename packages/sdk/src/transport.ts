@@ -176,8 +176,9 @@ export interface Transport {
    */
   track<T>(work: Promise<T>): Promise<T>
   /**
-   * Resolves once every in-flight call and every tracked piece of work has
-   * settled, including work that was scheduled while flush() was waiting.
+   * Resolves once every call and every tracked piece of work that was
+   * scheduled before flush() was called has settled. Work scheduled later
+   * (for example by other requests on the same client) is not waited for.
    */
   flush(options?: FlushOptions): Promise<void>
 }
@@ -197,9 +198,14 @@ function sleep(ms: number): Promise<void> {
 /**
  * Pending-work registry shared by the network transport and the sampling
  * buffer. `add` is synchronous so work is visible to a flush() that starts in
- * the same tick; `drain` re-snapshots until nothing new was added while it
- * waited, because settling one piece of work (a creation POST) is exactly what
- * starts the next one (its end PATCH).
+ * the same tick.
+ *
+ * `drain` waits for one snapshot: the work registered when it was called.
+ * That already covers every lifecycle step scheduled so far, because span and
+ * trace ends register their whole chain (wait for the creation POST, then
+ * PATCH) at the moment end() is called, not when the POST settles. Waiting
+ * for work added later would tie one request's flush to every other request
+ * on a shared client: under steady traffic it would never return.
  */
 export interface PendingRegistry {
   add<T>(work: Promise<T>): Promise<T>
@@ -220,17 +226,14 @@ export function createPendingRegistry(): PendingRegistry {
   }
 
   async function drain(options: FlushOptions = {}): Promise<void> {
-    const deadline =
-      options.timeoutMs === undefined ? Number.POSITIVE_INFINITY : Date.now() + options.timeoutMs
-    while (pending.size > 0) {
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) return
-      const settled = Promise.allSettled([...pending]).then(() => true)
-      const finished = Number.isFinite(remaining)
-        ? await raceTimeout(settled, remaining)
-        : await settled
-      if (!finished) return
+    if (pending.size === 0) return
+    const settled = Promise.allSettled([...pending]).then(() => true)
+    if (options.timeoutMs === undefined) {
+      await settled
+      return
     }
+    if (options.timeoutMs <= 0) return
+    await raceTimeout(settled, options.timeoutMs)
   }
 
   return { add, drain }

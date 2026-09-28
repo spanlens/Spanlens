@@ -8,6 +8,8 @@
  *      integration) whose PATCH is chained behind a creation POST. The old
  *      flush copied the pending set once and returned while those PATCHes
  *      were still queued, so serverless handlers froze with spans 'running'.
+ *      It waits only for work scheduled before it was called, so traffic that
+ *      keeps arriving on a shared client cannot hold it open.
  *
  *   2. Observability never sits on the caller's return path. `observe()` and
  *      the provider helpers return as soon as the callback settles, and
@@ -23,6 +25,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SpanlensClient } from '../client.js'
 import { observe, observeOpenAI } from '../observe.js'
 import { registerSpanlensCallbacks } from '../integrations/llamaindex.js'
+import { createSpanlensTracker } from '../integrations/vercel-ai.js'
 
 interface RecordedCall {
   method: string
@@ -144,6 +147,43 @@ describe('client.flush()', () => {
     expect(tracePatch?.done).toBe(true)
   })
 
+  it('returns in bounded time while other requests keep scheduling ingest work', async () => {
+    // A long-running server (or a serverless instance that serves requests
+    // concurrently) keeps adding work to the client-wide registry. flush()
+    // must wait for what was scheduled when it was called, not for traffic
+    // that arrives afterwards, or a per-request flush never returns.
+    const net = stubSlowFetch(60)
+    const client = makeClient()
+    let running = true
+    const stopTraffic = setTimeout(() => {
+      running = false
+    }, 1500)
+    const traffic = (async () => {
+      while (running) {
+        const bg = client.startTrace({ name: 'background' })
+        await observe(bg, { name: 'work' }, async () => 'ok')
+        void bg.end()
+        await sleep(15)
+      }
+    })()
+
+    await sleep(50)
+    const mine = client.startTrace({ name: 'mine' })
+    void mine.end()
+    const t0 = Date.now()
+    await client.flush()
+    const elapsed = Date.now() - t0
+    const deliveredAtFlush = net.done('PATCH', `/ingest/traces/${mine.traceId}`)
+
+    running = false
+    clearTimeout(stopTraffic)
+    await traffic
+    await client.flush()
+
+    expect(deliveredAtFlush).toBe(true)
+    expect(elapsed).toBeLessThan(700)
+  })
+
   it('stops waiting at flush({ timeoutMs }) when the ingest server stalls', async () => {
     stubSlowFetch(Infinity)
     const client = makeClient({ timeoutMs: 400 })
@@ -263,6 +303,95 @@ describe('ended_at and the caller return path', () => {
     await client.flush()
     // Give any stray rejection a chance to surface; vitest fails the run on one.
     await sleep(20)
+  })
+})
+
+// ── Vercel AI tracker: same contract as observe() ───────────────────────────
+
+describe('Vercel AI tracker and the caller return path', () => {
+  const result = {
+    text: 'Hello!',
+    finishReason: 'stop',
+    usage: { inputTokens: 5, outputTokens: 7, totalTokens: 12 },
+    response: { modelId: 'gpt-4o' },
+  }
+
+  it('tracker.end(result) resolves without waiting for the ingest round trips', async () => {
+    const net = stubSlowFetch(150)
+    const client = makeClient()
+    const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+
+    const t0 = Date.now()
+    await tracker.end(result)
+    expect(Date.now() - t0).toBeLessThan(100)
+
+    await client.flush()
+    const spanPatch = net.calls.find((c) => c.method === 'PATCH' && c.path.startsWith('/ingest/spans/'))
+    expect(spanPatch?.done).toBe(true)
+    expect(spanPatch?.body['total_tokens']).toBe(12)
+  })
+
+  it('stamps the span and the auto-created trace at end() time, not after delivery', async () => {
+    const net = stubSlowFetch(120)
+    const client = makeClient()
+    const tracker = createSpanlensTracker({ client })
+
+    const calledAt = new Date().toISOString()
+    void tracker.end(result)
+    await client.flush()
+
+    const spanPatch = net.calls.find((c) => c.method === 'PATCH' && c.path.startsWith('/ingest/spans/'))
+    const tracePatch = net.calls.find(
+      (c) => c.method === 'PATCH' && /^\/ingest\/traces\/[^/]+$/.test(c.path),
+    )
+    expect(tracePatch?.done).toBe(true)
+    expect(msBetween(calledAt, spanPatch?.body['ended_at'])).toBeLessThan(50)
+    expect(msBetween(calledAt, tracePatch?.body['ended_at'])).toBeLessThan(50)
+  })
+
+  it('onError resolves at once and still delivers the error status', async () => {
+    const net = stubSlowFetch(150)
+    const client = makeClient()
+    const tracker = createSpanlensTracker({ client })
+
+    const t0 = Date.now()
+    await tracker.onError(new Error('rate limited'))
+    expect(Date.now() - t0).toBeLessThan(100)
+
+    await client.flush()
+    const spanPatch = net.calls.find((c) => c.method === 'PATCH' && c.path.startsWith('/ingest/spans/'))
+    const tracePatch = net.calls.find(
+      (c) => c.method === 'PATCH' && /^\/ingest\/traces\/[^/]+$/.test(c.path),
+    )
+    expect(spanPatch?.body['status']).toBe('error')
+    expect(spanPatch?.body['error_message']).toBe('rate limited')
+    expect(tracePatch?.body['status']).toBe('error')
+  })
+
+  it('never hands an ingest failure to the caller under silent:false', async () => {
+    stubSlowFetch(Infinity)
+    const client = makeClient({ silent: false, timeoutMs: 30 })
+    const tracker = createSpanlensTracker({ client })
+
+    // A caller's catch around generateText must never see Spanlens errors.
+    await expect(tracker.end(result)).resolves.toBeUndefined()
+    await client.flush()
+    await sleep(20)
+  })
+
+  it('awaitIngest: true opts back into waiting for delivery', async () => {
+    const net = stubSlowFetch(40)
+    const client = makeClient()
+    const tracker = createSpanlensTracker({ client, awaitIngest: true })
+
+    await tracker.end(result)
+
+    const spanPatch = net.calls.find((c) => c.method === 'PATCH' && c.path.startsWith('/ingest/spans/'))
+    const tracePatch = net.calls.find(
+      (c) => c.method === 'PATCH' && /^\/ingest\/traces\/[^/]+$/.test(c.path),
+    )
+    expect(spanPatch?.done).toBe(true)
+    expect(tracePatch?.done).toBe(true)
   })
 })
 

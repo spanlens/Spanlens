@@ -382,6 +382,8 @@ describe('createSpanlensTracker (Vercel AI SDK)', () => {
       text: 'Hello!',
       response: { modelId: 'gpt-4o-2024-11-20' },
     })
+    // onFinish resolves without waiting for delivery; flush() drains it.
+    await client.flush()
 
     // A span POST was made with the correct span name
     const spanPost = posts().find((c) => c.url.includes('/spans'))
@@ -403,6 +405,7 @@ describe('createSpanlensTracker (Vercel AI SDK)', () => {
     const tracker = createSpanlensTracker({ client })
 
     await tracker.onFinish({ finishReason: 'error', usage: {} })
+    await client.flush()
 
     const body = spanPatches()[0]?.body ?? {}
     expect(body['status']).toBe('error')
@@ -424,6 +427,7 @@ describe('createSpanlensTracker (Vercel AI SDK)', () => {
     const tracker = createSpanlensTracker({ client, trace, modelName: 'gpt-4o-mini' })
 
     await tracker.onFinish({ usage: { promptTokens: 1, completionTokens: 1 } })
+    await client.flush()
 
     expect(tracePatches()).toHaveLength(0)
   })
@@ -436,6 +440,7 @@ describe('createSpanlensTracker (Vercel AI SDK)', () => {
     await tracker.onFinish({
       usage: { promptTokens: 5, completionTokens: 7 },  // no totalTokens
     })
+    await client.flush()
 
     const body = spanPatches()[0]?.body ?? {}
     expect(body['total_tokens']).toBe(12)
