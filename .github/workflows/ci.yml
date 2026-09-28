@@ -95,7 +95,9 @@ jobs:
 
       # Same emit the self-host Dockerfile runs (tests excluded), so a break
       # in the `node dist/index.js` path shows up here and not only in
-      # docker-publish.yml after merge. Vercel skips it via `vercel-build`.
+      # docker-publish.yml after merge. Vercel deploys do not run it: the
+      # root vercel.json buildCommand runs the `vercel-build` script instead,
+      # because Vercel compiles api/index.ts itself.
       - name: Build (server)
         run: pnpm --filter server build
 
