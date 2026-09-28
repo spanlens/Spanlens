@@ -21,6 +21,23 @@ import { useStatsOverview, useStatsTimeseries, useTimeseriesBreakdown } from '@/
 import { useAnomalies } from '@/lib/queries/use-anomalies'
 import type { RequestRow, RequestDetail } from '@/lib/queries/types'
 import { maskPii, maskPiiDeep } from '@/lib/pii-mask'
+import {
+  anomalyMatchesFilters,
+  buildRequestsExportPath,
+  parseTruncatedParam,
+  type RequestsTableFilters,
+} from '@/lib/requests-filters'
+import {
+  parseRequestsTimeRange,
+  requestsChartBucketCount,
+  requestsChartLabel,
+  requestsChartWindow,
+  requestsKpiFrom,
+  requestsRangeLabel,
+  requestsTableFrom,
+  type RequestsChartWindow,
+  type RequestsTimeRange,
+} from '@/lib/requests-range'
 
 // Hydration-safe "is this the client?" gate. SSR returns false, client paint
 // returns true. Avoids the setState-in-effect lint rule. See dashboard-client.
@@ -38,7 +55,7 @@ const SLOW_LATENCY_MS = 2000
 type StatusFilter = 'all' | 'ok' | '4xx' | '5xx'
 type SortField = 'created_at' | 'latency_ms' | 'cost_usd' | 'total_tokens'
 type SortDir = 'asc' | 'desc'
-type TimeRange = 'all' | 'today' | '7d' | '30d'
+type TimeRange = RequestsTimeRange
 
 const STATUS_LABELS: Record<StatusFilter, string> = { all: 'All', ok: 'OK', '4xx': '4xx', '5xx': '5xx' }
 
@@ -109,21 +126,13 @@ function statusPillAria(code: number): string {
   return `HTTP ${code}`
 }
 
-// Maps the URL `timeRange` enum to a human label used in stat-strip and
-// any "Last X" copy that the page renders.
-function timeRangeLabel(r: 'all' | 'today' | '7d' | '30d'): string {
-  switch (r) {
-    case 'today': return 'today'
-    case '7d': return '7d'
-    case '30d': return '30d'
-    default: return 'all time'
-  }
-}
-function timeRangeHours(r: 'all' | 'today' | '7d' | '30d'): number {
+// Observation window for the anomaly tile. Anomaly detection compares a
+// recent window against a baseline, so it takes hours rather than a bound and
+// caps at 30 days; it is not a row count and has no "all time".
+function anomalyObservationHours(r: TimeRange): number {
   switch (r) {
     case 'today': return 24
     case '7d': return 24 * 7
-    case '30d': return 24 * 30
     default: return 24 * 30
   }
 }
@@ -156,22 +165,22 @@ function InlineSpark({ values, w = 120, h = 18, stroke = 'var(--border-strong)' 
 
 // ── Stat strip ────────────────────────────────────────────────────────────────
 interface StatStripProps {
-  timeRange: 'all' | 'today' | '7d' | '30d'
-  fromIso: string | undefined
+  timeRange: TimeRange
+  /** Same lower bound as the table (see requestsKpiFrom). */
+  kpiFrom: string
+  /** The traffic chart's window, so the sparklines share its query. */
+  sparkWindow: RequestsChartWindow
+  /** The table's filters, so the numbers describe the rows listed below. */
+  filters: RequestsTableFilters
 }
 
-function StatStrip({ timeRange, fromIso }: StatStripProps) {
-  // Same window the table is showing — keeps the stat strip and the table
-  // visually consistent so the user can never see "0 requests" up here while
-  // 252 rows render below.
-  const hours = timeRangeHours(timeRange)
-  const overview = useStatsOverview(
-    fromIso ? { from: fromIso, compare: true } : { hours, compare: true },
-  )
-  const timeseries = useStatsTimeseries(
-    fromIso ? { from: fromIso } : { hours },
-  )
-  const anomalies = useAnomalies({ observationHours: hours })
+function StatStrip({ timeRange, kpiFrom, sparkWindow, filters }: StatStripProps) {
+  // Same window and the same filters as the table, so the strip can never
+  // read "0 requests" while 252 rows render below, or count every customer
+  // while the table shows one.
+  const overview = useStatsOverview({ from: kpiFrom, filters })
+  const timeseries = useStatsTimeseries({ ...sparkWindow, filters })
+  const anomalies = useAnomalies({ observationHours: anomalyObservationHours(timeRange) })
   const mounted = useMounted()
 
   const o = overview.data
@@ -182,9 +191,11 @@ function StatStrip({ timeRange, fromIso }: StatStripProps) {
 
   const errorRatePct = o && o.totalRequests > 0 ? (o.errorRequests / o.totalRequests) * 100 : 0
   const errorRateStr = errorRatePct.toFixed(1) + '%'
-  const anomalyCount = (anomalies.data?.data ?? []).length
+  // Anomalies are per (provider, model), so those are the filters that can
+  // narrow them; user/session/key filters do not apply to detection.
+  const anomalyCount = (anomalies.data?.data ?? []).filter((a) => anomalyMatchesFilters(a, filters)).length
 
-  const rangeLabel = timeRangeLabel(timeRange)
+  const rangeLabel = requestsRangeLabel(timeRange)
 
   const stats = [
     { label: `Requests · ${rangeLabel}`, value: o ? o.totalRequests.toLocaleString() : '—', spark: sparkReqs, warn: false, good: false },
@@ -219,18 +230,18 @@ function StatStrip({ timeRange, fromIso }: StatStripProps) {
 
 // ── Traffic bars ──────────────────────────────────────────────────────────────
 interface TrafficBarsProps {
-  timeRange: 'all' | 'today' | '7d' | '30d'
-  fromIso: string | undefined
+  timeRange: TimeRange
+  chartWindow: RequestsChartWindow
+  filters: RequestsTableFilters
 }
 
 const CHART_H = 96  // px — total bar/line plot area
 
-function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
+function TrafficBars({ timeRange, chartWindow, filters }: TrafficBarsProps) {
   // Lock to "last 30d" when the user has selected All time so the chart still
-  // has a meaningful baseline; otherwise honor the same window as the stat
-  // strip and the table.
-  const hours = timeRange === 'all' ? 24 * 30 : timeRangeHours(timeRange)
-  const queryParams = fromIso ? { from: fromIso } : { hours }
+  // has a meaningful baseline (the caption says so); otherwise honor the same
+  // window and filters as the stat strip and the table.
+  const queryParams = { ...chartWindow, filters }
   const timeseries = useStatsTimeseries(queryParams)
   const breakdown = useTimeseriesBreakdown(queryParams)
   const rawTs = timeseries.data
@@ -239,11 +250,7 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
   const [showLatency, setShowLatency] = useState(true)
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
 
-  const bucketCount = useMemo(() => {
-    if (timeRange === 'today') return 24
-    if (timeRange === '7d') return 7
-    return 30
-  }, [timeRange])
+  const bucketCount = requestsChartBucketCount(timeRange)
 
   const slice = useMemo(() => (rawTs ?? []).slice(-bucketCount), [rawTs, bucketCount])
 
@@ -306,10 +313,7 @@ function TrafficBars({ timeRange, fromIso }: TrafficBarsProps) {
     ]
   }, [slice, timeRange])
 
-  const trailingLabel =
-    timeRange === 'all'   ? 'last 30d' :
-    timeRange === 'today' ? 'today' :
-    `last ${timeRange}`
+  const trailingLabel = requestsChartLabel(timeRange)
 
   // SVG polyline points for the latency overlay
   const latencyPoints = useMemo(() => {
@@ -1302,7 +1306,8 @@ export function RequestsClient() {
   const providerKeyId = searchParams.get('providerKeyId') ?? 'all'
   const sortField = (searchParams.get('sortBy') ?? 'created_at') as SortField
   const sortDir = (searchParams.get('sortDir') ?? 'desc') as SortDir
-  const timeRange = (searchParams.get('timeRange') ?? 'all') as TimeRange
+  const timeRange = parseRequestsTimeRange(searchParams.get('timeRange'))
+  const truncatedFilter = parseTruncatedParam(searchParams.get('truncated'))
 
   // Reconstruct the UiFilters struct consumed by serverFilters / UI
   const filters: UiFilters = useMemo(() => ({
@@ -1363,20 +1368,28 @@ export function RequestsClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelInput])
 
-  const fromIso = useMemo(() => {
-    if (timeRange === 'today') {
-      const d = new Date(mountNow)
-      d.setUTCHours(0, 0, 0, 0)
-      return d.toISOString()
-    }
-    if (timeRange === '7d') return new Date(mountNow - 7 * 24 * 3_600_000).toISOString()
-    if (timeRange === '30d') return new Date(mountNow - 30 * 24 * 3_600_000).toISOString()
-    return undefined
-  }, [timeRange, mountNow])
+  // Table, KPI strip and chart bounds all derive from one `mountNow`, and
+  // "today" is the browser's local day (lib/requests-range.ts).
+  const fromIso = useMemo(() => requestsTableFrom(timeRange, mountNow), [timeRange, mountNow])
+  const kpiFrom = useMemo(() => requestsKpiFrom(timeRange, mountNow), [timeRange, mountNow])
+  const chartWindow = useMemo(() => requestsChartWindow(timeRange, mountNow), [timeRange, mountNow])
 
   const promptVersionId = searchParams.get('promptVersionId') ?? undefined
   const userIdFilter = searchParams.get('userId') ?? undefined
   const sessionIdFilter = searchParams.get('sessionId') ?? undefined
+
+  // The table's filters in the shape the stats and export endpoints take,
+  // so the KPI strip, the chart and the export all describe the listed rows.
+  const tableFilters = useMemo<RequestsTableFilters>(() => ({
+    provider: filters.provider !== 'all' ? filters.provider : undefined,
+    model: filters.model.trim() || undefined,
+    providerKeyId: filters.providerKeyId !== 'all' ? filters.providerKeyId : undefined,
+    status: filters.status !== 'all' ? filters.status : undefined,
+    promptVersionId,
+    userId: userIdFilter,
+    sessionId: sessionIdFilter,
+    truncated: truncatedFilter,
+  }), [filters.provider, filters.model, filters.providerKeyId, filters.status, promptVersionId, userIdFilter, sessionIdFilter, truncatedFilter])
 
   const serverFilters = useMemo(
     () => ({
@@ -1392,8 +1405,9 @@ export function RequestsClient() {
       ...(promptVersionId && { promptVersionId }),
       ...(userIdFilter && { userId: userIdFilter }),
       ...(sessionIdFilter && { sessionId: sessionIdFilter }),
+      ...(truncatedFilter && { truncated: truncatedFilter }),
     }),
-    [page, filters.provider, filters.model, filters.providerKeyId, filters.status, fromIso, sortField, sortDir, promptVersionId, userIdFilter, sessionIdFilter],
+    [page, filters.provider, filters.model, filters.providerKeyId, filters.status, fromIso, sortField, sortDir, promptVersionId, userIdFilter, sessionIdFilter, truncatedFilter],
   )
 
   const { data, isLoading, isError, isFetching, refetch } = useRequests(serverFilters)
@@ -1456,8 +1470,9 @@ export function RequestsClient() {
     if (promptVersionId) p.promptVersionId = promptVersionId
     if (userIdFilter) p.userId = userIdFilter
     if (sessionIdFilter) p.sessionId = sessionIdFilter
+    if (truncatedFilter) p.truncated = truncatedFilter
     return p
-  }, [provider, status, filters.model, providerKeyId, timeRange, sortField, sortDir, promptVersionId, userIdFilter, sessionIdFilter])
+  }, [provider, status, filters.model, providerKeyId, timeRange, sortField, sortDir, promptVersionId, userIdFilter, sessionIdFilter, truncatedFilter])
 
   // Apply a saved view: replace the URL with exactly its params (dropping
   // pagination + any stale filter), and re-sync the debounced model input.
@@ -1509,8 +1524,9 @@ export function RequestsClient() {
       <div className="flex flex-col gap-4 min-w-0 px-4 md:px-7 pt-5 pb-7">
 
       {/* Active URL filter banner, shown when ?promptVersionId / ?userId / ?sessionId
-         is present in the URL. Click × to clear and return to unfiltered view. */}
-      {(promptVersionId || userIdFilter || sessionIdFilter) && (
+         / ?truncated is present in the URL. Click × to clear and return to
+         unfiltered view. */}
+      {(promptVersionId || userIdFilter || sessionIdFilter || truncatedFilter) && (
         <div className="flex items-center gap-2 rounded-lg px-3.5 py-2.5 bg-accent-bg border border-accent-border font-mono text-[11px] flex-wrap">
           <span className="text-text-faint uppercase tracking-[0.1em] text-[10px]">Filter:</span>
           {promptVersionId && (
@@ -1526,6 +1542,11 @@ export function RequestsClient() {
           {sessionIdFilter && (
             <span className="px-2 py-[2px] bg-bg-elev border border-border rounded-full text-text">
               session: {sessionIdFilter}
+            </span>
+          )}
+          {truncatedFilter && (
+            <span className="px-2 py-[2px] bg-bg-elev border border-border rounded-full text-text">
+              {truncatedFilter === 'true' ? 'truncated streams only' : 'complete responses only'}
             </span>
           )}
           <Link
@@ -1649,17 +1670,11 @@ export function RequestsClient() {
         >
           <span className={cn('inline-block', isFetching && 'animate-spin')}>↻</span>
         </button>
+        {/* Exports exactly what the table lists: every filter above plus the
+            URL-only ones (user, session, prompt version, truncated). */}
         <ExportDropdown
           filename="spanlens-requests"
-          buildUrl={(fmt) => {
-            const params = new URLSearchParams({ format: fmt })
-            if (filters.provider !== 'all') params.set('provider', filters.provider)
-            if (filters.model.trim())       params.set('model', filters.model.trim())
-            if (filters.providerKeyId !== 'all') params.set('providerKeyId', filters.providerKeyId)
-            if (filters.status !== 'all')   params.set('status', filters.status)
-            if (fromIso)                    params.set('from', fromIso)
-            return `/api/v1/exports/requests?${params.toString()}`
-          }}
+          buildUrl={(fmt) => buildRequestsExportPath(fmt, tableFilters, fromIso)}
         />
       </div>
 
@@ -1670,8 +1685,8 @@ export function RequestsClient() {
         canSave={Object.keys(currentSaveParams).length > 0}
       />
 
-      <StatStrip timeRange={timeRange} fromIso={fromIso} />
-      <TrafficBars timeRange={timeRange} fromIso={fromIso} />
+      <StatStrip timeRange={timeRange} kpiFrom={kpiFrom} sparkWindow={chartWindow} filters={tableFilters} />
+      <TrafficBars timeRange={timeRange} chartWindow={chartWindow} filters={tableFilters} />
 
       {/* Table + pagination — one card, header band and pager footer inside
           it, so the list reads as a single object on the canvas. */}

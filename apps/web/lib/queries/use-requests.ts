@@ -16,6 +16,8 @@ export interface RequestsFilters {
   promptVersionId?: string
   userId?: string
   sessionId?: string
+  /** `true` = only rows cut off at the stream deadline, `false` = only complete ones. */
+  truncated?: 'true' | 'false'
   from?: string
   to?: string
   sortBy?: string
@@ -41,6 +43,7 @@ export function useRequests(filters: RequestsFilters) {
       if (filters.promptVersionId) params.set('promptVersionId', filters.promptVersionId)
       if (filters.userId) params.set('userId', filters.userId)
       if (filters.sessionId) params.set('sessionId', filters.sessionId)
+      if (filters.truncated) params.set('truncated', filters.truncated)
       if (filters.from) params.set('from', filters.from)
       if (filters.to) params.set('to', filters.to)
       if (filters.sortBy) params.set('sortBy', filters.sortBy)
