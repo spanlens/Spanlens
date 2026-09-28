@@ -5,7 +5,7 @@ import { supabaseAdmin } from '../lib/db.js'
 import { fireAndForget } from '../lib/wait-until.js'
 import { emitWebhookEvent } from '../lib/webhook-emit.js'
 import { ApiError } from '../lib/errors.js'
-import { validateOptionalDate, validateOptionalUuid } from '../lib/params.js'
+import { isUuid, validateOptionalDate, validateOptionalUuid } from '../lib/params.js'
 import { sanitizeJsonForStorage } from '../lib/body-retention.js'
 import { maskApiKeys } from '../lib/pii-mask.js'
 
@@ -42,6 +42,61 @@ function computeDurationMs(startedAt: string | null, endedAt: string | null): nu
   const end = new Date(endedAt).getTime()
   if (isNaN(start) || isNaN(end) || end < start) return null
   return end - start
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+const SPAN_SNAPSHOT_COLUMNS =
+  'id, trace_id, parent_span_id, name, span_type, status, started_at, ended_at, duration_ms, input, output, metadata, error_message, prompt_tokens, completion_tokens, total_tokens, cost_usd'
+
+type MetadataMergeOutcome = 'merged' | 'not_found' | 'rpc_failed'
+
+/**
+ * Shallow-merges `patch` into spans.metadata in one statement
+ * (`metadata || patch`, new keys win) via the merge_span_metadata RPC.
+ *
+ * The SDKs send the caller's metadata on the span POST and a provider/model
+ * tag on the closing PATCH; replacing the column there erased the caller's
+ * keys on every successful span.
+ */
+async function mergeSpanMetadata(
+  spanId: string,
+  organizationId: string,
+  patch: Record<string, unknown>,
+): Promise<MetadataMergeOutcome> {
+  const { data, error } = await supabaseAdmin.rpc('merge_span_metadata', {
+    p_span_id: spanId,
+    p_organization_id: organizationId,
+    p_patch: patch,
+  })
+  if (error) {
+    console.error('[ingest] merge_span_metadata failed, using read-merge-write:', error.message)
+    return 'rpc_failed'
+  }
+  return data === true ? 'merged' : 'not_found'
+}
+
+/**
+ * Fallback for when the RPC is unavailable (a server deploy that lands before
+ * its migration): read, merge in memory, write back with the other columns.
+ * Not atomic, but the SDKs send metadata on a span's closing PATCH only, so a
+ * concurrent metadata write to the same span does not happen in practice.
+ */
+async function readMergedMetadata(
+  spanId: string,
+  organizationId: string,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { data } = await supabaseAdmin
+    .from('spans')
+    .select('metadata')
+    .eq('id', spanId)
+    .eq('organization_id', organizationId)
+    .single()
+  const current: unknown = data?.metadata
+  return { ...(isPlainObject(current) ? current : {}), ...patch }
 }
 
 
@@ -338,6 +393,9 @@ ingestRouter.post('/traces/:id/spans', async (c) => {
 ingestRouter.patch('/spans/:id', async (c) => {
   const spanId = c.req.param('id')
   const organizationId = c.get('organizationId')
+  // A malformed id can never match a row; answer like a missing span instead
+  // of sending it to Postgres (uuid cast error) and the merge RPC.
+  if (!isUuid(spanId)) throw new ApiError('NOT_FOUND', 'Span not found or access denied')
 
   let body: {
     status?: unknown
@@ -387,7 +445,10 @@ ingestRouter.patch('/spans/:id', async (c) => {
     // Provider 401s echo the key they rejected; mask it like requests.error_message.
     updates['error_message'] = maskApiKeys(body.error_message)
   }
-  if (body.metadata && typeof body.metadata === 'object') {
+  // An object is merged into the stored metadata (below); anything else that
+  // is still an object (an array) has nothing to merge into and replaces it.
+  const metadataPatch = isPlainObject(body.metadata) ? body.metadata : null
+  if (!metadataPatch && body.metadata && typeof body.metadata === 'object') {
     updates['metadata'] = body.metadata
   }
   if (typeof body.prompt_tokens === 'number') updates['prompt_tokens'] = body.prompt_tokens
@@ -399,7 +460,7 @@ ingestRouter.patch('/spans/:id', async (c) => {
     if (requestId) updates['request_id'] = requestId
   }
 
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(updates).length === 0 && !metadataPatch) {
     throw new ApiError('BAD_REQUEST', 'No valid fields to update')
   }
 
@@ -416,16 +477,34 @@ ingestRouter.patch('/spans/:id', async (c) => {
     }
   }
 
-  // Full snapshot select — same append-only rationale as the trace PATCH.
-  const { data, error } = await supabaseAdmin
-    .from('spans')
-    .update(updates)
-    .eq('id', spanId)
-    .eq('organization_id', organizationId)
-    .select(
-      'id, trace_id, parent_span_id, name, span_type, status, started_at, ended_at, duration_ms, input, output, metadata, error_message, prompt_tokens, completion_tokens, total_tokens, cost_usd',
-    )
-    .single()
+  // Merge before the column update so the snapshot below already carries it.
+  if (metadataPatch) {
+    const outcome = await mergeSpanMetadata(spanId, organizationId, metadataPatch)
+    if (outcome === 'not_found') {
+      throw new ApiError('NOT_FOUND', 'Span not found or access denied')
+    }
+    if (outcome === 'rpc_failed') {
+      updates['metadata'] = await readMergedMetadata(spanId, organizationId, metadataPatch)
+    }
+  }
+
+  // Full snapshot select — same append-only rationale as the trace PATCH. A
+  // metadata-only PATCH already wrote through the RPC and just reads it back.
+  const { data, error } =
+    Object.keys(updates).length > 0
+      ? await supabaseAdmin
+          .from('spans')
+          .update(updates)
+          .eq('id', spanId)
+          .eq('organization_id', organizationId)
+          .select(SPAN_SNAPSHOT_COLUMNS)
+          .single()
+      : await supabaseAdmin
+          .from('spans')
+          .select(SPAN_SNAPSHOT_COLUMNS)
+          .eq('id', spanId)
+          .eq('organization_id', organizationId)
+          .single()
 
   if (error || !data) {
     throw new ApiError('NOT_FOUND', 'Span not found or access denied')
