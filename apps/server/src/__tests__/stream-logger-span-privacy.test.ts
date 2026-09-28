@@ -255,6 +255,20 @@ describe('span injection masks keys and caps size', () => {
     expect(output['_original_size_bytes']).toBe(70_000)
   })
 
+  test('a preview cut through an emoji stays valid for the jsonb column', async () => {
+    // High surrogate at preview index 2047. A plain slice ends on it, Postgres
+    // rejects the jsonb value, and the span loses its output entirely.
+    const text = `${'a'.repeat(2047)}\u{1F600}${'y'.repeat(70_000)}`
+
+    await logOpenAIStream(openAILines(text), makeBase())
+
+    const output = outputUpdate() as Record<string, unknown>
+    expect(output['_truncated']).toBe(true)
+    expect(output['_preview']).toBe('a'.repeat(2047))
+    // JSON.stringify escapes exactly the unpaired surrogates jsonb rejects.
+    expect(JSON.stringify(output)).not.toMatch(/\\ud[89a-f][0-9a-f]{2}/i)
+  })
+
   test('a key sitting on the 2 KiB preview boundary is masked before the cut', async () => {
     // Put the key so the preview slice would end in the middle of it. Masking
     // after truncation would leave a partial key in _preview. The space keeps

@@ -123,7 +123,71 @@ describe('sanitizeJsonForStorage', () => {
     circular['self'] = circular
     expect(sanitizeJsonForStorage(circular)).toEqual({ _error: 'body not JSON-serializable' })
   })
+
+  // spans.input / spans.output are jsonb. Postgres rejects a JSON string that
+  // holds an unpaired UTF-16 surrogate ("Unicode low surrogate must follow a
+  // high surrogate"), so a single one fails the whole span INSERT/UPDATE.
+  describe('output is always valid for a jsonb column', () => {
+    const EMOJI = '\u{1F600}' // two UTF-16 code units: \ud83d \ude00
+
+    test('a string preview cut through a surrogate pair drops the orphaned half', () => {
+      // High surrogate at index 2047, low at 2048: a plain slice(0, 2048)
+      // would end on the lone high half.
+      const value = `${'a'.repeat(2047)}${EMOJI}${'x'.repeat(70_000)}`
+
+      const out = sanitizeJsonForStorage(value) as Record<string, unknown>
+
+      expect(out['_truncated']).toBe(true)
+      expect(out['_preview']).toBe('a'.repeat(2047))
+      expect(hasLoneSurrogate(out)).toBe(false)
+    })
+
+    test('an object preview cut through a surrogate pair drops the orphaned half', () => {
+      // The preview is cut from the serialized object, which starts with
+      // `{"blob":"` (9 code units).
+      const value = { blob: `${'a'.repeat(2047 - 9)}${EMOJI}${'x'.repeat(70_000)}` }
+
+      const out = sanitizeJsonForStorage(value) as Record<string, unknown>
+
+      expect(out['_truncated']).toBe(true)
+      expect(String(out['_preview'])).toHaveLength(2047)
+      expect(hasLoneSurrogate(out)).toBe(false)
+    })
+
+    test('a complete surrogate pair right before the cut is kept', () => {
+      const value = `${'a'.repeat(2046)}${EMOJI}${'x'.repeat(70_000)}`
+
+      const out = sanitizeJsonForStorage(value) as Record<string, unknown>
+
+      expect(out['_preview']).toBe(`${'a'.repeat(2046)}${EMOJI}`)
+    })
+
+    test('lone surrogates sent by the client become U+FFFD in values and keys', () => {
+      const value = { content: 'bad \ud83d end', ['k\udc00']: ['x\ud83d'], ok: `fine ${EMOJI}` }
+
+      const out = sanitizeJsonForStorage(value)
+
+      expect(out).toEqual({ content: 'bad \ufffd end', ['k\ufffd']: ['x\ufffd'], ok: `fine ${EMOJI}` })
+      expect(hasLoneSurrogate(out)).toBe(false)
+      expect(sanitizeJsonForStorage('tail \ud83d')).toBe('tail \ufffd')
+    })
+
+    test('an escaped backslash-u sequence is text, not a surrogate, and is kept', () => {
+      const value = { content: 'literal \\ud83d stays' }
+
+      expect(sanitizeJsonForStorage(value)).toEqual(value)
+    })
+  })
 })
+
+/**
+ * JSON.stringify escapes exactly the unpaired surrogates (as `\udXXX`) and
+ * emits valid pairs raw, so an escape in its output means Postgres jsonb
+ * would reject the value.
+ */
+function hasLoneSurrogate(value: unknown): boolean {
+  return /(?<!\\)(?:\\\\)*\\ud[89a-f][0-9a-f]{2}/i.test(JSON.stringify(value))
+}
 
 describe('logRequestAsync with a caller-resolved storeBody', () => {
   const base = {

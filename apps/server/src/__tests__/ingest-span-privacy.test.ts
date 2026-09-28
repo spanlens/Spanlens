@@ -25,6 +25,15 @@ import { installOnError } from './helpers/install-on-error.js'
 const SPAN_UUID = '99999999-8888-4777-8666-555555555555'
 const TRACE_UUID = '11111111-2222-4333-8444-555555555555'
 const LEAKED_KEY = 'sk-proj-ABCDEFGHIJKLMNOPQRSTUV1234'
+const EMOJI = '\u{1F600}' // two UTF-16 code units: \ud83d \ude00
+
+/**
+ * spans.input / spans.output are jsonb, and Postgres rejects an unpaired
+ * UTF-16 surrogate. JSON.stringify escapes exactly those (as `\udXXX`).
+ */
+function hasLoneSurrogate(value: unknown): boolean {
+  return /(?<!\\)(?:\\\\)*\\ud[89a-f][0-9a-f]{2}/i.test(JSON.stringify(value))
+}
 
 interface RpcCall {
   fn: string
@@ -175,6 +184,32 @@ describe('POST /ingest/traces/:id/spans — input sanitization', () => {
     expect(input['_original_size_bytes']).toBe(70_000)
   })
 
+  it('an oversized input cut through an emoji stays valid for jsonb', async () => {
+    // High surrogate at preview index 2047: a plain slice would end on it and
+    // Postgres would reject the INSERT, so the span would never be created.
+    const res = await send(
+      `/ingest/traces/${TRACE_UUID}/spans`,
+      { name: 'llm', input: `${'a'.repeat(2047)}${EMOJI}${'x'.repeat(70_000)}` },
+      'POST',
+    )
+
+    expect(res.status).toBe(201)
+    const input = state.spanInserts[0]?.['input'] as Record<string, unknown>
+    expect(input['_truncated']).toBe(true)
+    expect(input['_preview']).toBe('a'.repeat(2047))
+    expect(hasLoneSurrogate(state.spanInserts[0])).toBe(false)
+  })
+
+  it('a lone surrogate sent by the SDK is replaced, not stored', async () => {
+    await send(
+      `/ingest/traces/${TRACE_UUID}/spans`,
+      { name: 'llm', input: { content: 'bad \ud83d end' } },
+      'POST',
+    )
+
+    expect(state.spanInserts[0]?.['input']).toEqual({ content: 'bad \ufffd end' })
+  })
+
   it('keeps an explicit null input as null', async () => {
     await send(`/ingest/traces/${TRACE_UUID}/spans`, { name: 'llm', input: null }, 'POST')
 
@@ -207,6 +242,23 @@ describe('PATCH /ingest/spans/:id — output / error sanitization', () => {
 
     const output = state.spanUpdates[0]?.['output'] as Record<string, unknown>
     expect(output['_truncated']).toBe(true)
+  })
+
+  it('an oversized output cut through an emoji stays valid for jsonb', async () => {
+    // `{"blob":"` is 9 code units, so the emoji's high surrogate lands on
+    // preview index 2047. An invalid output fails the closing UPDATE, which
+    // leaves the span 'running' with no ended_at, tokens or cost.
+    const res = await send(
+      `/ingest/spans/${SPAN_UUID}`,
+      { status: 'completed', output: { blob: `${'a'.repeat(2047 - 9)}${EMOJI}${'y'.repeat(70_000)}` } },
+      'PATCH',
+    )
+
+    expect(res.status).toBe(200)
+    const output = state.spanUpdates[0]?.['output'] as Record<string, unknown>
+    expect(output['_truncated']).toBe(true)
+    expect(String(output['_preview'])).toHaveLength(2047)
+    expect(hasLoneSurrogate(state.spanUpdates[0])).toBe(false)
   })
 
   it('masks keys in error_message (provider 401 echoes)', async () => {

@@ -37,6 +37,45 @@ const PREVIEW_BYTES = 2 * 1024
 const NOT_SERIALIZABLE = { _error: 'body not JSON-serializable' } as const
 
 /**
+ * An unpaired UTF-16 surrogate. JS strings may hold one (a slice through an
+ * emoji, or a `\ud83d` escape in client JSON), but Postgres jsonb rejects the
+ * whole value ("Unicode low surrogate must follow a high surrogate"), which
+ * fails the span INSERT/UPDATE it rides on.
+ */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
+
+/**
+ * Serialized-JSON form of the same thing. JSON.stringify writes every lone
+ * surrogate as a `\udXXX` escape and every valid pair raw, so no match means
+ * nothing to repair. A literal backslash-u in the text can match too; that
+ * only costs the slower repairing parse, which leaves such text untouched.
+ */
+const LONE_SURROGATE_ESCAPE = /\\ud[89a-f]/i
+
+/** String.prototype.toWellFormed, which the ES2022 lib target does not type. */
+function toWellFormed(text: string): string {
+  return text.replace(LONE_SURROGATE, '\uFFFD')
+}
+
+/** JSON.parse reviver that repairs lone surrogates in string values and keys. */
+function wellFormedReviver(_key: string, value: unknown): unknown {
+  if (typeof value === 'string') return toWellFormed(value)
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value
+  const entries = Object.entries(value)
+  if (entries.every(([k]) => toWellFormed(k) === k)) return value
+  return Object.fromEntries(entries.map(([k, v]) => [toWellFormed(k), v]))
+}
+
+/**
+ * First PREVIEW_BYTES code units of the serialized body, never ending on the
+ * high half of a surrogate pair (the cut would orphan it).
+ */
+function cutPreview(serialized: string): string {
+  const preview = serialized.slice(0, PREVIEW_BYTES)
+  return /[\uD800-\uDBFF]$/.test(preview) ? preview.slice(0, -1) : preview
+}
+
+/**
  * Decides whether this call's bodies are kept. Bodies are kept only in 'full'
  * mode (the default when the header is absent) and only for the org's
  * sampled fraction of calls. `rng` is injectable for tests.
@@ -75,7 +114,7 @@ export function truncateBodyForStorage(body: unknown): unknown {
   const bytes = new TextEncoder().encode(serialized).byteLength
   if (bytes <= MAX_BODY_INLINE_BYTES) return body
 
-  const preview = serialized.slice(0, PREVIEW_BYTES)
+  const preview = cutPreview(serialized)
   return {
     _truncated: true,
     _original_size_bytes: bytes,
@@ -88,10 +127,11 @@ export function truncateBodyForStorage(body: unknown): unknown {
  * Masks API-key patterns without changing the value's JSON shape: strings
  * stay strings, objects and arrays stay objects and arrays. Safe because the
  * masked token (`<prefix>***`) never contains a quote or backslash, so the
- * re-parse always succeeds.
+ * re-parse always succeeds. Lone surrogates are replaced with U+FFFD on the
+ * way, so the result is always storable in jsonb.
  */
 function maskPreservingShape(value: unknown): unknown {
-  if (typeof value === 'string') return maskApiKeys(value)
+  if (typeof value === 'string') return toWellFormed(maskApiKeys(value))
   let serialized: string | undefined
   try {
     serialized = JSON.stringify(value)
@@ -99,7 +139,10 @@ function maskPreservingShape(value: unknown): unknown {
     return { ...NOT_SERIALIZABLE }
   }
   if (serialized === undefined) return null
-  return JSON.parse(maskApiKeys(serialized)) as unknown
+  const masked = maskApiKeys(serialized)
+  return LONE_SURROGATE_ESCAPE.test(masked)
+    ? (JSON.parse(masked, wellFormedReviver) as unknown)
+    : (JSON.parse(masked) as unknown)
 }
 
 /**
@@ -108,7 +151,8 @@ function maskPreservingShape(value: unknown): unknown {
  * through maskApiKeysInBody instead, which flattens to a string.
  *
  * Masks before truncating, so a key straddling the preview boundary cannot
- * leave a partial key in `_preview`.
+ * leave a partial key in `_preview`. The result never holds an unpaired
+ * surrogate: jsonb would reject the write and the span would lose the row.
  */
 export function sanitizeJsonForStorage(value: unknown): unknown {
   if (value == null) return null
