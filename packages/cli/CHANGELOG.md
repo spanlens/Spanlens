@@ -1,5 +1,20 @@
 # @spanlens/cli changelog
 
+## 0.3.4
+
+### Fixed
+
+- The patcher no longer deletes imports the file still needs. `import OpenAI, { APIError, toFile } from 'openai'` used to be replaced wholesale, which broke every remaining `APIError`, `toFile`, `type Client = OpenAI`, `OpenAI.Chat...` namespace type, and `instanceof OpenAI` reference (TS2304). Now only the client binding is removed, and only when nothing else in the file uses it. The same applies to `Anthropic` and `GoogleGenerativeAI`.
+- Options that the wizard cannot read in full are no longer passed through to the factory. `new OpenAI(providerOptions)` used to become `createOpenAI(providerOptions)`, which kept a leftover `baseURL` (requests skipped Spanlens without any error) or a leftover `apiKey` (your provider key was sent to Spanlens). Variables, spreads, and computed keys are now left untouched and reported with the exact manual edit.
+- Shorthand `{ apiKey, baseURL }` options are stripped like `{ apiKey: ... }` ones. For Anthropic, `authToken`, `credentials`, `config`, and `profile` are stripped too, since they also produce an `Authorization` header.
+- A failed type check no longer ends with "setup complete". The wizard records a `tsc --noEmit` baseline, and if the patch introduces new errors it restores every patched file, prints the errors, and exits with status 1.
+- `--server-url` is written to `SPANLENS_BASE_URL` as a bare origin: trailing slashes and any pasted path such as `/proxy/openai/v1` are dropped (with a warning). `--server-url=<url>` is accepted, and a missing or malformed value stops the wizard instead of silently falling back to the hosted service.
+- The closing note for self-hosted setups lists the exact proxy addresses the SDK will call.
+
+### Added
+
+- Every rewritten file is compiled in memory before it is written, and writes are all-or-nothing, so JavaScript projects without a `tsconfig.json` are protected too.
+
 ## 0.3.3
 
 ### Added
