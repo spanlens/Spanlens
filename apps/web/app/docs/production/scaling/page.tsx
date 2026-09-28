@@ -272,6 +272,14 @@ const trace = shouldTrace
           query. Worth keeping low, because the proxy&apos;s auth path shares this database and
           a query with no ceiling can starve it.
         </li>
+        <li>
+          Streamed exports use a second, separate pool. An export reads its cursor only as fast
+          as the client downloads, so it can hold a connection for minutes.{' '}
+          <code>PG_STREAM_POOL_MAX</code> (default 1) caps how many run at once per instance,
+          and <code>PG_STREAM_STATEMENT_TIMEOUT_MS</code> (default 290000) bounds each one,
+          download time included. Every open export also holds one backend on the pooler for
+          its whole run, so count them when you size the pooler.
+        </li>
       </ul>
 
       <h3>Traces, prompts, evals</h3>

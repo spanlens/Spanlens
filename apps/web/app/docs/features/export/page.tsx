@@ -584,8 +584,19 @@ print(totals)`}</CodeBlock>
         </li>
         <li>
           <strong>Five minutes per export.</strong> On the hosted service each export runs inside a
-          single request, which is ended after 300 seconds. Over a slow connection a million-row CSV
-          may not finish in time, so export smaller date ranges instead.
+          single request, and the whole download has to finish within that time: the database
+          query behind a streamed export is stopped after 290 seconds, counting the time spent
+          waiting for your client to read, and the request itself ends at 300. Over a slow
+          connection a million-row CSV may not finish in time, so export smaller date ranges
+          instead.
+        </li>
+        <li>
+          <strong>One streamed export at a time per server.</strong> A streamed export keeps a
+          database connection open for as long as it downloads. If another one is already running
+          on the server that picks up your request, you get <code>429</code> with a{' '}
+          <code>Retry-After</code> header and an error whose <code>details.source</code> is{' '}
+          <code>export_concurrency</code>. Wait a few seconds and send it again. In a script, run
+          exports one after another rather than in parallel.
         </li>
         <li>
           <strong>request_body / response_body are not included.</strong> Body content is excluded
