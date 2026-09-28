@@ -59,8 +59,8 @@ export default function DisasterRecoveryDocs() {
           </tr>
           <tr>
             <td>Outbound webhooks</td>
-            <td>5 retries with backoff, then dead-lettered</td>
-            <td>At-least-once while the endpoint is up</td>
+            <td>Up to 5 attempts (4 retries) with backoff, then dead-lettered</td>
+            <td>At least once, if the endpoint recovers within about 20 to 30 minutes</td>
           </tr>
         </tbody>
       </table>
@@ -251,17 +251,45 @@ ORDER BY created_at;`}</CodeBlock>
 
       <h2 id="webhook-dlq">Webhook deliveries are dead-lettering</h2>
       <p>
-        Outbound webhooks retry 5 times with exponential backoff. A delivery that exhausts
-        its retries, or whose endpoint was deleted, is <strong>dead-lettered</strong>:
-        marked with <code>dlq_at</code> and a <code>dlq_reason</code> instead of retrying
-        forever. A dead-letter count that climbs means a customer endpoint has been down
-        long enough to burn through every retry.
+        Each outbound webhook event gets up to 5 attempts: the original delivery and 4
+        retries, at least 1, 2, 4, and 8 minutes apart. Only the first attempt happens when
+        the event fires. Every retry is sent by <code>/cron/retry-webhooks</code>, which runs
+        every 5 minutes from both <code>vercel.json</code> and the GitHub Actions safety net
+        (<code>cron-server.yml</code>), so the whole window is roughly 20 to 30 minutes. A
+        delivery whose fifth attempt fails, or whose webhook was disabled or deleted, is{' '}
+        <strong>dead-lettered</strong>: marked with <code>dlq_at</code> and a{' '}
+        <code>dlq_reason</code> instead of retrying forever. A dead-letter count that climbs
+        means a customer endpoint has been down long enough to burn through every retry.
+      </p>
+      <p>
+        Overlapping runs are safe. Each run claims its deliveries through{' '}
+        <code>claim_webhook_deliveries()</code>, which locks them and sets a 5-minute lease, so
+        no two runs send the same delivery. If a run dies mid-send, its deliveries become
+        claimable again once the lease lapses. A final attempt whose lease lapsed without a
+        result is dead-lettered as <code>exhausted</code>. Every attempt carries the same{' '}
+        <code>X-Spanlens-Delivery-Id</code>, so a resend after a crash is a duplicate the
+        customer can drop.
       </p>
       <ol>
         <li>
           Watch <code>webhooks.dlq_count</code> in <code>GET /health/deep</code>. When it
           crosses the threshold an <code>internal_alerts</code> row (kind{' '}
           <code>webhook_backlog</code>) is raised at <code>/admin/alerts</code>.
+        </li>
+        <li>
+          If <code>webhooks.backlog_count</code> keeps growing while <code>dlq_count</code>{' '}
+          stays flat, retries are not running at all. Check that the job is firing and
+          succeeding:
+          <CodeBlock language="sql">{`SELECT status, count(*), max(ran_at)
+FROM cron_job_runs
+WHERE job_name = 'retry-webhooks' AND ran_at > now() - interval '1 hour'
+GROUP BY status;`}</CodeBlock>
+          No rows means no scheduler is firing it (see{' '}
+          <a href="#cron-dropout">scheduled jobs stop firing</a>). <code>error</code> rows mean
+          the queue claim is failing, and their <code>error_message</code> says why. Trigger one
+          run by hand once the cause is fixed:
+          <CodeBlock language="bash">{`curl -X GET https://api.spanlens.io/cron/retry-webhooks \\
+  -H "Authorization: Bearer $CRON_SECRET"`}</CodeBlock>
         </li>
         <li>
           Inspect what is dead-lettered and why:
