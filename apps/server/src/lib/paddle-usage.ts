@@ -1,30 +1,34 @@
 /**
  * Usage-based overage billing via Paddle Billing's one-time charge endpoint.
  *
- * Architecture:
- *   1. Daily cron-report-usage-overage invokes `computeAndReportOverages()`.
- *   2. For each active Starter/Team subscription, check the "charging window":
- *      the 48-hour stretch ending at `current_period_end`. Outside that
- *      window we skip — we only finalize overage for a period as it's
- *      about to roll over.
- *   3. Inside the window, compute this-period overage = requests in
- *      (current_period_start .. current_period_end) minus included quota.
- *   4. Guard against double-charging via the unique constraint on
- *      `subscription_overage_charges (subscription_id, period_end)` — INSERT
- *      a `pending` row FIRST, call Paddle, then UPDATE to `charged` or
- *      `error`. A crash between INSERT and Paddle success is survivable
- *      because the pending row blocks future re-runs (safe fail direction:
- *      we under-bill rather than double-bill).
- *   5. Charge via POST /subscriptions/{id}/charge with
- *      effective_from: immediately. The charge settles in real time during the
- *      48-hour charging window, before the user can cancel and escape the
- *      overage revenue (see the note at the charge call site for why we do not
- *      use next_billing_period here).
+ * Architecture (daily /cron/report-usage-overage → computeAndReportOverages):
+ *
+ *   1. Provisional pass. For each active Starter/Team subscription inside
+ *      the "charging window" (the 48 hours ending at current_period_end),
+ *      count this period's requests, and charge the overage seen so far.
+ *      The charge settles immediately, while the subscription is still
+ *      active, so a cancellation at period end cannot escape it. A period
+ *      with no overage yet still gets a `no_charge` row, so step 3 knows the
+ *      period was measured.
+ *   2. Retry pass. Rows an operator flipped to `retry` are claimed and
+ *      re-attempted for their remaining quantity.
+ *   3. Settlement pass. Once a period has closed, recount its FINAL usage and
+ *      charge the difference to what was already charged (a `true_up` row).
+ *      Without it, the last 24-48 hours of every period were never billed
+ *      (quality audit 2026-09-28, C4.3). See paddle-overage-settlement.ts.
+ *
+ * Double-charge guard: every charge first INSERTs a `pending` ledger row
+ * under UNIQUE (subscription_id, period_end, kind), then calls Paddle, then
+ * records the outcome and checks that write. An unknown outcome (network
+ * error, 5xx, failed ledger write) becomes `needs_reconciliation` and is
+ * never retried automatically: safer to under-bill than to double-bill.
+ * See paddle-overage-ledger.ts.
  *
  * Prerequisites (Paddle dashboard):
- *   - Create non-recurring prices for Starter and Team overage units.
- *   - Example: Starter at $0.10 per 1,000 requests — a one-time price
- *     (billing_cycle: null, quantity-multiplied at charge time).
+ *   - Non-recurring overage prices (billing_cycle: null, quantity-multiplied
+ *     at charge time), one charge unit = 1,000 requests. The published rates
+ *     live in apps/web/lib/billing-plans.ts: Pro (plan id `starter`) $8 and
+ *     Team $5 per 100K extra requests, i.e. $0.08 and $0.05 per unit.
  *   - Export the price IDs via env:
  *       PADDLE_PRICE_STARTER_OVERAGE
  *       PADDLE_PRICE_TEAM_OVERAGE
@@ -32,22 +36,17 @@
 
 import { supabaseAdmin } from './db.js'
 import { MONTHLY_REQUEST_LIMITS, countMonthlyRequests, type Plan } from './quota.js'
-import { chargeSubscription } from './paddle-charge.js'
-import { isWithinChargingWindow, UNITS_PER_QUANTITY } from './paddle-usage-stats.js'
+import { isWithinChargingWindow } from './paddle-usage-stats.js'
+import {
+  chargeAndRecord,
+  insertLedgerRow,
+  overageFor,
+  type OverageReport,
+} from './paddle-overage-ledger.js'
+import { retryFlaggedCharges, settleClosedPeriods } from './paddle-overage-settlement.js'
+import { logError } from './structured-logger.js'
 
-export interface OverageReport {
-  organization_id: string
-  paddle_subscription_id: string
-  plan: Plan
-  period_start: string
-  period_end: string
-  included: number
-  used: number
-  overage_requests: number
-  overage_quantity: number
-  status: 'skipped_not_in_window' | 'skipped_no_overage' | 'skipped_already_charged' | 'skipped_no_price' | 'charged' | 'error'
-  error?: string
-}
+export type { OverageReport } from './paddle-overage-ledger.js'
 
 function overagePriceIdForPlan(plan: Plan): string | null {
   if (plan === 'starter') return process.env['PADDLE_PRICE_STARTER_OVERAGE'] ?? null
@@ -65,11 +64,37 @@ interface ActiveSubRow {
   current_period_end: string | null
 }
 
-export async function computeAndReportOverages(
-  now: Date = new Date(),
-): Promise<OverageReport[]> {
+/**
+ * Runs all three passes. A pass whose ledger read fails does not stop the
+ * others, but the run then throws, so the cron records it as failed instead
+ * of reporting success on a run that could not look at what it owed.
+ */
+export async function computeAndReportOverages(now: Date = new Date()): Promise<OverageReport[]> {
   const reports: OverageReport[] = []
+  const failures: string[] = []
+  const passes: Array<[string, () => Promise<OverageReport[]>]> = [
+    ['provisional', () => chargeOpenPeriods(now)],
+    ['retry', () => retryFlaggedCharges()],
+    ['settlement', () => settleClosedPeriods(now)],
+  ]
 
+  for (const [name, pass] of passes) {
+    try {
+      reports.push(...(await pass()))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logError('CRON_JOB_FAILED', { jobName: 'report-usage-overage', pass: name }, err)
+      failures.push(message)
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`overage run incomplete: ${failures.join('; ')}`)
+  }
+  return reports
+}
+
+async function chargeOpenPeriods(now: Date): Promise<OverageReport[]> {
   const { data: subs, error: subsErr } = await supabaseAdmin
     .from('subscriptions')
     .select(
@@ -79,145 +104,81 @@ export async function computeAndReportOverages(
     .returns<ActiveSubRow[]>()
 
   if (subsErr || !subs) {
-    console.error('[paddle-usage] failed to list subscriptions:', subsErr?.message)
-    return reports
+    throw new Error(`provisional pass: failed to list subscriptions: ${subsErr?.message ?? 'no data'}`)
   }
 
+  const reports: OverageReport[] = []
   for (const s of subs) {
-    const report: Partial<OverageReport> = {
-      organization_id: s.organization_id,
-      paddle_subscription_id: s.paddle_subscription_id,
-      plan: s.plan,
-      period_start: s.current_period_start ?? '',
-      period_end: s.current_period_end ?? '',
-    }
+    reports.push(await chargeOpenPeriod(s, now))
+  }
+  return reports
+}
 
-    // Need both period boundaries to bill correctly
-    if (!s.current_period_start || !s.current_period_end) {
-      reports.push({ ...report, included: 0, used: 0, overage_requests: 0, overage_quantity: 0, status: 'skipped_not_in_window' } as OverageReport)
-      continue
-    }
-
-    // Only act during the 48h charging window before period_end.
-    // Outside this window we do nothing — no speculative mid-period charges.
-    if (!isWithinChargingWindow(Date.parse(s.current_period_end), now.getTime())) {
-      reports.push({ ...report, included: 0, used: 0, overage_requests: 0, overage_quantity: 0, status: 'skipped_not_in_window' } as OverageReport)
-      continue
-    }
-
-    const included = MONTHLY_REQUEST_LIMITS[s.plan] ?? 0
-    const priceId = overagePriceIdForPlan(s.plan)
-
-    // Count requests in the current billing period — bypasses plan retention
-    // because Paddle bills on the actual period, not the dashboard window.
-    let used: number
-    try {
-      used = await countMonthlyRequests(
-        s.organization_id,
-        new Date(s.current_period_start),
-        new Date(s.current_period_end),
-      )
-    } catch (err) {
-      reports.push({
-        ...report,
-        included,
-        used: 0,
-        overage_requests: 0,
-        overage_quantity: 0,
-        status: 'error',
-        error: `count failed: ${err instanceof Error ? err.message : String(err)}`,
-      } as OverageReport)
-      continue
-    }
-    const overageRequests = Math.max(0, used - included)
-    const overageQuantity = Math.ceil(overageRequests / UNITS_PER_QUANTITY)
-
-    report.included = included
-    report.used = used
-    report.overage_requests = overageRequests
-    report.overage_quantity = overageQuantity
-
-    if (overageRequests === 0) {
-      reports.push({ ...report, status: 'skipped_no_overage' } as OverageReport)
-      continue
-    }
-    if (!priceId) {
-      // No overage price configured for this plan — log and skip.
-      reports.push({ ...report, status: 'skipped_no_price' } as OverageReport)
-      continue
-    }
-
-    // ── Idempotency guard ────────────────────────────────────────
-    // INSERT a pending row first. If a pending/charged/error row already
-    // exists for (subscription_id, period_end), this throws a unique-
-    // constraint violation and we skip — whatever state it's in, human
-    // intervention (flip to 'retry' manually) is required before re-charging.
-    const { data: pendingRow, error: insertErr } = await supabaseAdmin
-      .from('subscription_overage_charges')
-      .insert({
-        subscription_id: s.id,
-        period_start: s.current_period_start,
-        period_end: s.current_period_end,
-        overage_requests: overageRequests,
-        overage_quantity: overageQuantity,
-        price_id: priceId,
-        status: 'pending',
-      })
-      .select('id')
-      .single()
-
-    if (insertErr) {
-      // 23505 = unique_violation — not an error, just "already processed".
-      const isUnique = (insertErr as { code?: string }).code === '23505'
-      if (isUnique) {
-        reports.push({ ...report, status: 'skipped_already_charged' } as OverageReport)
-        continue
-      }
-      reports.push({
-        ...report,
-        status: 'error',
-        error: `idempotency insert failed: ${insertErr.message}`,
-      } as OverageReport)
-      continue
-    }
-
-    // ── Paddle call ──────────────────────────────────────────────
-    // Use 'immediately' so the charge is settled in real-time during the
-    // 48-hour charging window — before the user can cancel the subscription.
-    // Charging on 'next_billing_period' would create a window where a
-    // cancellation between cron-run and next invoice loses the overage revenue.
-    const charge = await chargeSubscription(
-      s.paddle_subscription_id,
-      [{ priceId, quantity: overageQuantity }],
-      'immediately',
-    )
-
-    // ── Finalize the idempotency row ─────────────────────────────
-    if (charge.ok) {
-      await supabaseAdmin
-        .from('subscription_overage_charges')
-        .update({
-          status: 'charged',
-          paddle_response: charge.response as Record<string, unknown>,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', pendingRow!.id)
-
-      reports.push({ ...report, status: 'charged' } as OverageReport)
-    } else {
-      await supabaseAdmin
-        .from('subscription_overage_charges')
-        .update({
-          status: 'error',
-          error_message: charge.error,
-          paddle_response: charge.response as Record<string, unknown>,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', pendingRow!.id)
-
-      reports.push({ ...report, status: 'error', error: charge.error } as OverageReport)
-    }
+async function chargeOpenPeriod(s: ActiveSubRow, now: Date): Promise<OverageReport> {
+  const report: OverageReport = {
+    organization_id: s.organization_id,
+    paddle_subscription_id: s.paddle_subscription_id,
+    plan: s.plan,
+    period_start: s.current_period_start ?? '',
+    period_end: s.current_period_end ?? '',
+    included: 0,
+    used: 0,
+    overage_requests: 0,
+    overage_quantity: 0,
+    phase: 'provisional',
+    status: 'skipped_not_in_window',
   }
 
-  return reports
+  // Need both period boundaries to bill correctly, and only act during the
+  // 48h charging window before period_end.
+  if (!s.current_period_start || !s.current_period_end) return report
+  if (!isWithinChargingWindow(Date.parse(s.current_period_end), now.getTime())) return report
+
+  const included = MONTHLY_REQUEST_LIMITS[s.plan] ?? 0
+  const priceId = overagePriceIdForPlan(s.plan)
+
+  // Count requests in the current billing period, bypassing plan retention:
+  // Paddle bills the actual period, not the dashboard window.
+  let used: number
+  try {
+    used = await countMonthlyRequests(
+      s.organization_id,
+      new Date(s.current_period_start),
+      new Date(s.current_period_end),
+    )
+  } catch (err) {
+    return { ...report, included, status: 'error', error: `count failed: ${err instanceof Error ? err.message : String(err)}` }
+  }
+
+  const { overageRequests, quantity } = overageFor(used, included)
+  const measured: OverageReport = { ...report, included, used, overage_requests: overageRequests, overage_quantity: quantity }
+
+  if (!priceId) {
+    return { ...measured, status: overageRequests === 0 ? 'skipped_no_overage' : 'skipped_no_price' }
+  }
+
+  const inserted = await insertLedgerRow({
+    subscriptionId: s.id,
+    kind: 'provisional',
+    periodStart: s.current_period_start,
+    periodEnd: s.current_period_end,
+    includedRequests: included,
+    overageRequests,
+    quantity,
+    priceId,
+    status: quantity > 0 ? 'pending' : 'no_charge',
+  })
+  if (inserted.kind === 'duplicate') return { ...measured, status: 'skipped_already_charged' }
+  if (inserted.kind === 'failed') return { ...measured, status: 'error', error: inserted.error }
+  if (quantity === 0) return { ...measured, status: 'skipped_no_overage' }
+
+  const outcome = await chargeAndRecord({
+    rowId: inserted.id,
+    orgId: s.organization_id,
+    paddleSubscriptionId: s.paddle_subscription_id,
+    priceId,
+    quantity,
+    alreadyCharged: 0,
+  })
+  return { ...measured, status: outcome.status, ...(outcome.error ? { error: outcome.error } : {}) }
 }

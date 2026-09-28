@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { authJwt, type JwtContext } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
@@ -14,6 +14,11 @@ import { checkMonthlyQuota } from '../lib/quota.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
 import { logError } from '../lib/structured-logger.js'
+import {
+  reserveCheckoutSession,
+  openCheckoutSession,
+  failCheckoutSession,
+} from '../lib/billing-checkout-sessions.js'
 
 /**
  * Turns a Paddle failure into the error the customer should see, and puts the
@@ -101,32 +106,34 @@ billingRouter.get('/quota', async (c) => {
   return c.json({ success: true, data: quota })
 })
 
-// ── POST /api/v1/billing/checkout ───────────────────────────────
-// Body: { plan: 'starter' | 'team' | 'enterprise', successUrl?: string }
-// Returns: { url: 'https://...' } — browser redirects to Paddle-hosted checkout
-billingRouter.post('/checkout', requireRole('admin'), async (c) => {
-  const orgId = c.get('orgId')
-  const userId = c.get('userId')
-  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+const LIVE_SUBSCRIPTION_STATUSES = ['active', 'trialing', 'past_due', 'paused']
 
-  // Guard against double-billing. The Paddle webhook upserts subscriptions by
-  // paddle_subscription_id, so a second checkout completed against a live
-  // subscription persists a SECOND row and Paddle bills both. Reject up front
-  // and steer the caller to the plan-change flow instead.
-  const { data: existingSub } = await supabaseAdmin
+// Guard against double-billing. The Paddle webhook upserts subscriptions by
+// paddle_subscription_id, so a second checkout completed against a live
+// subscription persists a SECOND row and Paddle bills both. Reject up front.
+// A failed read refuses the checkout (fail closed): the old code ignored the
+// `{ error }` and let the checkout through when the guard could not run.
+async function assertNoLiveSubscription(orgId: string): Promise<void> {
+  const { data, error } = await supabaseAdmin
     .from('subscriptions')
     .select('id')
     .eq('organization_id', orgId)
-    .in('status', ['active', 'trialing', 'past_due', 'paused'])
+    .in('status', LIVE_SUBSCRIPTION_STATUSES)
     .limit(1)
     .maybeSingle()
-  if (existingSub) {
+  if (error) {
+    logError('UNCATEGORIZED', { orgId, area: 'billing.checkout', stage: 'live_subscription_guard', dbError: error.message })
+    throw new ApiError('INTERNAL_ERROR', 'Checkout could not be started. Please try again.')
+  }
+  if (data) {
     throw new ApiError(
       'CONFLICT',
       'This workspace already has an active subscription; use plan change instead',
     )
   }
+}
 
+async function parseCheckoutPlan(c: Context<JwtContext>): Promise<{ plan: string; priceId: string }> {
   let body: { plan?: unknown }
   try {
     body = (await c.req.json()) as typeof body
@@ -144,8 +151,16 @@ billingRouter.post('/checkout', requireRole('admin'), async (c) => {
   if (!priceId) {
     throw new ApiError('VALIDATION_FAILED', `Unknown or unconfigured plan: ${plan}`)
   }
+  return { plan, priceId }
+}
 
-  // Look up the user's email + org's paddle_customer_id
+/**
+ * Resolve the Paddle customer: stored id, else look up by email, else create.
+ * Paddle customers are unique per email, so a person who pays for two
+ * workspaces ends up with the same ctm_ id on both orgs. That is expected; the
+ * webhook no longer relies on paddle_customer_id alone to find the org.
+ */
+async function resolvePaddleCustomer(orgId: string, userId: string): Promise<string> {
   const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId)
   const email = authUser.user?.email
   if (!email) throw new ApiError('BAD_REQUEST', 'User email not found')
@@ -157,68 +172,111 @@ billingRouter.post('/checkout', requireRole('admin'), async (c) => {
     .single()
   if (!org) throw new ApiError('NOT_FOUND', 'Organization not found')
 
-  // Resolve Paddle customer: use stored id, else look up by email, else create
-  let paddleCustomerId = org.paddle_customer_id as string | null
-  if (!paddleCustomerId) {
-    const existing = await findPaddleCustomerByEmail(email).catch(() => null)
-    if (existing) {
-      paddleCustomerId = existing.id
-    } else {
-      try {
-        const created = await createPaddleCustomer({
-          email,
-          name: org.name as string,
-        })
-        paddleCustomerId = created.id
-      } catch (err) {
-        throw paddleFailure(err, 'customer.create', orgId)
-      }
+  const stored = org.paddle_customer_id as string | null
+  if (stored) return stored
+
+  const existing = await findPaddleCustomerByEmail(email).catch((err: unknown) => {
+    // Not fatal: creating the customer below either works or fails loudly.
+    logError('PADDLE_API_FAILED', { orgId, stage: 'customer.find', kind: classifyPaddleFailure(err) }, err)
+    return null
+  })
+  let paddleCustomerId: string
+  if (existing) {
+    paddleCustomerId = existing.id
+  } else {
+    try {
+      const created = await createPaddleCustomer({ email, name: org.name as string })
+      paddleCustomerId = created.id
+    } catch (err) {
+      throw paddleFailure(err, 'customer.create', orgId)
     }
-    await supabaseAdmin
-      .from('organizations')
-      .update({ paddle_customer_id: paddleCustomerId })
-      .eq('id', orgId)
   }
 
+  const { error } = await supabaseAdmin
+    .from('organizations')
+    .update({ paddle_customer_id: paddleCustomerId })
+    .eq('id', orgId)
+  if (error) {
+    // Not fatal: the checkout transaction carries organization_id in
+    // custom_data, and the next checkout simply resolves the customer again.
+    logError('UNCATEGORIZED', { orgId, area: 'billing.checkout', stage: 'store_customer_id', dbError: error.message })
+  }
+  return paddleCustomerId
+}
+
+async function createCheckout(
+  orgId: string,
+  paddleCustomerId: string,
+  priceId: string,
+): Promise<{ id: string; url: string }> {
+  let tx: Awaited<ReturnType<typeof createPaddleCheckoutTransaction>>
   try {
-    const tx = await createPaddleCheckoutTransaction({
-      customerId: paddleCustomerId,
-      priceId,
-      organizationId: orgId,
-    })
-    if (!tx.checkout?.url) {
-      // A 2xx transaction with no checkout URL means the Default Payment Link
-      // is unset for this Paddle environment — a dashboard setting, so it reads
-      // as a configuration problem rather than an outage.
-      logError('PADDLE_API_FAILED', {
-        orgId,
-        stage: 'transaction.create',
-        kind: 'request',
-        reason: 'no_checkout_url',
-        paddleTransactionId: tx.id,
-      })
-      throw new ApiError(
-        'BILLING_NOT_CONFIGURED',
-        'Checkout is unavailable because of a billing problem on our side. ' +
-          'We have been notified. Please contact support@spanlens.io if it persists.',
-      )
-    }
-    void recordAuditEvent(c, {
-      action: 'billing.checkout_create',
-      resourceType: 'subscriptions',
-      resourceId: tx.id,
-      // The price ID identifies the plan being purchased. We deliberately
-      // do not log card / personal info — that's Paddle's domain.
-      metadata: { paddle_transaction_id: tx.id, price_id: priceId },
-    })
-    return c.json({ success: true, data: { url: tx.checkout.url, transactionId: tx.id } })
+    tx = await createPaddleCheckoutTransaction({ customerId: paddleCustomerId, priceId, organizationId: orgId })
   } catch (err) {
-    // An ApiError from inside the try (the customer-create catch above, or the
-    // missing-checkout-URL guard) is already the message we want; re-wrapping it
-    // would relabel a decided failure as a Paddle one.
-    if (err instanceof ApiError) throw err
     throw paddleFailure(err, 'transaction.create', orgId)
   }
+  if (!tx.checkout?.url) {
+    // A 2xx transaction with no checkout URL means the Default Payment Link
+    // is unset for this Paddle environment — a dashboard setting, so it reads
+    // as a configuration problem rather than an outage.
+    logError('PADDLE_API_FAILED', {
+      orgId,
+      stage: 'transaction.create',
+      kind: 'request',
+      reason: 'no_checkout_url',
+      paddleTransactionId: tx.id,
+    })
+    throw new ApiError(
+      'BILLING_NOT_CONFIGURED',
+      'Checkout is unavailable because of a billing problem on our side. ' +
+        'We have been notified. Please contact support@spanlens.io if it persists.',
+    )
+  }
+  return { id: tx.id, url: tx.checkout.url }
+}
+
+// ── POST /api/v1/billing/checkout ───────────────────────────────
+// Body: { plan: 'starter' | 'team' | 'enterprise', successUrl?: string }
+// Returns: { url: 'https://...' } — browser redirects to Paddle-hosted checkout
+//
+// Org-level idempotency (quality audit 2026-09-28, C4.2): the org's single
+// checkout slot is claimed in `billing_checkout_sessions` BEFORE Paddle is
+// called. A repeat for the same plan within 30 minutes returns the open
+// transaction instead of creating another one; a different plan is refused
+// until the open one expires. See lib/billing-checkout-sessions.ts.
+billingRouter.post('/checkout', requireRole('admin'), async (c) => {
+  const orgId = c.get('orgId')
+  const userId = c.get('userId')
+  if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
+
+  await assertNoLiveSubscription(orgId)
+  const { plan, priceId } = await parseCheckoutPlan(c)
+
+  const reservation = await reserveCheckoutSession({ orgId, priceId, plan, userId: userId ?? null })
+  if (reservation.kind === 'reuse') {
+    return c.json({ success: true, data: { url: reservation.url, transactionId: reservation.transactionId } })
+  }
+
+  let tx: { id: string; url: string }
+  try {
+    const paddleCustomerId = await resolvePaddleCustomer(orgId, userId)
+    tx = await createCheckout(orgId, paddleCustomerId, priceId)
+  } catch (err) {
+    // Release the slot so the customer can try again right away.
+    await failCheckoutSession(reservation.sessionId, orgId)
+    throw err
+  }
+
+  await openCheckoutSession(reservation.sessionId, orgId, tx)
+  void recordAuditEvent(c, {
+    action: 'billing.checkout_create',
+    resourceType: 'subscriptions',
+    resourceId: tx.id,
+    // The price ID identifies the plan being purchased. We deliberately
+    // do not log card / personal info — that's Paddle's domain.
+    metadata: { paddle_transaction_id: tx.id, price_id: priceId },
+  })
+  return c.json({ success: true, data: { url: tx.url, transactionId: tx.id } })
 })
 
 // ── POST /api/v1/billing/cancel ─────────────────────────────────

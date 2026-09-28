@@ -1,161 +1,57 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { FakeSupabase, type Row } from './helpers/fake-supabase.js'
+import type { ChargeResult } from '../lib/paddle-charge.js'
 
 /**
- * Overage billing 3-state flow — pending → charged | error.
+ * Overage billing ledger — provisional charge, post-period true-up, retries.
  *
- * `computeAndReportOverages` (lib/paddle-usage.ts) coordinates the
- * idempotency guard with the Paddle one-time charge call. The contract,
- * documented in CLAUDE.md gotcha #7a and the migration file, is:
+ * `computeAndReportOverages` (lib/paddle-usage.ts) coordinates the ledger in
+ * `subscription_overage_charges` with Paddle's one-time charge endpoint
+ * (CLAUDE.md gotcha #7a):
  *
- *   1. INSERT a `pending` row into subscription_overage_charges keyed on
- *      UNIQUE (subscription_id, period_end). This row blocks any
- *      subsequent re-run from charging the same period twice — the
- *      database-level UNIQUE is the safety net, not application logic.
- *   2. Call POST /subscriptions/{id}/charge (via chargeSubscription).
- *   3. On success → UPDATE row to `charged` + persist paddle_response.
- *      On failure → UPDATE row to `error` + persist error_message.
+ *   1. INSERT a `pending` row keyed on UNIQUE (subscription_id, period_end,
+ *      kind). The database constraint, not application logic, is what stops
+ *      a second run from charging the same period twice.
+ *   2. Call POST /subscriptions/{id}/charge.
+ *   3. UPDATE the row to `charged` / `error` / `needs_reconciliation`, and
+ *      check that the UPDATE worked.
  *
- * The reason this matters: a crash between step 1 and step 2 leaves a
- * stuck `pending` row. The DESIGN choice is "safer to under-bill than
- * to double-bill" — an operator must manually flip the row to `retry`
- * to attempt again. These tests pin that contract so a future refactor
- * can't accidentally swap the order (insert AFTER paddle call → window
- * for double-billing if the second call's response is lost mid-flight)
- * or skip the row when Paddle errors (would re-fire on next cron tick
- * → operator floods).
+ * Quality audit 2026-09-28 (C4.3) found the in-window charge (48h before
+ * period_end, daily cron) never billed the last 24-48 hours of a period, and
+ * nothing did afterwards: 3-7% of each period's overage went unbilled. The
+ * settlement pass now recounts closed periods and charges only the
+ * difference. Ambiguous outcomes are parked, never auto-retried.
  *
- * Existing paddle-usage.test.ts covers the building blocks
- * (isWithinChargingWindow, chargeSubscription); this file covers the
- * integrated flow + DB writes + idempotency guard.
+ * Paddle is mocked at `chargeSubscription`; no real charge is ever issued.
  */
-
-// ---- Mocks --------------------------------------------------------------
 
 const SUB_ROW_ID = 'sub-uuid-1'
 const PADDLE_SUB_ID = 'sub_01kpqrapmp3xmxpwjea7n30pwf'
-const PADDLE_SUB_ID_TEAM = 'sub_01kteam0subscription00000000'
 const ORG_ID = '015a5187-d896-40b4-bef8-7d2b2d18c81d'
 const PRICE_STARTER_OVERAGE = 'pri_starter_overage_test'
 const PRICE_TEAM_OVERAGE = 'pri_team_overage_test'
+const HOUR_MS = 3600_000
+const DAY_MS = 24 * HOUR_MS
 
-// Captured DB writes — what would have happened against real Supabase
-interface InsertCall {
-  table: string
-  values: Record<string, unknown>
-}
-interface UpdateCall {
-  table: string
-  values: Record<string, unknown>
-  match: Record<string, unknown>
-}
-const inserts: InsertCall[] = []
-const updates: UpdateCall[] = []
-// Inserts AND updates in arrival order, so we can prove "pending row
-// inserted BEFORE paddle call, charged/error update AFTER" is the
-// actual control-flow order, not just incidental coincidence.
-// `exactOptionalPropertyTypes: true` in tsconfig — must spell undefined out
-const writeOrder: Array<{ op: 'insert' | 'update'; table: string; status?: string | undefined }> = []
+let fake: FakeSupabase
 
-let nextSubscriptionsResult: {
-  data: Array<{
-    id: string
-    organization_id: string
-    paddle_subscription_id: string
-    plan: 'starter' | 'team'
-    status: string
-    current_period_start: string | null
-    current_period_end: string | null
-  }> | null
-  error: { message: string } | null
-} = { data: [], error: null }
+vi.mock('../lib/db.js', () => ({
+  supabaseAdmin: { from: (t: string) => fake.from(t) },
+  supabaseClient: { from: (t: string) => fake.from(t) },
+}))
 
-let nextInsertError: { code?: string; message: string } | null = null
-const insertedRowIds = new Map<string, string>() // table → returned id
-
-vi.mock('../lib/db.js', () => {
-  const builder = (table: string) => {
-    let returnsType: 'array' | 'object' = 'array'
-    const ctx: { values?: Record<string, unknown>; match: Record<string, unknown> } = { match: {} }
-    const chain = {
-      select: (_cols?: string) => chain,
-      in: () => chain,
-      eq: (col: string, val: unknown) => {
-        ctx.match[col] = val
-        return chain
-      },
-      returns: <T>() => chain as unknown as Promise<{ data: T; error: unknown }>,
-      single: async () => {
-        if (table === 'subscription_overage_charges' && ctx.values) {
-          const id = insertedRowIds.get(table) ?? 'overage-row-' + (inserts.length)
-          return { data: { id }, error: null }
-        }
-        return { data: null, error: null }
-      },
-      insert: (values: Record<string, unknown>) => {
-        ctx.values = values
-        if (nextInsertError) {
-          const err = nextInsertError
-          nextInsertError = null
-          // Mimic supabase-js: insert(...).select(...).single() resolves
-          // to { data: null, error }
-          return {
-            select: () => ({
-              single: async () => ({ data: null, error: err }),
-            }),
-          }
-        }
-        inserts.push({ table, values: { ...values } })
-        writeOrder.push({ op: 'insert', table, status: values['status'] as string | undefined })
-        return {
-          select: () => ({
-            single: async () => {
-              const id = insertedRowIds.get(table) ?? 'overage-row-' + (inserts.length - 1)
-              return { data: { id }, error: null }
-            },
-          }),
-        }
-      },
-      update: (values: Record<string, unknown>) => {
-        return {
-          eq: async (col: string, val: unknown) => {
-            updates.push({ table, values: { ...values }, match: { [col]: val } })
-            writeOrder.push({ op: 'update', table, status: values['status'] as string | undefined })
-            return { error: null }
-          },
-        }
-      },
-      then: undefined as undefined, // satisfy thenable-shape detection
-    }
-    // Make `await supabaseAdmin.from('subscriptions').select(...).in(...).returns<T[]>()`
-    // resolve directly with `{ data, error }` for the subscriptions list query.
-    if (table === 'subscriptions') {
-      ;(chain as unknown as { returns: <T>() => Promise<{ data: T; error: unknown }> }).returns =
-        async <T>(): Promise<{ data: T; error: unknown }> =>
-          ({
-            data: nextSubscriptionsResult.data as unknown as T,
-            error: nextSubscriptionsResult.error,
-          })
-    }
-    void returnsType
-    return chain
-  }
-  return {
-    supabaseAdmin: { from: (t: string) => builder(t) },
-    supabaseClient: { from: (t: string) => builder(t) },
-  }
-})
-
-// countMonthlyRequests mock — `requestCountQueue` is consumed FIFO per call.
-// Tests with a single subscription push 1 item; multi-sub tests push N.
+// countMonthlyRequests — either a FIFO queue (one value per call) or a
+// function of the requested window for time-based scenarios.
 const requestCountQueue: Array<number | Error> = []
-function enqueueRequestCount(v: number | Error) {
-  requestCountQueue.push(v)
-}
+let countImpl: ((since: Date, until: Date) => number) | null = null
+const countCalls: Array<{ since: string; until: string }> = []
 vi.mock('../lib/quota.js', async () => {
   const actual = await vi.importActual<typeof import('../lib/quota.js')>('../lib/quota.js')
   return {
     ...actual,
-    countMonthlyRequests: async () => {
+    countMonthlyRequests: async (_org: string, since: Date, until: Date) => {
+      countCalls.push({ since: since.toISOString(), until: until.toISOString() })
+      if (countImpl) return countImpl(since, until)
       const v = requestCountQueue.shift() ?? 0
       if (v instanceof Error) throw v
       return v
@@ -163,50 +59,23 @@ vi.mock('../lib/quota.js', async () => {
   }
 })
 
-// chargeSubscription mock — same FIFO queue pattern.
-const chargeResultQueue: Array<import('../lib/paddle-charge.js').ChargeResult> = []
-function enqueueChargeResult(r: import('../lib/paddle-charge.js').ChargeResult) {
-  chargeResultQueue.push(r)
-}
+const chargeResultQueue: ChargeResult[] = []
 const chargeSpy = vi.fn()
-vi.mock('../lib/paddle-charge.js', () => {
-  return {
-    chargeSubscription: async (
-      subId: string,
-      items: Array<{ priceId: string; quantity: number }>,
-      effectiveFrom: 'immediately' | 'next_billing_period',
-    ) => {
-      chargeSpy(subId, items, effectiveFrom)
-      return (
-        chargeResultQueue.shift() ?? {
-          ok: false,
-          status: 0,
-          error: 'chargeResultQueue exhausted — test forgot to enqueue',
-        }
-      )
-    },
-  }
-})
+/** Ledger rows as they were at the moment Paddle was called. */
+const ledgerAtChargeTime: Row[][] = []
+vi.mock('../lib/paddle-charge.js', () => ({
+  chargeSubscription: async (
+    subId: string,
+    items: Array<{ priceId: string; quantity: number }>,
+    effectiveFrom: 'immediately' | 'next_billing_period',
+  ) => {
+    chargeSpy(subId, items, effectiveFrom)
+    ledgerAtChargeTime.push(fake.rows('subscription_overage_charges').map((r) => ({ ...r })))
+    return chargeResultQueue.shift() ?? { ok: false, status: 400, error: 'chargeResultQueue exhausted' }
+  },
+}))
 
-// ---- Helpers ------------------------------------------------------------
-
-function activeStarterSub(overrides: Partial<{
-  id: string
-  paddle_subscription_id: string
-  organization_id: string
-  current_period_start: string | null
-  current_period_end: string | null
-  status: string
-  plan: 'starter' | 'team'
-}> = {}): {
-  id: string
-  organization_id: string
-  paddle_subscription_id: string
-  plan: 'starter' | 'team'
-  status: string
-  current_period_start: string | null
-  current_period_end: string | null
-} {
+function activeSub(overrides: Row = {}): Row {
   return {
     id: SUB_ROW_ID,
     organization_id: ORG_ID,
@@ -219,25 +88,39 @@ function activeStarterSub(overrides: Partial<{
   }
 }
 
-// Time inside the 48h charging window before period_end (2026-06-01)
+function ledger(): Row[] {
+  return fake.rows('subscription_overage_charges')
+}
+
+function setup(subs: Row[]): void {
+  fake = new FakeSupabase()
+    .configure('subscription_overage_charges', {
+      defaults: () => ({ kind: 'provisional', charged_quantity: 0, status: 'pending', included_requests: null }),
+      unique: [{ columns: ['subscription_id', 'period_end', 'kind'] }],
+      relations: { subscriptions: { localKey: 'subscription_id', foreignTable: 'subscriptions', foreignKey: 'id' } },
+    })
+    .seed('subscriptions', subs)
+}
+
+// Inside the 48h window before period_end (2026-06-01)
 const NOW_IN_WINDOW = new Date('2026-05-30T12:00:00.000Z')
-// Time outside the window (>48h before)
 const NOW_OUT_OF_WINDOW = new Date('2026-05-10T00:00:00.000Z')
-// Time after period_end
-const NOW_AFTER_END = new Date('2026-06-02T00:00:00.000Z')
+// After period_end but before the settlement delay has passed
+const NOW_JUST_AFTER_END = new Date('2026-06-01T01:00:00.000Z')
+// After period_end + settlement delay
+const NOW_SETTLE = new Date('2026-06-01T06:00:00.000Z')
 
 beforeEach(() => {
   process.env['PADDLE_PRICE_STARTER_OVERAGE'] = PRICE_STARTER_OVERAGE
   process.env['PADDLE_PRICE_TEAM_OVERAGE'] = PRICE_TEAM_OVERAGE
-  inserts.length = 0
-  updates.length = 0
-  writeOrder.length = 0
-  insertedRowIds.clear()
-  nextSubscriptionsResult = { data: [], error: null }
-  nextInsertError = null
+  process.env['PADDLE_API_KEY'] = 'pdl_test_key'
   requestCountQueue.length = 0
+  countImpl = null
+  countCalls.length = 0
   chargeResultQueue.length = 0
+  ledgerAtChargeTime.length = 0
   chargeSpy.mockClear()
+  setup([])
   vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -245,326 +128,409 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env['PADDLE_PRICE_STARTER_OVERAGE']
   delete process.env['PADDLE_PRICE_TEAM_OVERAGE']
+  delete process.env['PADDLE_API_KEY']
   vi.restoreAllMocks()
 })
 
 async function run(now: Date = NOW_IN_WINDOW) {
-  // Re-import so the mocks are picked up cleanly
   const { computeAndReportOverages } = await import('../lib/paddle-usage.js')
   return computeAndReportOverages(now)
 }
 
+function provisional(reports: Awaited<ReturnType<typeof run>>) {
+  return reports.filter((r) => r.phase === 'provisional')
+}
+
 // =========================================================================
-// pending → charged (happy path)
+// Provisional (in-window) charge
 // =========================================================================
 
-describe('overage 3-state flow — pending → charged', () => {
-  it('inserts pending, calls Paddle, then updates to charged + persists response', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(125_000) // 25,000 over Starter's 100k → ceil(25/1) = 25 units
-    enqueueChargeResult({
-      ok: true,
-      response: { data: { id: 'txn_charged_ok', status: 'completed' } },
-    })
+describe('provisional charge — pending → charged', () => {
+  it('inserts a pending provisional row, calls Paddle, then records charged + charged_quantity', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(125_000) // 25,000 over Starter's 100k → 25 units
+    chargeResultQueue.push({ ok: true, response: { data: { id: 'txn_charged_ok' } } })
 
-    const [report] = await run()
+    const [report] = provisional(await run())
+    expect(report).toMatchObject({ status: 'charged', overage_requests: 25_000, overage_quantity: 25, included: 100_000 })
 
-    expect(report!.status).toBe('charged')
-    expect(report!.overage_requests).toBe(25_000)
-    expect(report!.overage_quantity).toBe(25) // ceil(25000 / 1000)
-
-    // Pending insert happened, with the exact identity needed for the
-    // UNIQUE (subscription_id, period_end) idempotency guard.
-    expect(inserts).toHaveLength(1)
-    expect(inserts[0]).toEqual({
-      table: 'subscription_overage_charges',
-      values: {
-        subscription_id: SUB_ROW_ID,
-        period_start: '2026-05-01T00:00:00.000Z',
-        period_end: '2026-06-01T00:00:00.000Z',
-        overage_requests: 25_000,
-        overage_quantity: 25,
-        price_id: PRICE_STARTER_OVERAGE,
-        status: 'pending',
-      },
-    })
-
-    // Charged update wrote response + completed_at, NOT error_message
-    expect(updates).toHaveLength(1)
-    expect(updates[0]!.values['status']).toBe('charged')
-    expect(updates[0]!.values['paddle_response']).toEqual({
-      data: { id: 'txn_charged_ok', status: 'completed' },
-    })
-    expect(updates[0]!.values['completed_at']).toBeTruthy()
-    expect(updates[0]!.values['error_message']).toBeUndefined()
-  })
-
-  it('Paddle is called with effective_from=immediately (no cancellation race window)', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(105_000)
-    enqueueChargeResult({ ok: true, response: {} })
-
-    await run()
-
-    expect(chargeSpy).toHaveBeenCalledTimes(1)
-    const [subId, items, effectiveFrom] = chargeSpy.mock.calls[0]!
-    expect(subId).toBe(PADDLE_SUB_ID)
-    expect(items).toEqual([{ priceId: PRICE_STARTER_OVERAGE, quantity: 5 }])
-    expect(effectiveFrom).toBe('immediately')
-  })
-
-  it('control-flow ORDER: pending insert is committed before chargeSubscription is called', async () => {
-    // The safety property — flipping this order would create a window for
-    // double-billing if Paddle responds but the row update gets lost.
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(110_000)
-    enqueueChargeResult({ ok: true, response: {} })
-
-    await run()
-
-    expect(writeOrder).toHaveLength(2)
-    expect(writeOrder[0]).toEqual({
-      op: 'insert',
-      table: 'subscription_overage_charges',
-      status: 'pending',
-    })
-    expect(writeOrder[1]).toEqual({
-      op: 'update',
-      table: 'subscription_overage_charges',
+    expect(ledger()).toHaveLength(1)
+    expect(ledger()[0]).toMatchObject({
+      subscription_id: SUB_ROW_ID,
+      kind: 'provisional',
+      period_start: '2026-05-01T00:00:00.000Z',
+      period_end: '2026-06-01T00:00:00.000Z',
+      included_requests: 100_000,
+      overage_requests: 25_000,
+      overage_quantity: 25,
+      price_id: PRICE_STARTER_OVERAGE,
       status: 'charged',
+      charged_quantity: 25,
+      paddle_response: { data: { id: 'txn_charged_ok' } },
+      completed_at: expect.any(String),
     })
-    expect(chargeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('Paddle is called with effective_from=immediately', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(105_000)
+    chargeResultQueue.push({ ok: true, response: {} })
+    await run()
+    expect(chargeSpy).toHaveBeenCalledWith(PADDLE_SUB_ID, [{ priceId: PRICE_STARTER_OVERAGE, quantity: 5 }], 'immediately')
+  })
+
+  it('control-flow ORDER: the pending row exists before Paddle is called', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(110_000)
+    chargeResultQueue.push({ ok: true, response: {} })
+    await run()
+    expect(ledgerAtChargeTime[0]).toEqual([expect.objectContaining({ status: 'pending', kind: 'provisional' })])
   })
 
   it('Team plan with 1.5M requests → 500K overage → 500 quantity', async () => {
-    nextSubscriptionsResult = {
-      data: [
-        activeStarterSub({
-          plan: 'team',
-          paddle_subscription_id: PADDLE_SUB_ID_TEAM,
-        }),
-      ],
-      error: null,
-    }
-    enqueueRequestCount(1_500_000)
-    enqueueChargeResult({ ok: true, response: {} })
-
-    const [report] = await run()
-
-    expect(report!.status).toBe('charged')
-    expect(report!.overage_requests).toBe(500_000)
-    expect(report!.overage_quantity).toBe(500)
-    expect(chargeSpy.mock.calls[0]![1]).toEqual([
-      { priceId: PRICE_TEAM_OVERAGE, quantity: 500 },
-    ])
+    setup([activeSub({ plan: 'team' })])
+    requestCountQueue.push(1_500_000)
+    chargeResultQueue.push({ ok: true, response: {} })
+    const [report] = provisional(await run())
+    expect(report).toMatchObject({ status: 'charged', overage_requests: 500_000, overage_quantity: 500 })
+    expect(chargeSpy.mock.calls[0]![1]).toEqual([{ priceId: PRICE_TEAM_OVERAGE, quantity: 500 }])
   })
 })
 
-// =========================================================================
-// pending → error
-// =========================================================================
-
-describe('overage 3-state flow — pending → error', () => {
-  it('Paddle charge fails → pending row updated to error + paddle_response retained for audit', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(105_000)
-    enqueueChargeResult({
+describe('provisional charge — failures', () => {
+  it('definite Paddle rejection (4xx) → error row with the response kept for audit', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(105_000)
+    chargeResultQueue.push({
       ok: false,
       status: 400,
       error: 'subscription_update_not_allowed_for_status — Subscription is canceled',
       response: { error: { code: 'subscription_update_not_allowed_for_status' } },
     })
-
-    const [report] = await run()
-
+    const [report] = provisional(await run())
     expect(report!.status).toBe('error')
-    expect(report!.error).toContain('subscription_update_not_allowed_for_status')
-
-    // The pending row was still inserted (idempotency guard) — error
-    // status here means the row exists, no retry until operator intervenes.
-    expect(inserts).toHaveLength(1)
-    expect(inserts[0]!.values['status']).toBe('pending')
-
-    // Error update carries error_message + paddle_response (so ops can debug)
-    expect(updates).toHaveLength(1)
-    expect(updates[0]!.values['status']).toBe('error')
-    expect(updates[0]!.values['error_message']).toContain('subscription_update_not_allowed_for_status')
-    expect(updates[0]!.values['paddle_response']).toEqual({
-      error: { code: 'subscription_update_not_allowed_for_status' },
+    expect(ledger()[0]).toMatchObject({
+      status: 'error',
+      charged_quantity: 0,
+      error_message: expect.stringContaining('subscription_update_not_allowed_for_status'),
+      paddle_response: { error: { code: 'subscription_update_not_allowed_for_status' } },
     })
-    expect(updates[0]!.values['completed_at']).toBeTruthy()
   })
 
-  it('Paddle network error → error status, error_message has the underlying detail', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(105_000)
-    enqueueChargeResult({ ok: false, status: 0, error: 'ECONNRESET' })
+  it('network error (unknown outcome) → needs_reconciliation, not error', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(105_000)
+    chargeResultQueue.push({ ok: false, status: 0, error: 'ECONNRESET' })
+    const [report] = provisional(await run())
+    expect(report).toMatchObject({ status: 'needs_reconciliation', error: 'ECONNRESET' })
+    expect(ledger()[0]).toMatchObject({ status: 'needs_reconciliation', error_message: 'ECONNRESET' })
+  })
 
-    const [report] = await run()
+  it('Paddle 5xx → needs_reconciliation (the charge may have gone through)', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(105_000)
+    chargeResultQueue.push({ ok: false, status: 502, error: 'HTTP 502' })
+    const [report] = provisional(await run())
+    expect(report!.status).toBe('needs_reconciliation')
+  })
 
+  it('ledger update failing after a successful charge → needs_reconciliation, row left pending (was reported "charged")', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(105_000)
+    chargeResultQueue.push({ ok: true, response: { data: { id: 'txn_ok' } } })
+    fake.failNext('subscription_overage_charges', 'update', { message: 'connection reset' })
+    const [report] = provisional(await run())
+    expect(report!.status).toBe('needs_reconciliation')
+    expect(report!.error).toContain('ledger update failed: connection reset')
+    expect(ledger()[0]!['status']).toBe('pending')
+  })
+
+  it('PADDLE_API_KEY missing → error row, Paddle never called', async () => {
+    delete process.env['PADDLE_API_KEY']
+    setup([activeSub()])
+    requestCountQueue.push(105_000)
+    const [report] = provisional(await run())
     expect(report!.status).toBe('error')
-    expect(report!.error).toBe('ECONNRESET')
-    expect(updates[0]!.values['status']).toBe('error')
-    expect(updates[0]!.values['error_message']).toBe('ECONNRESET')
+    expect(chargeSpy).not.toHaveBeenCalled()
+    expect(ledger()[0]).toMatchObject({ status: 'error', error_message: 'PADDLE_API_KEY is not configured' })
   })
 })
 
-// =========================================================================
-// Idempotency guard — UNIQUE (subscription_id, period_end)
-// =========================================================================
-
-describe('overage 3-state flow — idempotency guard', () => {
-  it('unique_violation on insert (re-run after success) → skipped_already_charged, NO Paddle call', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(105_000)
-    // Simulate Postgres UNIQUE violation on the second cron run
-    nextInsertError = { code: '23505', message: 'duplicate key value violates unique constraint' }
-
-    const [report] = await run()
-
-    expect(report!.status).toBe('skipped_already_charged')
-    // No Paddle call, no UPDATE — purely a no-op
-    expect(chargeSpy).not.toHaveBeenCalled()
-    expect(updates).toHaveLength(0)
+describe('provisional charge — idempotency guard', () => {
+  it('a second in-window run → skipped_already_charged, no Paddle call', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(105_000, 110_000)
+    chargeResultQueue.push({ ok: true, response: {} })
+    await run()
+    const [second] = provisional(await run(new Date('2026-05-31T12:00:00.000Z')))
+    expect(second!.status).toBe('skipped_already_charged')
+    expect(chargeSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('non-unique insert failure → error status (not skipped — operator should investigate)', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(105_000)
-    nextInsertError = { code: '40001', message: 'serialization failure' }
-
-    const [report] = await run()
-
+  it('non-unique insert failure → error, Paddle not called (fail closed)', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(105_000)
+    fake.failNext('subscription_overage_charges', 'insert', { message: 'serialization failure', code: '40001' })
+    const [report] = provisional(await run())
     expect(report!.status).toBe('error')
-    expect(report!.error).toContain('idempotency insert failed')
     expect(report!.error).toContain('serialization failure')
-    // Paddle was NOT called — fail-closed when we can't even take the lock
     expect(chargeSpy).not.toHaveBeenCalled()
   })
 })
 
-// =========================================================================
-// Skip paths — no insert, no Paddle call
-// =========================================================================
-
-describe('overage 3-state flow — skip paths (no row written, no Paddle call)', () => {
-  it('outside the charging window (>48h before period_end) → skipped_not_in_window', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(200_000) // would be huge overage if we charged
-
-    const [report] = await run(NOW_OUT_OF_WINDOW)
-
+describe('provisional charge — skip paths', () => {
+  it('outside the window → skipped_not_in_window, nothing written', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(200_000)
+    const [report] = provisional(await run(NOW_OUT_OF_WINDOW))
     expect(report!.status).toBe('skipped_not_in_window')
-    expect(inserts).toHaveLength(0)
+    expect(ledger()).toHaveLength(0)
     expect(chargeSpy).not.toHaveBeenCalled()
   })
 
-  it('after period_end → skipped_not_in_window (no retroactive charges)', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(200_000)
-
-    const [report] = await run(NOW_AFTER_END)
-
+  it('missing period boundaries → skipped_not_in_window', async () => {
+    setup([activeSub({ current_period_end: null })])
+    const [report] = provisional(await run())
     expect(report!.status).toBe('skipped_not_in_window')
-    expect(inserts).toHaveLength(0)
-    expect(chargeSpy).not.toHaveBeenCalled()
+    expect(ledger()).toHaveLength(0)
   })
 
-  it('missing current_period_start or current_period_end → skipped_not_in_window', async () => {
-    nextSubscriptionsResult = {
-      data: [activeStarterSub({ current_period_end: null })],
-      error: null,
-    }
-    // No enqueue — the missing-period branch returns before countMonthlyRequests is called
-
-    const [report] = await run()
-
-    expect(report!.status).toBe('skipped_not_in_window')
-    expect(inserts).toHaveLength(0)
-    expect(chargeSpy).not.toHaveBeenCalled()
-  })
-
-  it('usage at or below included quota → skipped_no_overage', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(99_999) // under Starter's 100k
-
-    const [report] = await run()
-
+  it('usage within quota → skipped_no_overage, and a no_charge row records the period for settlement', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(99_999)
+    const [report] = provisional(await run())
     expect(report!.status).toBe('skipped_no_overage')
-    expect(report!.overage_requests).toBe(0)
-    expect(inserts).toHaveLength(0)
     expect(chargeSpy).not.toHaveBeenCalled()
+    expect(ledger()).toEqual([
+      expect.objectContaining({ kind: 'provisional', status: 'no_charge', overage_quantity: 0, charged_quantity: 0, included_requests: 100_000 }),
+    ])
   })
 
-  it('overage exists but PADDLE_PRICE_*_OVERAGE env unset → skipped_no_price (no charge made)', async () => {
+  it('overage price not configured → skipped_no_price, nothing written', async () => {
     delete process.env['PADDLE_PRICE_STARTER_OVERAGE']
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(150_000)
-
-    const [report] = await run()
-
-    expect(report!.status).toBe('skipped_no_price')
-    expect(report!.overage_requests).toBe(50_000)
-    expect(inserts).toHaveLength(0)
-    expect(chargeSpy).not.toHaveBeenCalled()
+    setup([activeSub()])
+    requestCountQueue.push(150_000)
+    const [report] = provisional(await run())
+    expect(report).toMatchObject({ status: 'skipped_no_price', overage_requests: 50_000 })
+    expect(ledger()).toHaveLength(0)
   })
 
-  it('countMonthlyRequests throws → error status, NO insert (no chance of leaking partial state)', async () => {
-    nextSubscriptionsResult = { data: [activeStarterSub()], error: null }
-    enqueueRequestCount(new Error('ClickHouse query failed: ECONNREFUSED'))
-
-    const [report] = await run()
-
+  it('count failure → error, nothing written', async () => {
+    setup([activeSub()])
+    requestCountQueue.push(new Error('query failed: ECONNREFUSED'))
+    const [report] = provisional(await run())
     expect(report!.status).toBe('error')
-    expect(report!.error).toContain('count failed')
     expect(report!.error).toContain('ECONNREFUSED')
-    expect(inserts).toHaveLength(0)
-    expect(chargeSpy).not.toHaveBeenCalled()
+    expect(ledger()).toHaveLength(0)
+  })
+
+  it('processes each subscription independently', async () => {
+    setup([
+      activeSub({ id: 'sub-charged', paddle_subscription_id: 'sub_paddle_a' }),
+      activeSub({ id: 'sub-no-overage', paddle_subscription_id: 'sub_paddle_b' }),
+      activeSub({ id: 'sub-error', paddle_subscription_id: 'sub_paddle_c' }),
+    ])
+    requestCountQueue.push(150_000, 50_000, 200_000)
+    chargeResultQueue.push({ ok: true, response: {} }, { ok: false, status: 400, error: 'card_declined' })
+    const reports = provisional(await run())
+    expect(reports.map((r) => r.status)).toEqual(['charged', 'skipped_no_overage', 'error'])
+    expect(chargeSpy).toHaveBeenCalledTimes(2)
   })
 })
 
 // =========================================================================
-// Multiple subscriptions in one run — independent processing
+// Settlement (true-up) after the period closes
 // =========================================================================
 
-describe('overage 3-state flow — multi-subscription cron tick', () => {
-  it('processes each subscription independently — one charges, one skips, one errors', async () => {
-    // Three subs sharing the same period_end so the cron loop visits all three.
-    nextSubscriptionsResult = {
-      data: [
-        activeStarterSub({ id: 'sub-charged', paddle_subscription_id: 'sub_paddle_a' }),
-        activeStarterSub({ id: 'sub-no-overage', paddle_subscription_id: 'sub_paddle_b' }),
-        activeStarterSub({ id: 'sub-error', paddle_subscription_id: 'sub_paddle_c' }),
-      ],
-      error: null,
+function provisionalRow(overrides: Row = {}): Row {
+  return {
+    subscription_id: SUB_ROW_ID,
+    kind: 'provisional',
+    period_start: '2026-05-01T00:00:00.000Z',
+    period_end: '2026-06-01T00:00:00.000Z',
+    included_requests: 100_000,
+    overage_requests: 25_000,
+    overage_quantity: 25,
+    charged_quantity: 25,
+    price_id: PRICE_STARTER_OVERAGE,
+    status: 'charged',
+    ...overrides,
+  }
+}
+
+function rolledOverSub(): Row {
+  // After period_end the webhook has moved the subscription to its next period.
+  return activeSub({ current_period_start: '2026-06-01T00:00:00.000Z', current_period_end: '2026-07-01T00:00:00.000Z' })
+}
+
+describe('settlement — charge only what the in-window run could not see', () => {
+  it('recounts the closed period and charges the difference as a true_up row', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow()])
+    requestCountQueue.push(140_000) // final: 40,000 over → 40 units, 25 already charged
+    chargeResultQueue.push({ ok: true, response: { data: { id: 'txn_true_up' } } })
+
+    const reports = await run(NOW_SETTLE)
+    const settlement = reports.filter((r) => r.phase === 'settlement')
+    expect(settlement).toEqual([expect.objectContaining({ status: 'charged', used: 140_000, overage_quantity: 15 })])
+    expect(countCalls).toContainEqual({ since: '2026-05-01T00:00:00.000Z', until: '2026-06-01T00:00:00.000Z' })
+    expect(chargeSpy).toHaveBeenCalledWith(PADDLE_SUB_ID, [{ priceId: PRICE_STARTER_OVERAGE, quantity: 15 }], 'immediately')
+    const trueUp = ledger().find((r) => r['kind'] === 'true_up')
+    expect(trueUp).toMatchObject({ status: 'charged', overage_quantity: 15, charged_quantity: 15 })
+  })
+
+  it('a period that had no overage in the window but went over in its last hours is charged in full', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'no_charge', overage_requests: 0, overage_quantity: 0, charged_quantity: 0 })])
+    requestCountQueue.push(103_500)
+    chargeResultQueue.push({ ok: true, response: {} })
+    await run(NOW_SETTLE)
+    expect(chargeSpy).toHaveBeenCalledWith(PADDLE_SUB_ID, [{ priceId: PRICE_STARTER_OVERAGE, quantity: 4 }], 'immediately')
+  })
+
+  it('nothing more owed → no_charge true_up row, no Paddle call; a second run does nothing', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow()])
+    requestCountQueue.push(125_000)
+    const first = (await run(NOW_SETTLE)).filter((r) => r.phase === 'settlement')
+    expect(first).toEqual([expect.objectContaining({ status: 'no_charge' })])
+    expect(ledger().find((r) => r['kind'] === 'true_up')).toMatchObject({ status: 'no_charge', charged_quantity: 0 })
+
+    const second = (await run(new Date(NOW_SETTLE.getTime() + DAY_MS))).filter((r) => r.phase === 'settlement')
+    expect(second).toEqual([])
+    expect(chargeSpy).not.toHaveBeenCalled()
+  })
+
+  it('never trues up a period whose provisional charge is unresolved', async () => {
+    for (const status of ['pending', 'needs_reconciliation', 'error', 'retry']) {
+      setup([rolledOverSub()])
+      fake.seed('subscription_overage_charges', [provisionalRow({ status, charged_quantity: 0 })])
+      const settlement = (await run(NOW_SETTLE)).filter((r) => r.phase === 'settlement')
+      if (status !== 'retry') {
+        expect(settlement).toEqual([expect.objectContaining({ status: 'skipped_unsettled' })])
+      }
+      expect(ledger().some((r) => r['kind'] === 'true_up')).toBe(false)
     }
-    // countMonthlyRequests is called once per sub (3 times total)
-    enqueueRequestCount(150_000) // 50k overage → charged
-    enqueueRequestCount(50_000)  // 0 overage  → skipped, no chargeSubscription call
-    enqueueRequestCount(200_000) // 100k overage → error path
+  })
 
-    // chargeSubscription is called for the 1st and 3rd sub only (the 2nd
-    // is skipped before reaching Paddle)
-    enqueueChargeResult({ ok: true, response: { data: { id: 'txn_a' } } })
-    enqueueChargeResult({ ok: false, status: 400, error: 'card_declined' })
+  it('a row marked charged by hand without charged_quantity is not trusted (would bill it again)', async () => {
+    // Review of the C4.3 fix: the true-up bills final - sum(charged_quantity).
+    // An operator who resolves a needs_reconciliation row by flipping only the
+    // status (what the original migration comment described) leaves
+    // charged_quantity at 0, and the settlement would charge the whole period
+    // again, including the 25 units Paddle already collected.
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'charged', overage_quantity: 25, charged_quantity: 0 })])
+    requestCountQueue.push(140_000)
+    chargeResultQueue.push({ ok: true, response: {} })
+    const settlement = (await run(NOW_SETTLE)).filter((r) => r.phase === 'settlement')
+    expect(settlement).toEqual([
+      expect.objectContaining({ status: 'skipped_unsettled', error: expect.stringContaining('charged_quantity') }),
+    ])
+    expect(chargeSpy).not.toHaveBeenCalled()
+    expect(ledger().some((r) => r['kind'] === 'true_up')).toBe(false)
+  })
 
-    const reports = await run()
+  it('a charged row that owed nothing (quantity 0) still settles normally', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'charged', overage_requests: 0, overage_quantity: 0, charged_quantity: 0 })])
+    requestCountQueue.push(103_500)
+    chargeResultQueue.push({ ok: true, response: {} })
+    await run(NOW_SETTLE)
+    expect(chargeSpy).toHaveBeenCalledWith(PADDLE_SUB_ID, [{ priceId: PRICE_STARTER_OVERAGE, quantity: 4 }], 'immediately')
+  })
 
-    expect(reports).toHaveLength(3)
-    expect(reports[0]!.status).toBe('charged')
-    expect(reports[1]!.status).toBe('skipped_no_overage')
-    expect(reports[2]!.status).toBe('error')
+  it('waits for the settlement delay after period_end (late log rows still land)', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow()])
+    const reports = await run(NOW_JUST_AFTER_END)
+    expect(reports.filter((r) => r.phase === 'settlement')).toEqual([])
+  })
 
-    // Only the two that had overage got pending rows
-    expect(inserts).toHaveLength(2)
-    expect(inserts.every((i) => i.values['status'] === 'pending')).toBe(true)
+  it('does not reach back beyond the lookback window', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow()])
+    const reports = await run(new Date('2026-06-20T00:00:00.000Z'))
+    expect(reports.filter((r) => r.phase === 'settlement')).toEqual([])
+  })
 
-    // Both pending rows resolved (one charged, one error)
-    expect(updates).toHaveLength(2)
-    const statuses = updates.map((u) => u.values['status']).sort()
-    expect(statuses).toEqual(['charged', 'error'])
+  it('a legacy provisional row without included_requests uses the plan quota', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ included_requests: null })])
+    requestCountQueue.push(130_000)
+    chargeResultQueue.push({ ok: true, response: {} })
+    await run(NOW_SETTLE)
+    expect(chargeSpy).toHaveBeenCalledWith(PADDLE_SUB_ID, [{ priceId: PRICE_STARTER_OVERAGE, quantity: 5 }], 'immediately')
+  })
 
-    // chargeSubscription called exactly twice (the skipped sub never reached it)
-    expect(chargeSpy).toHaveBeenCalledTimes(2)
+  it('a settlement read error fails the run instead of passing silently', async () => {
+    setup([rolledOverSub()])
+    // Both ledger reads (retry pass, then settlement pass) fail.
+    fake.failNext('subscription_overage_charges', 'select', { message: 'timeout' }, 2)
+    await expect(run(NOW_SETTLE)).rejects.toThrow(/settlement.*timeout/)
+  })
+})
+
+describe('settlement — the audit scenario, end to end', () => {
+  it('10k requests/day on Starter, daily 03:30 runs: the whole 200k overage is billed (was 187 of 200 units)', async () => {
+    const periodStart = Date.parse('2026-09-01T12:00:00.000Z')
+    const periodEnd = Date.parse('2026-10-01T12:00:00.000Z')
+    setup([activeSub({
+      current_period_start: new Date(periodStart).toISOString(),
+      current_period_end: new Date(periodEnd).toISOString(),
+    })])
+    let clock = 0
+    countImpl = (since, until) =>
+      Math.floor(((Math.min(until.getTime(), clock) - since.getTime()) / DAY_MS) * 10_000)
+    chargeResultQueue.push({ ok: true, response: {} }, { ok: true, response: {} })
+
+    for (const day of ['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02']) {
+      clock = Date.parse(`${day}T03:30:00.000Z`)
+      if (day === '2026-10-02') {
+        // The renewal webhook rolled the subscription over.
+        const sub = fake.rows('subscriptions')[0]!
+        sub['current_period_start'] = new Date(periodEnd).toISOString()
+        sub['current_period_end'] = '2026-11-01T12:00:00.000Z'
+      }
+      await run(new Date(clock))
+    }
+
+    const charged = chargeSpy.mock.calls.map((c) => (c[1] as Array<{ quantity: number }>)[0]!.quantity)
+    expect(charged).toEqual([187, 13])
+    expect(charged.reduce((a, b) => a + b, 0)).toBe(200)
+    const total = ledger().reduce((sum, r) => sum + Number(r['charged_quantity']), 0)
+    expect(total).toBe(200)
+  })
+})
+
+// =========================================================================
+// Operator-flagged retries
+// =========================================================================
+
+describe('retry — an operator flips a row to retry', () => {
+  it('re-attempts the remaining quantity and records the charge', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'retry', overage_quantity: 25, charged_quantity: 0 })])
+    chargeResultQueue.push({ ok: true, response: {} })
+    const reports = await run(new Date('2026-06-01T00:30:00.000Z'))
+    expect(reports.filter((r) => r.phase === 'retry')).toEqual([expect.objectContaining({ status: 'charged', overage_quantity: 25 })])
+    expect(ledger()[0]).toMatchObject({ status: 'charged', charged_quantity: 25 })
+  })
+
+  it('nothing left to charge → marked charged without calling Paddle', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'retry', overage_quantity: 25, charged_quantity: 25 })])
+    await run(new Date('2026-06-01T00:30:00.000Z'))
+    expect(chargeSpy).not.toHaveBeenCalled()
+    expect(ledger()[0]!['status']).toBe('charged')
+  })
+
+  it('two runs racing on the same retry row charge once', async () => {
+    setup([rolledOverSub()])
+    fake.seed('subscription_overage_charges', [provisionalRow({ status: 'retry', overage_quantity: 25, charged_quantity: 0 })])
+    chargeResultQueue.push({ ok: true, response: {} }, { ok: true, response: {} })
+    const when = new Date('2026-06-01T00:30:00.000Z')
+    await Promise.all([run(when), run(when)])
+    expect(chargeSpy).toHaveBeenCalledTimes(1)
   })
 })

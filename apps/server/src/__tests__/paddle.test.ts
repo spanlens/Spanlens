@@ -1,5 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { verifyPaddleSignature, planForPriceId } from '../lib/paddle.js'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import {
+  verifyPaddleSignature,
+  planForPriceId,
+  cancelPaddleTransaction,
+  PaddleApiError,
+} from '../lib/paddle.js'
 
 // Helpers to generate a valid Paddle-style signature locally so the test doesn't
 // depend on the real secret. Mirrors what Paddle does on their end.
@@ -111,5 +116,43 @@ describe('planForPriceId', () => {
   it('returns null for unknown price ids', () => {
     expect(planForPriceId('pri_unknown')).toBeNull()
     expect(planForPriceId('')).toBeNull()
+  })
+})
+
+// fetch is stubbed: no request leaves the process.
+describe('cancelPaddleTransaction', () => {
+  beforeEach(() => {
+    process.env['PADDLE_API_KEY'] = 'pdl_test_key'
+    process.env['PADDLE_ENVIRONMENT'] = 'sandbox'
+  })
+
+  afterEach(() => {
+    delete process.env['PADDLE_API_KEY']
+    delete process.env['PADDLE_ENVIRONMENT']
+    vi.unstubAllGlobals()
+  })
+
+  it('PATCHes the transaction to canceled', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { id: 'txn_01abc', status: 'canceled' } }), { status: 200 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await cancelPaddleTransaction('txn_01abc')
+
+    const [url, init] = fetchMock.mock.calls[0]!
+    expect(url).toBe('https://sandbox-api.paddle.com/transactions/txn_01abc')
+    expect((init as RequestInit).method).toBe('PATCH')
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ status: 'canceled' })
+  })
+
+  it('throws PaddleApiError when Paddle refuses (e.g. the transaction was already paid)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { code: 'transaction_immutable', detail: 'transaction is completed' } }),
+        { status: 400 },
+      ),
+    ))
+    await expect(cancelPaddleTransaction('txn_paid')).rejects.toBeInstanceOf(PaddleApiError)
   })
 })
