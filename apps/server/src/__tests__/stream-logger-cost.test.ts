@@ -24,10 +24,15 @@ vi.mock('../lib/cost.js', () => ({
 }))
 
 // stream-logger imports supabaseAdmin at module load (for span input/output
-// injection). We never set a spanId here, so injection is skipped; this mock
-// just avoids creating a real client.
+// injection). We never set a spanId here, so injection is skipped. The only
+// query that runs is the org body_sample_rate lookup behind the shared
+// body-retention decision; answer it with "no row" (store everything).
 vi.mock('../lib/db.js', () => ({
-  supabaseAdmin: { from: () => ({}) },
+  supabaseAdmin: {
+    from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+    }),
+  },
 }))
 
 let logOpenAIStream: typeof import('../proxy/stream-logger.js').logOpenAIStream

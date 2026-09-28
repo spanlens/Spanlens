@@ -1,5 +1,6 @@
 import { calculateCost, type Provider } from '../lib/cost.js'
 import { logRequestAsync, type RequestLogData } from '../lib/logger.js'
+import { resolveBodyRetention, sanitizeJsonForStorage } from '../lib/body-retention.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { parseOpenAIStreamChunk, extractOpenAIStreamText, type ServiceTier } from '../parsers/openai.js'
 import { parseAnthropicStreamStart, parseAnthropicStreamChunk, extractAnthropicStreamText } from '../parsers/anthropic.js'
@@ -25,24 +26,59 @@ export interface StreamLogContext {
   truncated?: boolean
 }
 
-async function injectSpanInput(spanId: string, organizationId: string, input: unknown): Promise<void> {
+type SpanBodyColumn = 'input' | 'output'
+
+/**
+ * Copies one body onto the caller's span, but only while that column is still
+ * empty: a value the SDK sent itself always wins over the proxy's copy.
+ */
+async function injectSpanColumn(
+  spanId: string,
+  organizationId: string,
+  column: SpanBodyColumn,
+  value: unknown,
+): Promise<void> {
   const { error } = await supabaseAdmin
     .from('spans')
-    .update({ input })
+    .update({ [column]: value })
     .eq('id', spanId)
     .eq('organization_id', organizationId)
-    .is('input', null)
+    .is(column, null)
   if (error) throw new Error(error.message)
 }
 
-async function injectSpanOutput(spanId: string, organizationId: string, output: string): Promise<void> {
-  const { error } = await supabaseAdmin
-    .from('spans')
-    .update({ output })
-    .eq('id', spanId)
-    .eq('organization_id', organizationId)
-    .is('output', null)
-  if (error) throw new Error(error.message)
+/**
+ * Mirrors the prompt and the reconstructed completion onto the span named by
+ * `x-span-id`, under the same retention rules as the `requests` row: nothing
+ * is copied when the customer opted out of body logging (meta / none) or the
+ * call was sampled out (`storeBody` false), and what is copied is masked and
+ * capped like the row. Failures are logged and swallowed, since the request
+ * row is already written.
+ */
+async function injectSpanBodies(
+  base: StreamLogBase,
+  storeBody: boolean,
+  bodies: { input: unknown; output: string },
+  tag: string,
+): Promise<void> {
+  if (!base.spanId || !storeBody) return
+  const { spanId, organizationId } = base
+  if (bodies.input != null) {
+    await injectSpanColumn(spanId, organizationId, 'input', sanitizeJsonForStorage(bodies.input)).catch((err) => {
+      console.error(`[span-input-inject:${tag}]`, err)
+    })
+  }
+  if (bodies.output) {
+    await injectSpanColumn(spanId, organizationId, 'output', sanitizeJsonForStorage(bodies.output)).catch((err) => {
+      console.error(`[span-output-inject:${tag}]`, err)
+    })
+  }
+}
+
+/** `messages` from an OpenAI-shaped request body, wrapped the way spans store it. */
+function openAISpanInput(requestBody: unknown): unknown {
+  const messages = (requestBody as Record<string, unknown> | null)?.['messages']
+  return messages ? { messages } : null
 }
 
 /**
@@ -83,9 +119,14 @@ export async function logOpenAIStream(
   // ("unknown") instead — the truncated flag + partial responseBody already
   // mark the row incomplete. Billing is unaffected: quota/overage meter request
   // COUNT, not cost_usd.
+  //
+  // Priced under the provider that actually served the call: this writer
+  // handles every OpenAI-compatible stream (groq, deepseek, mistral, xai,
+  // cohere, azure), and model ids are not unique across providers. Azure has
+  // no rows of its own; lookupPrice maps it to the OpenAI table.
   const hasUsage = promptTokens > 0 || completionTokens > 0
   const cost = hasUsage
-    ? calculateCost('openai' as Provider, model, {
+    ? calculateCost(base.provider as Provider, model, {
         promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
       })
     : null
@@ -112,6 +153,8 @@ export async function logOpenAIStream(
     },
   } : null
 
+  // One retention decision for both the request row and the span copy.
+  const storeBody = await resolveBodyRetention(base.organizationId, base.logBodyMode)
   await logRequestAsync({
     ...base,
     model,
@@ -124,22 +167,10 @@ export async function logOpenAIStream(
     costUsd: cost?.totalCost ?? null,
     responseBody,
     truncated: ctx.truncated ?? false,
+    storeBody,
   })
 
-  if (base.spanId) {
-    const reqBody = base.requestBody as Record<string, unknown> | null
-    const messages = reqBody?.messages
-    if (messages) {
-      await injectSpanInput(base.spanId, base.organizationId, { messages }).catch((err) => {
-        console.error('[span-input-inject:openai]', err)
-      })
-    }
-    if (text) {
-      await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
-        console.error('[span-output-inject:openai]', err)
-      })
-    }
-  }
+  await injectSpanBodies(base, storeBody, { input: openAISpanInput(base.requestBody), output: text }, 'openai')
 }
 
 /**
@@ -236,6 +267,8 @@ export async function logOpenRouterStream(
     },
   } : null
 
+  // One retention decision for both the request row and the span copy.
+  const storeBody = await resolveBodyRetention(base.organizationId, base.logBodyMode)
   await logRequestAsync({
     ...base,
     model,
@@ -248,22 +281,10 @@ export async function logOpenRouterStream(
     costUsd: finalCostUsd,
     responseBody,
     truncated: ctx.truncated ?? false,
+    storeBody,
   })
 
-  if (base.spanId) {
-    const reqBody = base.requestBody as Record<string, unknown> | null
-    const messages = reqBody?.messages
-    if (messages) {
-      await injectSpanInput(base.spanId, base.organizationId, { messages }).catch((err) => {
-        console.error('[span-input-inject:openrouter]', err)
-      })
-    }
-    if (text) {
-      await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
-        console.error('[span-output-inject:openrouter]', err)
-      })
-    }
-  }
+  await injectSpanBodies(base, storeBody, { input: openAISpanInput(base.requestBody), output: text }, 'openrouter')
 }
 
 export async function logAnthropicStream(
@@ -332,6 +353,8 @@ export async function logAnthropicStream(
     },
   } : null
 
+  // One retention decision for both the request row and the span copy.
+  const storeBody = await resolveBodyRetention(base.organizationId, base.logBodyMode)
   await logRequestAsync({
     ...base,
     model,
@@ -344,22 +367,12 @@ export async function logAnthropicStream(
     costUsd: cost?.totalCost ?? null,
     responseBody,
     truncated: ctx.truncated ?? false,
+    storeBody,
   })
 
-  if (base.spanId) {
-    const reqBody = base.requestBody as Record<string, unknown> | null
-    const messages = reqBody?.messages
-    const system = reqBody?.system
-    const input = messages ? (system ? { system, messages } : messages) : null
-    if (input) {
-      await injectSpanInput(base.spanId, base.organizationId, input).catch((err) => {
-        console.error('[span-input-inject:anthropic]', err)
-      })
-    }
-    if (text) {
-      await injectSpanOutput(base.spanId, base.organizationId, text).catch((err) => {
-        console.error('[span-output-inject:anthropic]', err)
-      })
-    }
-  }
+  const reqBody = base.requestBody as Record<string, unknown> | null
+  const messages = reqBody?.['messages']
+  const system = reqBody?.['system']
+  const input = messages ? (system ? { system, messages } : messages) : null
+  await injectSpanBodies(base, storeBody, { input, output: text }, 'anthropic')
 }
