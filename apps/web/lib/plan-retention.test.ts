@@ -1,7 +1,4 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PLAN_RETENTION_DAYS } from './billing-plans'
 import { retentionLabelFor } from './plan-retention'
 
 /**
@@ -10,24 +7,11 @@ import { retentionLabelFor } from './plan-retention'
  * Every plan was under-reported, and the table drifted because nothing tied
  * it to the value the server enforces.
  *
- * The label now comes from PLAN_RETENTION_DAYS, and the drift guard below
- * reads the server's LOG_RETENTION_DAYS so the two cannot disagree again
- * without CI failing. (It reads the source as text: apps/web must not import
- * from apps/server.)
+ * The label now comes from PLAN_RETENTION_DAYS. The drift guard that compares
+ * that table with the server's LOG_RETENTION_DAYS lives in
+ * apps/server/src/__tests__/web-plan-mirror.test.ts, because CI runs the
+ * server test suite on every PR and does not run this one.
  */
-
-const QUOTA_TS = join(__dirname, '..', '..', 'server', 'src', 'lib', 'quota.ts')
-
-function serverRetentionDays(): Record<string, number> {
-  const source = readFileSync(QUOTA_TS, 'utf8')
-  const block = source.match(/export const LOG_RETENTION_DAYS[^=]*=\s*\{([\s\S]*?)\n\}/)
-  if (!block?.[1]) throw new Error('LOG_RETENTION_DAYS not found in apps/server/src/lib/quota.ts')
-  const withoutComments = block[1].replace(/\/\/.*$/gm, '')
-  const entries = [...withoutComments.matchAll(/(\w+)\s*:\s*([\d_]+)/g)].map(
-    ([, plan, days]) => [plan, Number(days!.replace(/_/g, ''))] as const,
-  )
-  return Object.fromEntries(entries)
-}
 
 describe('retentionLabelFor', () => {
   it('reports what the server enforces for each plan', () => {
@@ -42,11 +26,5 @@ describe('retentionLabelFor', () => {
     expect(retentionLabelFor(undefined)).toBeNull()
     expect(retentionLabelFor(null)).toBeNull()
     expect(retentionLabelFor('platinum')).toBeNull()
-  })
-})
-
-describe('retention drift guard', () => {
-  it('PLAN_RETENTION_DAYS matches the server LOG_RETENTION_DAYS exactly', () => {
-    expect(PLAN_RETENTION_DAYS).toEqual(serverRetentionDays())
   })
 })
