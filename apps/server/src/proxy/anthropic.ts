@@ -4,6 +4,7 @@ import { requireFullScope } from '../middleware/requireFullScope.js'
 import { enforceQuota } from '../middleware/quota.js'
 import { proxyRateLimit } from '../middleware/rateLimit.js'
 import { customerRateLimit } from '../middleware/customerRateLimit.js'
+import { getRequestStartMs } from '../middleware/requestStart.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
@@ -35,7 +36,7 @@ anthropicProxy.use('*', enforceQuota)
 anthropicProxy.use('*', customerRateLimit)
 
 anthropicProxy.all('/*', async (c) => {
-  const handlerStartMs = Date.now()
+  const requestStartMs = getRequestStartMs(c)
   const organizationId = c.get('organizationId')
   const projectId = c.get('projectId') as string
   const apiKeyId = c.get('apiKeyId')
@@ -61,7 +62,7 @@ anthropicProxy.all('/*', async (c) => {
   if (cache.expiredKeyHash) fireAndForget(c, deleteExpiredCacheEntry(cache.expiredKeyHash))
   if (cache.state.mode === 'hit') {
     const hit = cache.state.entry
-    const latencyMs = Date.now() - handlerStartMs
+    const latencyMs = Date.now() - requestStartMs
     const hitLogBase = buildLogBase({
       c, provider: 'anthropic',
       organizationId, projectId, apiKeyId,
@@ -103,13 +104,19 @@ anthropicProxy.all('/*', async (c) => {
   })
   headers.delete('authorization')
 
-  const { upstreamRes, latencyMs, proxyOverheadMs } = await fetchUpstreamWithTimeout({
+  const model = (parsed.reqBodyJson?.model as string | undefined) ?? ''
+
+  const { upstreamRes, latencyMs, proxyOverheadMs, readBodyText } = await fetchUpstreamWithTimeout({
     url: upstreamUrl,
     method: c.req.method,
     headers,
     body: chooseFetchBody(c, parsed, false),
     provider: 'anthropic',
-    handlerStartMs,
+    requestStartMs,
+    failureLog: {
+      c, organizationId, projectId, apiKeyId, providerKey,
+      reqBodyJson: parsed.reqBodyJson, requestFlags, model,
+    },
   })
 
   const logBase = buildLogBase({
@@ -122,22 +129,20 @@ anthropicProxy.all('/*', async (c) => {
     statusCode: upstreamRes.status,
   })
 
-  const model = (parsed.reqBodyJson?.model as string | undefined) ?? ''
-
   // ── Streaming path ────────────────────────────────────────────────────────
   if (parsed.isStreaming && upstreamRes.body) {
     // Caching was requested but streaming responses are never cached.
     if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runLineBufferedStreamPump({
-      c, upstreamRes, handlerStartMs, provider: 'anthropic',
-      onComplete: (lines, truncated) =>
-        logAnthropicStream(lines, { ...logBase, model }, { truncated }),
+      c, upstreamRes, requestStartMs, provider: 'anthropic',
+      onComplete: (lines, truncated, end) =>
+        logAnthropicStream(lines, { ...logBase, model, errorMessage: end.errorMessage }, { truncated }),
     })
   }
 
   // ── Non-streaming path ────────────────────────────────────────────────────
   const downstreamHeaders = buildDownstreamHeaders(upstreamRes.headers)
-  const resBodyText = await upstreamRes.text()
+  const resBodyText = await readBodyText()
   let resBodyJson: unknown = null
   try { resBodyJson = JSON.parse(resBodyText) } catch { /* non-JSON response */ }
 

@@ -5,6 +5,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { captureException } from '@sentry/node'
 
 import { requestId } from './middleware/requestId.js'
+import { requestStart } from './middleware/requestStart.js'
 import { ApiError, isApiError } from './lib/errors.js'
 
 import { openaiProxy }     from './proxy/openai.js'
@@ -77,6 +78,13 @@ import { badgeRouter }            from './api/badge.js'
 import { pendingDeletionsRouter } from './api/pendingDeletions.js'
 
 export const app = new Hono()
+
+// Proxy timing anchor. MUST be the first middleware registered: it stamps
+// when a proxy request arrived, before cors and before each proxy router's
+// auth / rate-limit / quota chain, so proxy_overhead_ms and the stream
+// deadline both cover that work. See middleware/requestStart.ts. Guarded by
+// src/__tests__/proxy-request-timing.test.ts.
+app.use('/proxy/*', requestStart)
 
 app.use('*', cors({
   origin: (origin) => {

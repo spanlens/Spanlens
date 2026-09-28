@@ -125,10 +125,18 @@ export async function isBlockingEnabled(projectId: string): Promise<boolean> {
 // `TypeError: fetch failed` before any byte reaches upstream, surfacing to the
 // caller as an unexplained 502. Clients that send it by default include
 // PowerShell's Invoke-WebRequest, .NET HttpClient and Apache HttpClient.
+//
+// x-trace-id / x-span-id are Spanlens tracing metadata that the SDK attaches
+// to every call made inside a trace. They predate the x-spanlens- prefix, so
+// STRIP_PREFIXES below does not catch them, but they fall under the same
+// "never forward upstream" rule. The log row reads them from the incoming
+// request (proxy/shared/log-base.ts), not from these outgoing headers.
 const STRIP_HEADERS = new Set([
   'authorization',
   'x-api-key',
   'x-goog-api-key',
+  'x-trace-id',
+  'x-span-id',
   'host',
   'connection',
   'keep-alive',

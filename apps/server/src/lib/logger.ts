@@ -4,7 +4,7 @@ import { pgExecute } from './postgres.js'
 import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
-import { emitWebhookEvent } from './webhook-emit.js'
+import { deferWebhookEvent, emitWebhookEvent } from './webhook-emit.js'
 import { logError } from './structured-logger.js'
 import { resolvePromptVersion } from './resolve-prompt-version.js'
 import { resolveBodyRetention, truncateBodyForStorage } from './body-retention.js'
@@ -42,8 +42,13 @@ export interface RequestLogData {
   /** Subset of promptTokens that wrote a cache entry (Anthropic cache_creation_input_tokens). */
   cacheWriteTokens?: number
   costUsd: number | null
+  /** Upstream time (ms): request sent to the provider until its response headers arrive. */
   latencyMs: number
-  /** Pre-fetch proxy overhead: auth + key decryption + body parsing (ms). Target p95 < 50ms. */
+  /**
+   * Pre-fetch proxy overhead (ms), from the request reaching the proxy until
+   * the upstream call: auth, rate limits, quota, key decryption, body parsing.
+   * Target p95 < 50ms. See middleware/requestStart.ts.
+   */
   proxyOverheadMs?: number | null
   statusCode: number
   requestBody: unknown
@@ -110,6 +115,30 @@ export interface RequestLogData {
    * See lib/proxy-cache.ts for the cache semantics.
    */
   cacheHit?: boolean
+}
+
+/**
+ * Longest `user_id` / `session_id` stored, in UTF-16 code units. Both columns
+ * sit in partial btree indexes with the org id and timestamp, and a btree
+ * entry cannot exceed ~2.7KB: a longer customer-supplied x-spanlens-user or
+ * x-spanlens-session value failed the live INSERT with SQLSTATE 54000, and
+ * then failed every replay of the queued row too. One code unit is at most 3
+ * UTF-8 bytes, so 512 units stay under 1.6KB, well inside the limit, while
+ * leaving room for any real identifier (emails, UUIDs, composite keys).
+ */
+const MAX_IDENTIFIER_LENGTH = 512
+
+/**
+ * Cuts a customer-supplied identifier to MAX_IDENTIFIER_LENGTH. Backs off one
+ * unit rather than end on the high half of a surrogate pair, which would
+ * otherwise reach Postgres as a replacement character.
+ */
+function boundIdentifier(value: string | null | undefined): string | null {
+  if (value == null) return null
+  if (value.length <= MAX_IDENTIFIER_LENGTH) return value
+  const lastKept = value.charCodeAt(MAX_IDENTIFIER_LENGTH - 1)
+  const endsOnHighSurrogate = lastKept >= 0xd800 && lastKept <= 0xdbff
+  return value.slice(0, endsOnHighSurrogate ? MAX_IDENTIFIER_LENGTH - 1 : MAX_IDENTIFIER_LENGTH)
 }
 
 /**
@@ -185,6 +214,106 @@ async function insertRequestRow(row: Record<string, unknown>): Promise<void> {
       `VALUES (${placeholders.join(', ')})`,
     params,
   })
+}
+
+/**
+ * Emits `request.created` for one row that is now in `requests`.
+ *
+ * Takes the stored row itself (snake_case, exactly as insertRequestRow binds
+ * it and as `requests_fallback.payload` keeps it) so the live insert below and
+ * the fallback replay (lib/fallback-replay.ts) send one identical payload.
+ *
+ * Gated by an in-memory cache inside emitWebhookEvent, so orgs without a
+ * subscribed webhook pay only a Map lookup. Never throws: a webhook failure
+ * must not break logging or the replay cron.
+ */
+export async function emitRequestCreated(row: Readonly<Record<string, unknown>>): Promise<void> {
+  const orgId = String(row['organization_id'] ?? '')
+  try {
+    await emitWebhookEvent(orgId, 'request.created', requestCreatedPayload(row))
+  } catch (err) {
+    logError('WEBHOOK_DISPATCH_FAILED', { orgId, eventType: 'request.created' }, err)
+  }
+}
+
+/**
+ * Records `request.created` for one stored row as an undelivered webhook
+ * delivery instead of sending it now, with `reason` as the delivery's error.
+ * The fallback replay uses this for events it had no time left to send (see
+ * announceInserted in lib/fallback-replay.ts). Same payload as
+ * emitRequestCreated. Never throws.
+ */
+export async function deferRequestCreated(
+  row: Readonly<Record<string, unknown>>,
+  reason: string,
+): Promise<void> {
+  const orgId = String(row['organization_id'] ?? '')
+  try {
+    await deferWebhookEvent(orgId, 'request.created', requestCreatedPayload(row), reason)
+  } catch (err) {
+    logError('WEBHOOK_DISPATCH_FAILED', { orgId, eventType: 'request.created', deferred: true }, err)
+  }
+}
+
+function requestCreatedPayload(row: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return {
+    request: {
+      id: row['id'],
+      provider: row['provider'],
+      model: row['model'],
+      prompt_tokens: row['prompt_tokens'],
+      completion_tokens: row['completion_tokens'],
+      total_tokens: row['total_tokens'],
+      cost_usd: row['cost_usd'],
+      latency_ms: row['latency_ms'],
+      status_code: row['status_code'],
+      trace_id: row['trace_id'],
+      created_at: row['created_at'],
+    },
+  }
+}
+
+/**
+ * Where a row ended up after logRequestAsync tried to store it.
+ *   - `requests`: the live insert landed.
+ *   - `fallback`: the live insert failed and the row is queued for replay.
+ *   - `lost`: both paths failed. Nothing will ever carry this id.
+ */
+type RowDestination = 'requests' | 'fallback' | 'lost'
+
+/**
+ * Queues a row the live insert rejected into `requests_fallback`.
+ *
+ * supabase-js does not reject on a failed write: without `throwOnError`, both a
+ * PostgREST 4xx/5xx and a network failure RESOLVE with `{ error }`. So the
+ * resolved value has to be inspected. A `catch` alone only sees client bugs
+ * (a missing env var at init), which is how a real double failure used to
+ * slip past the row_lost signal below.
+ */
+async function queueForReplay(
+  row: Record<string, unknown>,
+  organizationId: string,
+  provider: string,
+  insertError: unknown,
+): Promise<RowDestination> {
+  const message = insertError instanceof Error ? insertError.message : String(insertError)
+  let fallbackError: unknown = null
+  try {
+    const { error } = await supabaseAdmin.from('requests_fallback').insert({
+      payload: row,
+      organization_id: organizationId,
+      last_error: message.slice(0, 500),
+    })
+    fallbackError = error ?? null
+  } catch (err) {
+    fallbackError = err
+  }
+  if (fallbackError === null) return 'fallback'
+
+  // Both write paths failed, so the row is now lost. Surface loudly; the
+  // original insert error is in the previous log line for triage.
+  logError('FALLBACK_INSERT_FAILED', { orgId: organizationId, provider, kind: 'row_lost' }, fallbackError)
+  return 'lost'
 }
 
 /** Rate-limit: 5 minutes between security alert emails per org. */
@@ -308,8 +437,8 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   const errorMessage = data.errorMessage ? maskApiKeys(data.errorMessage) : null
 
   const dropIdentifiers = logBodyMode === 'none'
-  const userId = dropIdentifiers ? null : (data.userId ?? null)
-  const sessionId = dropIdentifiers ? null : (data.sessionId ?? null)
+  const userId = dropIdentifiers ? null : boundIdentifier(data.userId)
+  const sessionId = dropIdentifiers ? null : boundIdentifier(data.sessionId)
 
   // Resolve the prompt version here rather than in the proxy hot path: on a
   // cold cache this is 1-2 Supabase queries, and logRequestAsync already runs
@@ -367,6 +496,7 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     created_at: new Date().toISOString(),
   }
 
+  let destination: RowDestination = 'requests'
   try {
     await insertRequestRow(row)
     // ── Activity watermark ───────────────────────────────────────────────────
@@ -395,28 +525,12 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
     // pooled connection this insert just failed on, so the two paths do not
     // share a failure mode. Without this backstop a failed insert silently
     // loses customer billing data and dashboard entries.
-    const message = err instanceof Error ? err.message : String(err)
     logError('REQUEST_LOG_INSERT_FAILED', {
       orgId: data.organizationId,
       provider: data.provider,
       kind: 'requests_insert_falling_back_to_supabase',
     }, err)
-
-    try {
-      await supabaseAdmin.from('requests_fallback').insert({
-        payload: row,
-        organization_id: data.organizationId,
-        last_error: message.slice(0, 500),
-      })
-    } catch (fallbackErr) {
-      // Both write paths failed, so the row is now lost. Surface loudly; the
-      // original insert error is in the previous log line for triage.
-      logError('FALLBACK_INSERT_FAILED', {
-        orgId: data.organizationId,
-        provider: data.provider,
-        kind: 'row_lost',
-      }, fallbackErr)
-    }
+    destination = await queueForReplay(row, data.organizationId, data.provider, err)
   }
 
   // ── Security alert ────────────────────────────────────────────────────────
@@ -440,29 +554,17 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   }
 
   // ── Outbound webhook: request.created ──────────────────────────────────────
-  // Gated by an in-memory cache so orgs without a subscribed webhook pay only a
-  // Map lookup. Awaited inside the outer fireAndForget(c, logRequestAsync(...))
-  // drain budget (gotcha #8). Wrapped so a webhook failure never breaks logging.
-  try {
-    await emitWebhookEvent(data.organizationId, 'request.created', {
-      request: {
-        id: row.id,
-        provider: data.provider,
-        model: data.model,
-        prompt_tokens: data.promptTokens,
-        completion_tokens: data.completionTokens,
-        total_tokens: data.totalTokens,
-        cost_usd: data.costUsd,
-        latency_ms: data.latencyMs,
-        status_code: data.statusCode,
-        trace_id: data.traceId,
-        created_at: row.created_at,
-      },
-    })
-  } catch (err) {
-    logError('WEBHOOK_DISPATCH_FAILED', {
-      orgId: data.organizationId,
-      eventType: 'request.created',
-    }, err)
+  // Fired only for a row that is in `requests` now. The event promises a
+  // request a subscriber can go and read, so:
+  //   - `fallback`: NOT fired here. The id is not in `requests` yet, and a row
+  //     the database refused for its data (an org deleted mid-flight, say)
+  //     never will be. lib/fallback-replay.ts fires the event for each row its
+  //     replay actually inserts, so a queued row is announced once, late, and
+  //     only if it lands.
+  //   - `lost`: never fired. The id will not exist anywhere.
+  // Awaited inside the outer fireAndForget(c, logRequestAsync(...)) drain
+  // budget (gotcha #8).
+  if (destination === 'requests') {
+    await emitRequestCreated(row)
   }
 }
