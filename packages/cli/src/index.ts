@@ -13,17 +13,20 @@
  *   4. Auto-installing @spanlens/sdk
  *   5. Patching `new OpenAI(...)` / `new Anthropic(...)` /
  *      `new GoogleGenerativeAI(...)` based on which providers are registered
- *   6. Running `tsc --noEmit` to verify the patch didn't break the build
+ *   6. Running the project's `tsc --noEmit` before and after the patch, and
+ *      restoring every patched file if the patch introduced errors
  */
 
-import { execSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 import { detectFramework } from './framework-detect.js'
 import { upsertEnvVar } from './env-writer.js'
-import { planPatches, applyPatches, type PatchPlan, type Provider } from './code-patcher.js'
+import type { Provider } from './code-patcher.js'
+import { parseFlags } from './flags.js'
+import { buildNextSteps } from './next-steps.js'
+import { finalOutcome, runPatchStep } from './patch-step.js'
 import {
   detectPackageManager,
   isAlreadyInstalled,
@@ -32,28 +35,10 @@ import {
 
 const DEFAULT_URL = 'https://www.spanlens.io'
 
-interface Flags {
-  dryRun: boolean
-  subcommand: string
-  serverUrl: string | null
-}
-
 interface KeyInfo {
   projectId: string
   projectName: string
   providers: Provider[]
-}
-
-function parseFlags(argv: readonly string[]): Flags {
-  const args = argv.slice(2)
-  const serverUrlIdx = args.indexOf('--server-url')
-  const rawServerUrl = serverUrlIdx !== -1 ? (args[serverUrlIdx + 1] ?? null) : null
-  const serverUrl = rawServerUrl ? rawServerUrl.replace(/\/$/, '') : null
-  return {
-    subcommand: args[0] ?? 'init',
-    dryRun: args.includes('--dry-run'),
-    serverUrl,
-  }
 }
 
 /** Hit /api/v1/me/key-info with the user's Spanlens key. */
@@ -100,11 +85,24 @@ async function main(): Promise<void> {
     p.log.message('Usage:  npx @spanlens/cli init [--dry-run] [--server-url <url>]')
     process.exit(1)
   }
+  if (flags.error) {
+    p.intro(pc.cyan('@spanlens/cli'))
+    p.log.error(flags.error)
+    process.exit(1)
+  }
 
   const dashboardUrl = flags.serverUrl ?? DEFAULT_URL
   const apiBase = flags.serverUrl ?? process.env.SPANLENS_API_BASE ?? DEFAULT_URL
 
   p.intro(pc.cyan('🔭  Spanlens setup'))
+  if (flags.serverUrl) {
+    p.log.info(`Self-hosted Spanlens server: ${pc.bold(flags.serverUrl)}`)
+    if (flags.droppedPath) {
+      p.log.warn(
+        `Ignored ${pc.bold(flags.droppedPath)} in --server-url. SPANLENS_BASE_URL has to be the server origin, and @spanlens/sdk adds the /proxy/... route itself.`,
+      )
+    }
+  }
 
   // ── Step 1: framework detection ───────────────────────────────────
   const fw = detectFramework(process.cwd())
@@ -262,128 +260,44 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── Step 6: scan + patch each registered provider ─────────────────
-  const sScan = p.spinner()
-  sScan.start(
-    `Scanning codebase for ${
-      keyInfo.providers.length > 0 ? keyInfo.providers.map((p) => `\`${p}\``).join(', ') : 'provider'
-    } usage`,
-  )
-  let plans: PatchPlan[] = []
-  try {
-    plans = await planPatches(process.cwd(), keyInfo.providers)
-  } catch (err) {
-    sScan.stop(pc.red('Scan failed'))
-    p.log.error(err instanceof Error ? err.message : String(err))
-    process.exit(1)
-  }
-  sScan.stop(`Found ${plans.length} patch${plans.length === 1 ? '' : 'es'} to apply`)
-
-  if (plans.length === 0) {
-    if (keyInfo.providers.length === 0) {
-      p.log.message(
-        pc.dim('No providers registered yet — nothing to patch. Add provider keys + re-run.'),
-      )
-    } else {
-      const importLines = keyInfo.providers
-        .map(
-          (p) =>
-            `  ${pc.dim('import { create' + p[0]!.toUpperCase() + p.slice(1) + ' } from "@spanlens/sdk/' + p + '"')}`,
-        )
-        .join('\n')
-      p.log.message(
-        pc.dim(
-          `No matching client constructors found. Add manually:\n${importLines}`,
-        ),
-      )
-    }
-  } else {
-    for (const plan of plans) {
-      p.log.message(`  ${pc.cyan('•')} [${plan.provider}] ${pc.dim(plan.filepath)}`)
-      for (const change of plan.changes) {
-        p.log.message(`      ${pc.dim('→')} ${change}`)
-      }
-    }
-
-    const approve = await p.confirm({
-      message: flags.dryRun ? 'Dry run: show patch preview?' : 'Apply these changes?',
-      initialValue: true,
-    })
-    if (p.isCancel(approve) || !approve) {
-      p.log.warn('Code patch skipped. You can re-run the wizard anytime.')
-    } else {
-      const sPatch = p.spinner()
-      sPatch.start(flags.dryRun ? 'Dry-run patch' : 'Patching files')
-      try {
-        const results = await applyPatches(plans, { dryRun: flags.dryRun })
-        const patched = results.filter((r) => r.patched).length
-        sPatch.stop(
-          flags.dryRun
-            ? `[dry-run] would patch ${patched} file${patched === 1 ? '' : 's'}`
-            : `Patched ${patched} file${patched === 1 ? '' : 's'}`,
-        )
-      } catch (err) {
-        sPatch.stop(pc.red('Patch failed'))
-        p.log.error(err instanceof Error ? err.message : String(err))
-      }
-    }
-
-    // ── Step 7: typecheck verification (only when files actually written) ─
-    if (!flags.dryRun && fw.typescript && existsSync(resolve(process.cwd(), 'tsconfig.json'))) {
-      const sTc = p.spinner()
-      sTc.start('Verifying patch with TypeScript')
-      try {
-        execSync('npx --no-install tsc --noEmit', {
-          cwd: process.cwd(),
-          stdio: 'pipe',
-          timeout: 60_000,
-        })
-        sTc.stop('TypeScript check passed ✓')
-      } catch (err) {
-        sTc.stop(pc.yellow('TypeScript reported errors after patch — review manually'))
-        const stderr = (err as { stderr?: Buffer; stdout?: Buffer }).stderr ?? (err as { stdout?: Buffer }).stdout
-        const text = stderr ? stderr.toString().trim() : ''
-        if (text) {
-          // Show only the first ~10 lines to avoid flooding terminal
-          const lines = text.split('\n').slice(0, 10)
-          for (const line of lines) p.log.message(pc.dim(`  ${line}`))
-          if (text.split('\n').length > 10) p.log.message(pc.dim(`  …`))
-        }
-      }
-    }
-  }
+  // ── Step 6 + 7: scan, patch, verify (rolls back on new type errors) ─
+  const status = await runPatchStep({
+    cwd: process.cwd(),
+    providers: keyInfo.providers,
+    dryRun: flags.dryRun,
+    typecheck: fw.typescript && existsSync(resolve(process.cwd(), 'tsconfig.json')),
+  })
+  const outcome = finalOutcome(status)
 
   // ── Step 8: next steps ────────────────────────────────────────────
-  const deployEnvNote = flags.serverUrl
-    ? `     ${pc.dim('SPANLENS_API_KEY + SPANLENS_BASE_URL')}`
-    : `     ${pc.dim('(Vercel/Railway/Fly → Settings → Environment Variables)')}`
-  p.note(
-    [
-      `${pc.bold('1.')} Add ${pc.cyan('SPANLENS_API_KEY')}${flags.serverUrl ? ` + ${pc.cyan('SPANLENS_BASE_URL')}` : ''} to your deployment environment`,
-      deployEnvNote,
-      '',
-      `${pc.bold('2.')} Redeploy your app`,
-      '',
-      `${pc.bold('3.')} Your requests will show up at:`,
-      `     ${pc.underline(dashboardUrl + '/requests')}`,
-    ].join('\n'),
-    'Next steps',
-  )
+  if (outcome.showNextSteps) {
+    p.note(
+      buildNextSteps(
+        { serverOrigin: flags.serverUrl, dashboardUrl, providers: keyInfo.providers },
+        pc,
+      ).join('\n'),
+      'Next steps',
+    )
+  }
 
-  // ── Step 9: welcome message — PLG Loop ④ ─────────────────────────
-  // Subtle GitHub Star CTA after a successful init. Stars are evaluator-
-  // first social proof for OSS projects; every init is one chance to ask.
-  // Single strong CTA + one quiet secondary link — anything more dilutes.
-  // utm_source distinguishes init traffic from other channels in GH analytics.
-  p.log.message('')
-  p.log.message(
-    `${pc.yellow('★')}  Star Spanlens on GitHub:  ${pc.underline('https://github.com/spanlens/Spanlens?utm_source=cli_init')}`,
-  )
-  p.log.message(
-    pc.dim(`   Read the docs:           https://spanlens.io/docs`),
-  )
+  if (outcome.showCta) {
+    // ── Step 9: welcome message — PLG Loop ④ ───────────────────────
+    // Subtle GitHub Star CTA after a successful init. Stars are evaluator-
+    // first social proof for OSS projects; every init is one chance to ask.
+    // Single strong CTA + one quiet secondary link — anything more dilutes.
+    // utm_source distinguishes init traffic from other channels in GH analytics.
+    p.log.message('')
+    p.log.message(
+      `${pc.yellow('★')}  Star Spanlens on GitHub:  ${pc.underline('https://github.com/spanlens/Spanlens?utm_source=cli_init')}`,
+    )
+    p.log.message(
+      pc.dim(`   Read the docs:           https://spanlens.io/docs`),
+    )
+  }
 
-  p.outro(pc.green('🎉 Spanlens setup complete'))
+  const paint = outcome.tone === 'success' ? pc.green : outcome.tone === 'warning' ? pc.yellow : pc.red
+  p.outro(paint(outcome.message))
+  process.exitCode = outcome.exitCode
 }
 
 main().catch((err) => {
