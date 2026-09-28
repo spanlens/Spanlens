@@ -7,6 +7,7 @@
  * - Tracks in-flight requests so callers can await flush() before process exit.
  */
 
+import { resolveApiBaseUrl } from './env.js'
 import type { SpanlensConfig } from './types.js'
 
 const DOCS_QUICK_START_URL = 'https://www.spanlens.io/docs/quick-start'
@@ -193,7 +194,7 @@ function safeOnError(
 }
 
 export function createTransport(config: SpanlensConfig): Transport {
-  const baseUrl = (config.baseUrl ?? 'https://api.spanlens.io').replace(/\/$/, '')
+  const baseUrl = resolveApiBaseUrl(config.baseUrl)
   const timeoutMs = config.timeoutMs ?? 3000
   const silent = config.silent ?? true
   const onError = config.onError

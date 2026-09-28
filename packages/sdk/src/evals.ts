@@ -18,9 +18,9 @@
  *   }
  */
 
+import { resolveApiBaseUrl } from './env.js'
 import { SpanlensApiError } from './transport.js'
 
-const DEFAULT_BASE_URL = 'https://api.spanlens.io'
 const DEFAULT_POLL_INTERVAL_MS = 2000
 const DEFAULT_TIMEOUT_MS = 300_000
 
@@ -285,8 +285,9 @@ function parseApiError(text: string, status: number): SpanlensApiError | null {
   })
 }
 
+/** `baseUrl` falls back to `SPANLENS_BASE_URL`, then the hosted API. */
 export function createEvalsApi(config: { apiKey: string; baseUrl?: string }): EvalsApi {
-  return new EvalsApi({ apiKey: config.apiKey, baseUrl: config.baseUrl ?? DEFAULT_BASE_URL })
+  return new EvalsApi({ apiKey: config.apiKey, baseUrl: resolveApiBaseUrl(config.baseUrl) })
 }
 
 /** The 95% confidence interval for a run's mean score (P1-7). */

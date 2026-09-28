@@ -21,8 +21,12 @@
 
 import OpenAI from 'openai'
 import type { ClientOptions } from 'openai'
+import { readEnv, resolveProxyBaseUrl } from '../env.js'
 
-/** Default Spanlens proxy URL. Override for self-hosted deployments. */
+/**
+ * Hosted Spanlens proxy URL. Self-hosted deployments set `SPANLENS_BASE_URL`
+ * (the server origin) or pass `baseURL`.
+ */
 export const DEFAULT_SPANLENS_OPENAI_PROXY =
   'https://api.spanlens.io/proxy/openai/v1'
 
@@ -50,7 +54,8 @@ export {
  *
  * @param options Forwards to `new OpenAI(options)`. You can override `apiKey`
  *   and `baseURL` but usually you won't need to — defaults pick up
- *   `SPANLENS_API_KEY` and the hosted proxy URL.
+ *   `SPANLENS_API_KEY`, then `SPANLENS_BASE_URL` (self-hosted origin) or the
+ *   hosted proxy URL.
  *
  * @throws Error if `apiKey` is missing (env + explicit both unset).
  */
@@ -67,14 +72,6 @@ export function createOpenAI(options: ClientOptions = {}): OpenAI {
   return new OpenAI({
     ...options,
     apiKey,
-    baseURL: options.baseURL ?? DEFAULT_SPANLENS_OPENAI_PROXY,
+    baseURL: options.baseURL ?? resolveProxyBaseUrl(DEFAULT_SPANLENS_OPENAI_PROXY),
   })
-}
-
-function readEnv(name: string): string | undefined {
-  // Node + Vercel Edge both expose process.env; guard just in case (e.g. browser).
-  if (typeof process !== 'undefined' && process.env) {
-    return process.env[name]
-  }
-  return undefined
 }
