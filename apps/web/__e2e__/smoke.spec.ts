@@ -1,17 +1,21 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { createClient } from '@supabase/supabase-js'
 
 /**
- * R-3 smoke spec — signup → api key → proxy → dashboard.
+ * R-3 smoke spec covering sign in → proxy → /requests.
  *
  * What we verify (and what we do not)
  *
- *   We assert that a fresh user can:
- *     1. authenticate via magic-link (Supabase admin pre-seed)
- *     2. issue an sl_live_* API key
- *     3. send a proxy request that lands on the mock OpenAI server
- *     4. see the request appear in /requests within the eventual-
- *        consistency window
+ *   The tenant (user, workspace, project, sl_live_* key, encrypted provider
+ *   key, completed onboarding profile) is pre-seeded with the service role,
+ *   the same rows POST /organizations/bootstrap and the onboarding survey
+ *   write. Signup and key issuance through the UI are NOT covered here. From
+ *   that fixture we assert that:
+ *     1. the password login form signs the user in and lands on /dashboard
+ *        (not /onboarding, not /login)
+ *     2. a proxy call with the key reaches the mock OpenAI server
+ *     3. the proxy writes its row to the `requests` table
+ *     4. /requests renders that row for the signed-in user
  *
  *   We do NOT cover billing, invitations, or evaluator flows here —
  *   those have their own focused specs (R-3 Phase 2 / Phase 3).
@@ -24,6 +28,11 @@ import { createClient } from '@supabase/supabase-js'
  *   E2E_SERVER_URL              http://localhost:3001  (Hono server)
  *   E2E_SUPABASE_URL            local supabase API URL (e.g. http://localhost:54321)
  *   E2E_SUPABASE_SERVICE_KEY    service_role key — admin auth bypass
+ *   ENCRYPTION_KEY              must match the server's, see step 2c
+ *
+ *   The web process itself needs SUPABASE_SERVICE_ROLE_KEY: middleware.ts
+ *   resolves the workspace and the onboarding flag with it, and without it
+ *   every signed-in navigation is sent to /onboarding.
  *
  * Why a fresh user per run
  *   No teardown means rerunning the suite a second time would collide
@@ -71,22 +80,47 @@ async function aes256EncryptB64(plaintext: string, keyB64: string): Promise<stri
   return Buffer.from(result).toString('base64')
 }
 
-// The admin client is used only for user pre-seed + magic-link
-// generation. Real users never see this code path.
+// The admin client is used only for the tenant pre-seed and the log poll.
+// Real users never see this code path.
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
 
-test.describe('smoke: signup → api key → proxy → /requests', () => {
+/**
+ * Waits until React has hydrated the element matching `selector`.
+ *
+ * The login form submits only through its React onSubmit handler. Clicking
+ * before hydration fires a native form submit instead, which reloads /login
+ * with nothing signed in, so the spec would fail or pass depending on how
+ * fast the dev server compiled the page. React attaches `__reactProps$*` to
+ * a DOM node when it hydrates it, which is the earliest reliable signal.
+ */
+async function waitForHydration(page: Page, selector: string): Promise<void> {
+  await page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(sel)
+      return !!el && Object.keys(el).some((key) => key.startsWith('__reactProps$'))
+    },
+    selector,
+    { timeout: 30_000 },
+  )
+}
+
+test.describe('smoke: sign in → proxy → /requests', () => {
   test.skip(
     !supabaseServiceKey,
     'E2E_SUPABASE_SERVICE_KEY not set — skipping (set it locally via `supabase status` JSON)',
   )
 
-  test('user can sign in, create an API key, hit proxy, and see the request', async ({
+  test('seeded user can sign in, hit the proxy, and see the request on /requests', async ({
     page,
     request,
   }) => {
+    // The workflow runs `next dev`, which compiles /login, /dashboard and
+    // /requests on first hit. Those compiles alone can take most of the
+    // config's 60s default on a cold CI runner.
+    test.setTimeout(180_000)
+
     const email = `e2e-${Date.now()}@spanlens.test`
 
     const password = 'test-password-correct-horse'
@@ -143,6 +177,21 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
     if (projErr || !project) throw new Error(`project insert failed: ${projErr?.message}`)
     const projectId = project.id as string
 
+    // ── 2a. Mark onboarding complete, as the /onboarding survey would ─────────
+    //
+    // The dashboard layout sends anyone without user_profiles.onboarded_at to
+    // /onboarding (middleware.ts reads it, (dashboard)/layout.tsx redirects).
+    // Nothing creates this row on signup; POST /me/profile/complete does, and
+    // the spec skips that UI. Without it the login below can never reach
+    // /dashboard, which is how this spec used to time out on every run.
+    const { error: profileErr } = await supabase.from('user_profiles').insert({
+      user_id: userId,
+      use_case: 'agent',
+      role: 'engineer',
+      onboarded_at: new Date().toISOString(),
+    })
+    if (profileErr) throw new Error(`user_profiles insert failed: ${profileErr.message}`)
+
     // ── 2b. Issue the API key NOW (was step 4) so the provider_key below
     //         can point at it. provider_keys.api_key_id is NOT NULL
     //         after migration 20260505080000_provider_keys_under_api_keys.sql,
@@ -196,11 +245,19 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
     if (pkErr) throw new Error(`provider_keys insert failed: ${pkErr.message}`)
 
     // ── 3. Sign in via the actual login form ──────────────────────────────────
+    //
+    // A successful login hard-navigates to /dashboard. The URL assertion is
+    // exact on purpose: /onboarding or /login here means the session or the
+    // middleware's workspace lookup broke, and a loose pattern would hide it.
     await page.goto('/login')
+    await waitForHydration(page, 'form')
     await page.fill('#email', email)
     await page.fill('#password', password)
     await page.click('button[type="submit"]')
-    await page.waitForURL(/\/(projects|dashboard)/, { timeout: 30_000 })
+    await page.waitForURL((url) => url.pathname === '/dashboard', {
+      timeout: 90_000,
+      waitUntil: 'commit',
+    })
 
     // ── 5. Issue a chat-completions call through the proxy. Server's
     //      OPENAI_API_BASE is pointed at mock-openai in the CI compose
@@ -216,12 +273,9 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
 
     // ── 6. The request log row verifies the proxy → log pipe ───────────────
     //
-    // The proxy writes its log row fire-and-forget, so polling the table is
-    // the cleanest deterministic check that auth → proxy → upstream → log
-    // works end to end. Checking the /requests page instead would drag in
-    // Next 16 RSC compilation, middleware cookie handling, and the
-    // server-component cache, none of which are part of the contract this
-    // spec is about. A dedicated UI spec can cover the rendering.
+    // The proxy writes its log row fire-and-forget, so poll the table until
+    // it lands before looking at the UI. Otherwise a slow write would show up
+    // as an empty /requests page and read like a rendering bug.
     //
     // Read through PostgREST with the service key: it bypasses RLS, which is
     // what the server does too, and it avoids giving the browser test suite a
@@ -254,15 +308,17 @@ test.describe('smoke: signup → api key → proxy → /requests', () => {
     }
     expect(loggedRowCount, 'the proxy request was never logged to the requests table').toBeGreaterThan(0)
 
-    // Final touch: confirm the user is still logged in after the proxy
-    // round-trip and the route resolves to SOMETHING. Pattern is loose
-    // because the spec pre-seeds the workspace via service_role, which
-    // skips the /onboarding step's `user_profiles.onboarded_at` write —
-    // middleware then bounces /requests to /onboarding for first-time
-    // users. That's the right behaviour for a real user, just not what
-    // the smoke spec models. Any logged-in landing zone counts here;
-    // a regression to /login is the only thing we'd want to fail on.
+    // ── 7. /requests shows the row to the signed-in user ────────────────────
+    //
+    // This is the dashboard half of the pipe: middleware session → RSC
+    // prefetch through the server API → requestsScope → table render. The
+    // workspace is brand new, so any row on the page is the one this run
+    // produced; the model name pins it to the proxy call above.
     await page.goto('/requests')
-    await expect(page.url(), 'smoke: session lost after proxy round-trip — middleware regressed to /login').not.toContain('/login')
+    await expect(page, 'session or onboarding gate regressed on /requests').toHaveURL(/\/requests(\?|$)/)
+    const rows = page.getByTestId('request-row')
+    await expect(rows.first(), 'the proxied request never rendered on /requests').toBeVisible({ timeout: 30_000 })
+    await expect(rows).toHaveCount(loggedRowCount)
+    await expect(rows.first()).toContainText('gpt-4o-mini')
   })
 })
