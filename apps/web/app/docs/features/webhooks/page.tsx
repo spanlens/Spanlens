@@ -255,6 +255,11 @@ app.post('/hooks/spanlens', express.raw({ type: 'application/json' }), (req, res
         or delete the webhook.
       </p>
       <p>
+        Retries have a 24 hour limit, counted from the first attempt. If retries are held up on the
+        Spanlens side and a delivery is still waiting 24 hours after its event, it is dead-lettered
+        with the reason <code>expired</code> rather than sent a day late.
+      </p>
+      <p>
         Delivery is at least once. A retry can reach you even after an earlier attempt was
         processed, for example when your endpoint did the work but answered too slowly. Every
         attempt for the same event carries the same <code>X-Spanlens-Delivery-Id</code>, so record

@@ -262,6 +262,14 @@ ORDER BY created_at;`}</CodeBlock>
         means a customer endpoint has been down long enough to burn through every retry.
       </p>
       <p>
+        Retries also stop 24 hours after the first attempt. A delivery that is still pending by
+        then is dead-lettered as <code>expired</code> instead of being sent, which only happens
+        when the retry job itself stopped running. <code>claim_webhook_deliveries()</code> does
+        this sweep at the start of every run, so the first run after an outage clears the stale
+        backlog in one pass without sending any of it. That pass can raise{' '}
+        <code>dlq_count</code> by many rows at once and trip the alert below.
+      </p>
+      <p>
         Overlapping runs are safe. Each run claims its deliveries through{' '}
         <code>claim_webhook_deliveries()</code>, which locks them and sets a 5-minute lease, so
         no two runs send the same delivery. If a run dies mid-send, its deliveries become
@@ -301,7 +309,10 @@ ORDER BY count DESC;`}</CodeBlock>
         </li>
         <li>
           <code>exhausted</code> means the endpoint returned errors or timed out for the
-          full retry window (contact the customer). <code>webhook_deleted</code> and{' '}
+          full retry window (contact the customer). <code>expired</code> means our retry job
+          was not running for most of a day, so the endpoint may be fine and the fix is on our
+          side (see <a href="#cron-dropout">scheduled jobs stop firing</a>). Expired deliveries
+          are not resent automatically. <code>webhook_deleted</code> and{' '}
           <code>payload_missing</code> are terminal and need no action.
         </li>
       </ol>
