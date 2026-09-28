@@ -215,6 +215,19 @@ describe('requireEditDualAuth write gate', () => {
     })
     expect(res.status).toBe(403)
   })
+
+  // A null role is not proof of the API-key path: a JWT caller with no
+  // workspace (removed, or not onboarded yet) has one too.
+  test('JWT caller with no workspace is rejected, not treated as an API key', async () => {
+    jwtRole = null
+    const res = await buildApp().request('/write', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${JWT_TOKEN}` },
+    })
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('FORBIDDEN')
+  })
 })
 
 // Source-level guard: the 2026-07-13 bug was a ROUTE missing the gate, which

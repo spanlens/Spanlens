@@ -1,14 +1,12 @@
 import { createMiddleware } from 'hono/factory'
-import { invalidateAuthCacheForUser, type JwtContext, type OrgRole } from './authJwt.js'
+import {
+  invalidateAuthCacheForUser,
+  isReadMethod,
+  type JwtContext,
+  type OrgRole,
+} from './authJwt.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { ApiError } from '../lib/errors.js'
-
-/** Methods that cannot change state. Everything else counts as a write. */
-const READ_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS'])
-
-export function isReadMethod(method: string): boolean {
-  return READ_METHODS.has(method.toUpperCase())
-}
 
 /**
  * The caller's CURRENT role in `orgId`, read straight from org_members and
@@ -48,6 +46,12 @@ export interface RoleCheckInput {
  *     the very next write, on every instance. When the fresh role differs from
  *     the cached one, this instance's cache entries for the user are dropped
  *     so their reads catch up too.
+ *
+ * authJwt has already re-resolved the membership for a write by the time this
+ * runs. The second read is deliberate: it keeps the gate correct whichever
+ * middleware populated `role`, and a failed lookup here is a 500 rather than
+ * the silent null authJwt would produce. It costs one indexed lookup on
+ * role-gated writes only.
  *
  * No org or no user (pre-onboarding, or the API-key path of a dual-auth
  * router) yields null without touching the DB.

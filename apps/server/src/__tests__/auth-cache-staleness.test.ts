@@ -15,11 +15,14 @@ import { installOnError } from './helpers/install-on-error.js'
  *
  *   C1.2  requireRole only read the cached role, so a demoted or removed
  *         admin kept admin WRITE access for up to 60s. Inside that window
- *         they could re-promote themselves and keep admin forever.
+ *         they could re-promote themselves and keep admin forever. Writes
+ *         with no role gate at all (shares POST) kept acting on the cached
+ *         orgId, so a removed member could still mint a never-expiring
+ *         public share link into the workspace they had just lost.
  *
- * Everything below runs the real authJwt, requireRole, organizationsRouter
- * and membersRouter over an in-memory supabase fake, with Date faked so the
- * cache TTL is driven explicitly.
+ * Everything below runs the real authJwt, requireRole, organizationsRouter,
+ * membersRouter and sharesRouter over an in-memory supabase fake, with Date
+ * faked so the cache TTL is driven explicitly.
  */
 
 const users = vi.hoisted(
@@ -57,6 +60,7 @@ const db = dbModule.__db
 const { _clearAuthCacheForTests } = await import('../middleware/authJwt.js')
 const { organizationsRouter } = await import('../api/organizations.js')
 const { membersRouter } = await import('../api/members.js')
+const { sharesRouter } = await import('../api/shares.js')
 
 const T0 = new Date('2026-09-28T00:00:00.000Z').getTime()
 
@@ -68,6 +72,7 @@ function buildApp() {
   const app = new Hono<JwtContext>()
   app.route('/api/v1/organizations/:orgId/members', membersRouter)
   app.route('/api/v1/organizations', organizationsRouter)
+  app.route('/api/v1/shares', sharesRouter)
   installOnError(app)
   return app
 }
@@ -271,5 +276,85 @@ describe('C1.2 demoted or removed admins lose write access immediately', () => {
     const res = await call('tok-c', 'PATCH', '/organizations/org1/members/ub', { role: 'editor' })
     expect(res.status).toBe(200)
     expect(roleOf('org1', 'ub')).toBe('editor')
+  })
+})
+
+describe('ungated writes re-resolve the workspace instead of trusting the cache', () => {
+  // A share of this trace exposes it publicly, so minting one is a write that
+  // matters even though shares POST has no role gate.
+  const SHARE = { scope: 'trace', targetId: 'tr1', ttl: 'never', redactPii: false }
+
+  beforeEach(() => {
+    addUser('tok-a', 'ua')
+    addUser('tok-c', 'uc')
+    seedOrgWithMembers([
+      { userId: 'ua', role: 'admin' },
+      { userId: 'uc', role: 'viewer' },
+    ])
+    db.tables['traces'] = [{ id: 'tr1', organization_id: 'org1', name: 'checkout' }]
+  })
+
+  async function warmCacheFor(token: string): Promise<void> {
+    const res = await call(token, 'GET', '/organizations/org1/members')
+    expect(res.status).toBe(200)
+  }
+
+  async function removeMember(userId: string): Promise<void> {
+    const res = await call('tok-a', 'DELETE', `/organizations/org1/members/${userId}`)
+    expect(res.status).toBe(200)
+    expect(roleOf('org1', userId)).toBeUndefined()
+  }
+
+  function shareRows(): unknown[] {
+    return db.tables['shared_links'] ?? []
+  }
+
+  test('removed member with a warm cache cannot mint a public share link (404)', async () => {
+    await warmCacheFor('tok-c')
+    await removeMember('uc')
+
+    at(5_000)
+    const res = await call('tok-c', 'POST', '/shares', SHARE)
+    expect(res.status).toBe(404)
+    expect(shareRows()).toHaveLength(0)
+  })
+
+  test('the rejected write also drops the stale read entry on this instance', async () => {
+    await warmCacheFor('tok-c')
+    await removeMember('uc')
+
+    at(5_000)
+    await call('tok-c', 'POST', '/shares', SHARE)
+
+    // Without the write this read would be served from the warm entry (org1)
+    // for the rest of the 60s window.
+    const me = await call('tok-c', 'GET', '/organizations/me')
+    expect(me.status).toBe(404)
+  })
+
+  test('a current member with a warm cache can still mint a share link (control)', async () => {
+    await warmCacheFor('tok-c')
+
+    at(5_000)
+    const res = await call('tok-c', 'POST', '/shares', SHARE)
+    expect(res.status).toBe(200)
+    expect(shareRows()).toHaveLength(1)
+  })
+
+  test('a write refreshes the membership but never extends the cached token lifetime', async () => {
+    await warmCacheFor('tok-c') // entry verified at t=0, expires at t=60s
+
+    // Session revoked. The cached identity stays usable until the entry
+    // expires (the documented 60s trade-off), and no longer than that.
+    at(10_000)
+    users.delete('tok-c')
+
+    at(50_000)
+    const write = await call('tok-c', 'POST', '/shares', SHARE)
+    expect(write.status).toBe(200)
+
+    at(61_000)
+    const read = await call('tok-c', 'GET', '/organizations/me')
+    expect(read.status).toBe(401)
   })
 })

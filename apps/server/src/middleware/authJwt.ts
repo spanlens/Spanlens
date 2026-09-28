@@ -61,29 +61,54 @@ export const WORKSPACE_COOKIE = 'sb-ws'
 // Pre-onboarding traffic is a handful of requests per user, so paying the
 // lookup on each of them costs nothing noticeable.
 //
+// Reads and writes use an entry differently:
+//   - Reads (GET/HEAD/OPTIONS) take all of it: identity, orgId and role.
+//   - Writes (every other method) take only the verified identity (userId,
+//     email) and re-resolve orgId and role from org_members on every request,
+//     so every write handler acts on the caller's CURRENT workspace and role,
+//     whether or not it has a role gate. Ungated writes are why this lives
+//     here and not only in requireRole: shares POST mints a public link that
+//     outlives the member, so a cached orgId there let a member removed a few
+//     seconds earlier keep exposing the workspace's traces indefinitely.
+//     The fresh result replaces the entry but keeps its original expiry, so a
+//     stream of writes never stretches how long a verified token is trusted.
+//
 // Security trade-off:
-//   - Revoked tokens stay valid until their cache entry expires (max 60s).
-//   - Role changes (admin demoted, user removed from org) can take up to 60s
-//     to surface on READ endpoints. WRITE endpoints do not trust the cached
-//     role: requireRole and requireEditDualAuth re-read org_members for every
-//     request that is not GET/HEAD/OPTIONS, so a demoted or removed member is
-//     rejected immediately. Trusting the cached role there was not harmless:
-//     inside the window a demoted admin could re-promote themselves (or a
-//     removed one could invite themselves back) and keep admin for good.
+//   - Revoked tokens stay valid until their cache entry expires (max 60s),
+//     on reads and writes alike.
+//   - Membership changes (admin demoted, user removed from org) can take up
+//     to 60s to reach READ endpoints on an instance holding a warm entry.
+//     Writes see them immediately (above). requireRole and
+//     requireEditDualAuth read the role once more before a gated write, which
+//     keeps those gates correct whichever middleware set `role` and makes a
+//     failed lookup a 500 instead of a silent null.
 //   - invalidateAuthCacheForUser() drops a user's entries on THIS instance
-//     after a membership change. Other serverless instances keep theirs until
-//     the TTL runs out, which is why the write-time re-check above is the
-//     actual guarantee and the helper only shortens the read-side staleness.
-interface AuthCacheEntry {
+//     after a membership change, shortening the read-side staleness there.
+//     Other serverless instances keep theirs until the TTL runs out; the
+//     write-time re-resolution is what closes the window for writes.
+interface AuthIdentity {
   userId: string
   email: string
+}
+
+interface Membership {
   orgId: string | null
   role: OrgRole | null
+}
+
+interface AuthCacheEntry extends AuthIdentity, Membership {
   expiresAt: number
 }
 
 const AUTH_CACHE_TTL_MS = 60_000
 const AUTH_CACHE_MAX_SIZE = 1000
+
+/** Methods that cannot change state. Everything else counts as a write. */
+const READ_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+export function isReadMethod(method: string): boolean {
+  return READ_METHODS.has(method.toUpperCase())
+}
 
 const _authCache = new Map<string, AuthCacheEntry>()
 
@@ -101,7 +126,11 @@ function getCachedAuth(key: string): AuthCacheEntry | null {
   return entry
 }
 
-function setCachedAuth(key: string, entry: Omit<AuthCacheEntry, 'expiresAt'>): void {
+function setCachedAuth(
+  key: string,
+  entry: Omit<AuthCacheEntry, 'expiresAt'>,
+  expiresAt: number = Date.now() + AUTH_CACHE_TTL_MS,
+): void {
   // Defensive size cap. JS Map iterates insertion order, so deleting the
   // first key approximates FIFO eviction. For a 60s TTL with the 1000-entry
   // cap we'd need >16 concurrent users/sec to ever hit this — current scale
@@ -111,7 +140,7 @@ function setCachedAuth(key: string, entry: Omit<AuthCacheEntry, 'expiresAt'>): v
     const firstKey = _authCache.keys().next().value
     if (firstKey !== undefined) _authCache.delete(firstKey)
   }
-  _authCache.set(key, { ...entry, expiresAt: Date.now() + AUTH_CACHE_TTL_MS })
+  _authCache.set(key, { ...entry, expiresAt })
 }
 
 /** Test-only: clear the cache between unit tests. */
@@ -126,8 +155,9 @@ export function _clearAuthCacheForTests(): void {
  * instance re-resolves orgId and role from org_members.
  *
  * Process-local only: other serverless instances keep their entries until the
- * TTL expires. Write authorization does not depend on this helper (see the
- * write-time re-check in requireRole). Returns how many entries were removed.
+ * TTL expires. Write authorization does not depend on this helper (writes
+ * always re-resolve the membership, see the cache notes above). Returns how
+ * many entries were removed.
  */
 export function invalidateAuthCacheForUser(userId: string): number {
   const staleKeys = [..._authCache.entries()]
@@ -135,6 +165,84 @@ export function invalidateAuthCacheForUser(userId: string): number {
     .map(([key]) => key)
   for (const key of staleKeys) _authCache.delete(key)
   return staleKeys.length
+}
+
+/** Verify the bearer token with Supabase Auth. Throws 401 when it is not valid. */
+async function verifyToken(token: string): Promise<AuthIdentity> {
+  const { data, error } = await supabaseClient.auth.getUser(token)
+
+  if (error || !data.user) {
+    throw new ApiError('UNAUTHORIZED', 'Invalid or expired token')
+  }
+
+  // Email comes from the same verified user record — no need for handlers to
+  // re-fetch it via auth.admin.getUserById. Lowercased for case-insensitive
+  // matching (Supabase stores emails case-insensitively).
+  return { userId: data.user.id, email: (data.user.email ?? '').toLowerCase() }
+}
+
+/**
+ * Workspace resolution order:
+ *   1. `sb-ws` cookie — explicit user choice from the sidebar switcher.
+ *      Validated against org_members so a stale cookie (e.g. after the
+ *      user was removed from that org) silently falls through.
+ *   2. Oldest org_members row — deterministic default for single-workspace
+ *      users and for the very first request after signup before any cookie
+ *      has been set.
+ */
+async function resolveMembership(
+  userId: string,
+  preferredOrgId: string | null,
+): Promise<Membership> {
+  if (preferredOrgId) {
+    const { data: preferred } = await supabaseAdmin
+      .from('org_members')
+      .select('organization_id, role')
+      .eq('user_id', userId)
+      .eq('organization_id', preferredOrgId)
+      .maybeSingle()
+    if (preferred) {
+      return { orgId: preferred.organization_id, role: preferred.role as OrgRole }
+    }
+  }
+
+  const { data: membership } = await supabaseAdmin
+    .from('org_members')
+    .select('organization_id, role')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  return {
+    orgId: membership?.organization_id ?? null,
+    role: (membership?.role as OrgRole | undefined) ?? null,
+  }
+}
+
+/**
+ * Store a freshly resolved membership under `key`.
+ *
+ * `previous` is the entry a write reused its identity from. Its expiry is
+ * kept, and when the membership has moved since, every other entry of the
+ * user on this instance (other tokens, other cookie variants) is dropped as
+ * well. The pre-onboarding null is never stored (see the cache notes above).
+ */
+function rememberAuth(
+  key: string,
+  identity: AuthIdentity,
+  membership: Membership,
+  previous: AuthCacheEntry | null,
+): void {
+  const moved =
+    previous !== null &&
+    (previous.orgId !== membership.orgId || previous.role !== membership.role)
+  if (moved) invalidateAuthCacheForUser(identity.userId)
+
+  if (!membership.orgId) {
+    _authCache.delete(key)
+    return
+  }
+  setCachedAuth(key, { ...identity, ...membership }, previous?.expiresAt)
 }
 
 export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
@@ -146,11 +254,11 @@ export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
   const token = authHeader.slice(7)
   const preferredOrgId = readCookie(c.req.header('cookie'), WORKSPACE_COOKIE)
   const cacheK = authCacheKey(token, preferredOrgId)
-
-  // Fast path: cache hit. Skips both the Supabase Auth call and the
-  // org_members query.
   const cached = getCachedAuth(cacheK)
-  if (cached) {
+
+  // Fast path for reads: a cache hit skips both the Supabase Auth call and
+  // the org_members query.
+  if (cached && isReadMethod(c.req.method)) {
     c.set('userId', cached.userId)
     c.set('email', cached.email)
     c.set('orgId', cached.orgId)
@@ -158,62 +266,17 @@ export const authJwt = createMiddleware<JwtContext>(async (c, next) => {
     return next()
   }
 
-  const { data, error } = await supabaseClient.auth.getUser(token)
+  // Writes reuse a cached identity but always re-resolve the membership.
+  const identity: AuthIdentity = cached
+    ? { userId: cached.userId, email: cached.email }
+    : await verifyToken(token)
+  const membership = await resolveMembership(identity.userId, preferredOrgId)
+  rememberAuth(cacheK, identity, membership, cached)
 
-  if (error || !data.user) {
-    throw new ApiError('UNAUTHORIZED', 'Invalid or expired token')
-  }
-
-  const userId = data.user.id
-  // Email comes from the same verified user record — no need for handlers to
-  // re-fetch it via auth.admin.getUserById. Lowercased for case-insensitive
-  // matching (Supabase stores emails case-insensitively).
-  const email = (data.user.email ?? '').toLowerCase()
-
-  // Workspace resolution order:
-  //   1. `sb-ws` cookie — explicit user choice from the sidebar switcher.
-  //      Validated against org_members so a stale cookie (e.g. after the
-  //      user was removed from that org) silently falls through.
-  //   2. Oldest org_members row — deterministic default for single-workspace
-  //      users and for the very first request after signup before any cookie
-  //      has been set.
-  let orgId: string | null = null
-  let role: OrgRole | null = null
-
-  if (preferredOrgId) {
-    const { data: preferred } = await supabaseAdmin
-      .from('org_members')
-      .select('organization_id, role')
-      .eq('user_id', userId)
-      .eq('organization_id', preferredOrgId)
-      .maybeSingle()
-    if (preferred) {
-      orgId = preferred.organization_id
-      role = preferred.role as OrgRole
-    }
-  }
-
-  if (!orgId) {
-    const { data: membership } = await supabaseAdmin
-      .from('org_members')
-      .select('organization_id, role')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-    orgId = membership?.organization_id ?? null
-    role = (membership?.role as OrgRole | undefined) ?? null
-  }
-
-  // Never cache the pre-onboarding "no membership" result (see the cache
-  // notes above): the membership may be created by the very request that is
-  // running right now (bootstrap), and a cached null would hide it for 60s.
-  if (orgId) setCachedAuth(cacheK, { userId, email, orgId, role })
-
-  c.set('userId', userId)
-  c.set('email', email)
-  c.set('orgId', orgId)
-  c.set('role', role)
+  c.set('userId', identity.userId)
+  c.set('email', identity.email)
+  c.set('orgId', membership.orgId)
+  c.set('role', membership.role)
 
   return next()
 })

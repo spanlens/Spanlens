@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { JwtContext } from '../middleware/authJwt.js'
 import { installOnError } from './helpers/install-on-error.js'
 
@@ -43,13 +43,14 @@ afterEach(() => vi.useRealTimers())
 function makeApp() {
   const app = new Hono<JwtContext>()
   app.use('*', authJwt)
-  app.get('/probe', (c) =>
+  const probe = (c: Context<JwtContext>) =>
     c.json({
       userId: c.get('userId'),
       orgId: c.get('orgId'),
       role: c.get('role'),
-    }),
-  )
+    })
+  app.get('/probe', probe)
+  app.post('/probe', probe)
   installOnError(app)
   return app
 }
@@ -334,5 +335,46 @@ describe('authJwt — cache policy', () => {
     expect(getUserMock).toHaveBeenCalledTimes(4)
     await app.request('/probe', { headers: { Authorization: 'Bearer a1' } })
     expect(getUserMock).toHaveBeenCalledTimes(5)
+  })
+
+  test('a write re-reads org_members even with a warm entry, reusing the verified token', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'usr_1' } }, error: null })
+    fromMock.mockReturnValueOnce(membershipChain({ organization_id: 'org_1', role: 'admin' }))
+    fromMock.mockReturnValueOnce(membershipChain({ organization_id: 'org_1', role: 'viewer' }))
+
+    const app = makeApp()
+    const headers = { Authorization: 'Bearer tok' }
+    const read = await app.request('/probe', { headers })
+    expect(await read.json()).toEqual({ userId: 'usr_1', orgId: 'org_1', role: 'admin' })
+
+    // Demoted to viewer in between. The write sees it at once.
+    const write = await app.request('/probe', { method: 'POST', headers })
+    expect(await write.json()).toEqual({ userId: 'usr_1', orgId: 'org_1', role: 'viewer' })
+    expect(getUserMock).toHaveBeenCalledTimes(1)
+    expect(fromMock).toHaveBeenCalledTimes(2)
+
+    // The refreshed membership replaces the stale entry for later reads.
+    const after = await app.request('/probe', { headers })
+    expect(await after.json()).toEqual({ userId: 'usr_1', orgId: 'org_1', role: 'viewer' })
+    expect(fromMock).toHaveBeenCalledTimes(2)
+  })
+
+  test('a write that finds no membership drops the cached entry', async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: 'usr_1' } }, error: null })
+    fromMock.mockReturnValueOnce(membershipChain({ organization_id: 'org_1', role: 'admin' }))
+    fromMock.mockReturnValue(membershipChain(null))
+
+    const app = makeApp()
+    const headers = { Authorization: 'Bearer tok' }
+    await app.request('/probe', { headers })
+
+    // Removed from the workspace in between.
+    const write = await app.request('/probe', { method: 'POST', headers })
+    expect(await write.json()).toEqual({ userId: 'usr_1', orgId: null, role: null })
+
+    // The next read resolves from scratch instead of reusing org_1.
+    const after = await app.request('/probe', { headers })
+    expect(await after.json()).toEqual({ userId: 'usr_1', orgId: null, role: null })
+    expect(getUserMock).toHaveBeenCalledTimes(2)
   })
 })
