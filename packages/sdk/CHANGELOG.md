@@ -23,6 +23,7 @@ Tracing no longer sits on your request path, `flush()` drains every end you sche
 
 ### Fixed
 
+- `createAnthropic()` sets `authToken` to `null` unless you pass one. With `ANTHROPIC_AUTH_TOKEN` in the environment, `@anthropic-ai/sdk` added it as an `Authorization: Bearer` header, which the proxy reads before the Spanlens key, so the call failed and the token was sent to Spanlens.
 - `client.flush()` now waits for span and trace ends that were never awaited, including ones still queued behind their creation POST. Before, it returned while those PATCHes were outstanding, so fire-and-forget ends (and the LlamaIndex integration, which always ends spans that way) could leave spans `running` after a serverless freeze or `process.exit`. It waits only for work scheduled before it was called, so on a client shared by concurrent requests one request's flush is not held open by the traffic that follows it.
 - With `logBody: 'meta'` or `'none'`, the provider helpers no longer send the response as span output or the prompt as span input. Previously the option only set the proxy header, and the full response still went to ingest through the span.
 - LangChain: every top-level run gets its own trace. A handler shared across overlapping invocations (as the docs recommend) used to merge them into one trace, drop the second run's error status, and leave later runs in a trace that never ended. Sampled-out error runs are still recorded when a parallel run succeeds.
