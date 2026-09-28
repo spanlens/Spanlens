@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 from .sampler import BufferingTransport, should_sample, validate_sample_rate
 from .trace import TraceHandle, create_trace
 from .transport import DEFAULT_SHUTDOWN_TIMEOUT_S, Transport
+from .types import SpanlensConfig
 
 
 class SpanlensClient:
@@ -42,7 +43,7 @@ class SpanlensClient:
         # Validate early so a malformed value can't silently drop 100% of traces.
         self._sample_rate = validate_sample_rate(sample_rate)
 
-        config: dict[str, Any] = {
+        config: SpanlensConfig = {
             "api_key": api_key,
             "timeout_ms": timeout_ms,
             "silent": silent,

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from types import TracebackType
 from typing import Any, Optional
 
-from .transport import Transport
+from .transport import IngestTransport
 from .types import SpanType
 
 # Sentinel for "argument intentionally omitted" — distinct from None which
@@ -27,7 +27,7 @@ class SpanHandle:
 
     def __init__(
         self,
-        transport: Transport,
+        transport: IngestTransport,
         *,
         span_id: str,
         trace_id: str,
@@ -197,7 +197,7 @@ class SpanHandle:
 
 
 def create_span(
-    transport: Transport,
+    transport: IngestTransport,
     trace_id: str,
     *,
     name: str,

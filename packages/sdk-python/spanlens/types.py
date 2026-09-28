@@ -6,17 +6,18 @@ consistent across language SDKs.
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Callable, Literal, Optional
 
-# Python 3.9 doesn't expose `NotRequired`; pull it from typing_extensions if
-# available, otherwise fall back to making every TypedDict field required by
-# treating them as plain dicts at the call site.
-try:  # pragma: no cover - import-time branch
+# ``NotRequired`` joined ``typing`` in 3.11. A ``sys.version_info`` check (not
+# try/except ImportError) lets mypy pick the right branch for the configured
+# python_version.
+if sys.version_info >= (3, 11):  # pragma: no cover - import-time branch
     from typing import NotRequired, TypedDict
-except ImportError:  # Python < 3.11
+else:  # pragma: no cover - import-time branch
     from typing import TypedDict
 
-    from typing_extensions import NotRequired  # type: ignore[assignment]
+    from typing_extensions import NotRequired
 
 
 SpanType = Literal["llm", "tool", "retrieval", "embedding", "custom"]

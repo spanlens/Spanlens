@@ -43,12 +43,15 @@ from ..trace import TraceHandle
 # duck-typed callback dispatch picks our methods up correctly. Falls back to a
 # plain object base class so the handler is testable without langchain
 # installed and so we don't add langchain as a hard dependency.
+#
+# mypy reports a missing optional import on the ``from`` line, so that is
+# where the ignore goes (it used to sit on the name line and missed).
 try:
-    from langchain_core.callbacks import (
-        BaseCallbackHandler as _LCBase,  # type: ignore[import-not-found]
+    from langchain_core.callbacks import (  # type: ignore[import-not-found]
+        BaseCallbackHandler as _LCBase,
     )
 except ImportError:  # pragma: no cover - covered by tests indirectly
-    _LCBase = object  # type: ignore[assignment,misc]
+    _LCBase = object
 
 
 # Sentinel for "argument intentionally omitted" — distinct from None.
@@ -142,7 +145,25 @@ def _parse_llm_result(response: Any) -> dict[str, Any]:
     return out
 
 
-class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
+def _first_generation_text(response: Any) -> Optional[str]:
+    """``response.generations[0][0].text`` of a LangChain ``LLMResult``
+    (dict or object shape). ``None`` when any level is missing."""
+    generations = (
+        response.get("generations")
+        if isinstance(response, dict)
+        else getattr(response, "generations", None)
+    )
+    if not isinstance(generations, (list, tuple)) or not generations:
+        return None
+    first_batch = generations[0]
+    if not isinstance(first_batch, (list, tuple)) or not first_batch:
+        return None
+    first = first_batch[0]
+    text = first.get("text") if isinstance(first, dict) else getattr(first, "text", None)
+    return text if isinstance(text, str) else None
+
+
+class SpanlensCallbackHandler(_LCBase):  # type: ignore[misc]
     """LangChain-compatible callback handler that records LLM, chain, tool,
     and retriever spans to Spanlens.
 
@@ -195,7 +216,7 @@ class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
         max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
     ) -> None:
         # _LCBase.__init__() may be object.__init__() which takes no args.
-        super().__init__()  # type: ignore[misc]
+        super().__init__()
         self._client = client
         self._external_trace = trace
         self._trace_name = trace_name
@@ -337,19 +358,7 @@ class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
     def on_llm_end(self, response: Any, *, run_id: Any, **_: Any) -> None:
         parsed = _parse_llm_result(response)
         output_text: Any = _OMIT
-        generations = (
-            response.get("generations")
-            if isinstance(response, dict)
-            else getattr(response, "generations", None)
-        )
-        try:
-            text = (
-                generations[0][0].get("text")
-                if isinstance(generations[0][0], dict)
-                else getattr(generations[0][0], "text", None)
-            )
-        except (TypeError, IndexError, AttributeError):
-            text = None
+        text = _first_generation_text(response)
         if isinstance(text, str):
             trimmed = _truncate(text, self._max_output_bytes)
             output_text = trimmed

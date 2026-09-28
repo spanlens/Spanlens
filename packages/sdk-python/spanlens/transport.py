@@ -39,7 +39,7 @@ import threading
 import time
 from concurrent.futures import Future
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Protocol
 
 import httpx
 
@@ -66,6 +66,19 @@ _POOL_SIZE = 8
 
 _DOCS_QUICK_START_URL = "https://www.spanlens.io/docs/quick-start"
 _PRICING_URL = "https://www.spanlens.io/pricing"
+
+
+class IngestTransport(Protocol):
+    """What traces and spans need from a transport. Implemented by
+    ``Transport`` and by the sampler's ``BufferingTransport``."""
+
+    def post(
+        self, path: str, body: Any, *, after: Optional[Future[Any]] = None
+    ) -> Future[Any]: ...
+
+    def patch(
+        self, path: str, body: Any, *, after: Optional[Future[Any]] = None
+    ) -> Future[Any]: ...
 
 
 class SpanlensTransportError(RuntimeError):
@@ -444,6 +457,7 @@ __all__ = [
     "DEFAULT_MAX_PENDING",
     "DEFAULT_SHUTDOWN_TIMEOUT_S",
     "MAX_ATTEMPTS",
+    "IngestTransport",
     "SpanlensTransportError",
     "Transport",
 ]
