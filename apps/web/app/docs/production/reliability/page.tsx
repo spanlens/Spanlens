@@ -67,13 +67,25 @@ export default function ReliabilityDocs() {
             <td>Provider SDKs retry with backoff.</td>
           </tr>
           <tr>
+            <td>Provider unreachable, or the connection drops before a full response</td>
+            <td>502 <code>UPSTREAM_FAILED</code> returned.</td>
+            <td>Logged with status_code=502 and the failure (for example <code>ECONNRESET</code>) in <code>error_message</code>.</td>
+            <td>Retry; check the provider status page if it persists.</td>
+          </tr>
+          <tr>
             <td>Stream exceeds 290s budget</td>
             <td>Stream closes gracefully; client sees an end-of-stream without sentinel.</td>
-            <td>Logged with <code>truncated: true</code>, partial response body kept.</td>
+            <td>Logged with <code>truncated: true</code>, partial response body kept, and the deadline noted in <code>error_message</code>.</td>
             <td>Use <code>stream: true</code> with smaller <code>max_tokens</code>, or self-host (no Vercel 300s limit).</td>
           </tr>
           <tr>
-            <td>Non-streaming &gt; 35s</td>
+            <td>Provider drops a stream partway through</td>
+            <td>Client sees an end-of-stream without sentinel.</td>
+            <td>Logged with <code>truncated: true</code>, partial response body kept, and the interruption in <code>error_message</code>.</td>
+            <td>Retry.</td>
+          </tr>
+          <tr>
+            <td>Non-streaming: no response headers within 35s, or the body not finished within 290s of the request</td>
             <td>504 returned.</td>
             <td>Logged with status_code=504.</td>
             <td>Switch to streaming; first byte still arrives in ~200ms.</td>
@@ -110,13 +122,31 @@ export default function ReliabilityDocs() {
       </p>
       <p>
         A cron route, <code>GET /cron/replay-fallback</code>, runs every 5 minutes, pulls up
-        to 50 rows in FIFO order, and inserts them into <code>requests</code> as one
-        statement. Rows that land are deleted from the queue. Rows that do not get their{' '}
-        <code>retry_count</code> bumped and stay put.
+        to 50 rows, and inserts them into <code>requests</code> as one statement. Rows that
+        land are deleted from the queue. What happens when the insert fails depends on why:
       </p>
       <ul>
-        <li><strong>Expiry</strong>: rows are dropped after 7 days or 100 retries, whichever comes first.</li>
-        <li><strong>Ordering</strong>: FIFO by <code>created_at</code>, not strict per-organization.</li>
+        <li>
+          <strong>The database is the problem</strong> (unreachable, timing out, or missing a
+          column the code expects): the batch stays queued untouched and the next run tries
+          again. These failures do not count against a row&apos;s retry limit, so an outage
+          cannot use it up.
+        </li>
+        <li>
+          <strong>A row&apos;s own data is the problem</strong> (for example it belongs to an
+          organization deleted while the row waited): the batch is retried one row at a time.
+          Every other row lands, and only the rejected row has its <code>retry_count</code>{' '}
+          bumped. One bad row cannot hold up the rows queued behind it.
+        </li>
+      </ul>
+      <ul>
+        <li><strong>Expiry</strong>: rows are dropped after 7 days, or after 100 rejections of the row itself, whichever comes first.</li>
+        <li><strong>Ordering</strong>: FIFO by <code>created_at</code> among rows that have not been rejected; a rejected row moves behind them. Not strict per-organization.</li>
+        <li>
+          <strong>Webhooks</strong>: <code>request.created</code> fires when a row reaches{' '}
+          <code>requests</code>. For a queued row that is when the replay inserts it, so the
+          event arrives late but never names a request you cannot read.
+        </li>
         <li>
           <strong>Duplicates</strong>: the replay insert ends in{' '}
           <code>ON CONFLICT (created_at, id) DO NOTHING</code>. If a batch lands but the
@@ -277,7 +307,7 @@ export default function ReliabilityDocs() {
           <tr>
             <td>Proxy overhead (p95)</td>
             <td>&lt; 50 ms</td>
-            <td><code>proxy_overhead_ms</code> column on every Request row.</td>
+            <td><code>proxy_overhead_ms</code> column on every Request row, measured from the request reaching the proxy to the call to the provider, so authentication, rate limits and the quota check are included.</td>
           </tr>
           <tr>
             <td>Fallback drain (p95)</td>

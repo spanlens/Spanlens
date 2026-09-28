@@ -248,7 +248,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>latency_ms</code></td>
-            <td>Time from proxy receiving the request to last byte sent (ms)</td>
+            <td>Provider time (ms): from sending the request to the provider until its response headers arrive (time to first byte for a stream)</td>
           </tr>
           <tr>
             <td><code>status_code</code></td>
