@@ -12,14 +12,17 @@ What's exercised:
   - ``observe_openai`` wraps an async OpenAI call cleanly inside a handler
 
 The Spanlens proxy + OpenAI API are both intercepted by respx, so no real
-network traffic happens. The test owns the FastAPI app it spins up — no
+network traffic happens. The OpenAI client gets its ``http_client`` from the
+``provider_http_client`` fixture: ``openai>=3`` sends through ``httpx2``,
+which respx does not patch. The test owns the FastAPI app it spins up — no
 shared module-level state.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 import pytest
@@ -27,7 +30,7 @@ import respx
 
 # Optional deps — skip whole module if not installed
 pytest.importorskip("fastapi")
-pytest.importorskip("openai")
+openai = pytest.importorskip("openai")
 
 from fastapi import FastAPI  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
@@ -44,7 +47,10 @@ def _ok_json(body: Any = None) -> httpx.Response:
     return httpx.Response(200, json=body or {"ok": True})
 
 
-def _make_app(spanlens_client: SpanlensClient) -> FastAPI:
+def _make_app(
+    spanlens_client: SpanlensClient,
+    provider_http_client: Callable[..., Any],
+) -> FastAPI:
     app = FastAPI()
 
     @app.post("/chat")
@@ -58,6 +64,7 @@ def _make_app(spanlens_client: SpanlensClient) -> FastAPI:
             client = create_async_openai(
                 api_key="sl_test_dummy",
                 base_url=OPENAI_PROXY,
+                http_client=provider_http_client(openai, is_async=True),
             )
             try:
                 return await client.chat.completions.create(
@@ -79,7 +86,9 @@ def _make_app(spanlens_client: SpanlensClient) -> FastAPI:
 
 
 @respx.mock
-async def test_fastapi_async_handler_emits_trace_and_span() -> None:
+async def test_fastapi_async_handler_emits_trace_and_span(
+    provider_http_client: Callable[..., Any],
+) -> None:
     """End-to-end: a POST to /chat triggers exactly one trace POST, one span
     POST, one OpenAI proxy call, and one span PATCH (the end()).
     """
@@ -123,21 +132,24 @@ async def test_fastapi_async_handler_emits_trace_and_span() -> None:
         silent=False,
     )
 
-    app = _make_app(spanlens_client)
+    app = _make_app(spanlens_client, provider_http_client)
 
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://testserver",
-    ) as client:
-        resp = await client.post("/chat", json={"q": "hi"})
+    try:
+        async with httpx.AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            resp = await client.post("/chat", json={"q": "hi"})
+    finally:
+        # Drain the background pool so all PATCHes have fired before
+        # assertions, and so none of them outlive this test's mocks when
+        # the request fails.
+        spanlens_client.close()
 
     assert resp.status_code == 200
     body = resp.json()
     assert body["reply"] == "hello back"
     assert isinstance(body["trace_id"], str)
-
-    # Drain the background pool so all PATCHes have fired before assertions
-    spanlens_client.close()
 
     assert trace_route.call_count == 1
     assert span_post.call_count == 1
@@ -153,7 +165,9 @@ async def test_fastapi_async_handler_emits_trace_and_span() -> None:
 
 
 @respx.mock
-async def test_fastapi_concurrent_requests_isolate_traces() -> None:
+async def test_fastapi_concurrent_requests_isolate_traces(
+    provider_http_client: Callable[..., Any],
+) -> None:
     """Two parallel POST /chat requests each get their own trace_id — no
     cross-contamination between coroutines.
     """
@@ -193,21 +207,20 @@ async def test_fastapi_concurrent_requests_isolate_traces() -> None:
         timeout_ms=2000,
         silent=False,
     )
-    app = _make_app(spanlens_client)
+    app = _make_app(spanlens_client, provider_http_client)
 
-    async with httpx.AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://testserver",
-    ) as http:
-        import asyncio  # local import keeps the module load light
-
-        responses = await asyncio.gather(
-            http.post("/chat", json={"q": "a"}),
-            http.post("/chat", json={"q": "b"}),
-            http.post("/chat", json={"q": "c"}),
-        )
-
-    spanlens_client.close()
+    try:
+        async with httpx.AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as http:
+            responses = await asyncio.gather(
+                http.post("/chat", json={"q": "a"}),
+                http.post("/chat", json={"q": "b"}),
+                http.post("/chat", json={"q": "c"}),
+            )
+    finally:
+        spanlens_client.close()
 
     trace_ids = {r.json()["trace_id"] for r in responses}
     assert len(trace_ids) == 3  # all unique
