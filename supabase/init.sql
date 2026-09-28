@@ -1,5 +1,5 @@
 -- =============================================================================
--- Spanlens — full database initialisation script
+-- Spanlens full database initialisation script
 -- =============================================================================
 -- Run this once against your Supabase project to create all tables, functions,
 -- triggers, RLS policies, and seed data required by Spanlens.
@@ -11,10 +11,13 @@
 --
 --   Option B (psql / CI):
 --     psql "postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres" \
---       -f supabase/init.sql
+--       -v ON_ERROR_STOP=1 -f supabase/init.sql
 --
--- This file is auto-generated from supabase/migrations/ — do not edit directly.
+-- This file is generated from supabase/migrations/, so edit those instead.
 -- Regenerate with: node scripts/generate-init-sql.mjs
+--
+-- Superseded migrations left out (see supabase/superseded-migrations.txt):
+--   20260609150000_register_orphan_span_link.sql
 -- =============================================================================
 
 
@@ -5990,43 +5993,6 @@ CREATE INDEX IF NOT EXISTS spans_orphan_external_parent_idx
 
 
 -- -----------------------------------------------------------------------------
--- Migration: 20260609150000_register_orphan_span_link.sql
--- -----------------------------------------------------------------------------
--- Migration: register_orphan_span_link
---
--- R-14 (Sprint 6) — production registration of the orphan-span-link
--- background migration. PR #270 shipped the registry entry + chunked
--- runner; this migration kicks off the actual job by INSERTing the
--- row that the 5-minute cron polls for.
---
--- Idempotency
---   ON CONFLICT (name) DO NOTHING — re-running this migration on a DB
---   that already has the row is a no-op. The job's status field is
---   left alone so an operator who pauses the job ('paused') doesn't
---   get it re-set to 'pending' by a redeploy.
---
--- Behaviour on a fresh DB (dev / CI)
---   The job runs immediately on the next cron tick. orphan-span-link
---   is safe to run against a brand-new spans table — the orphan
---   SELECT returns zero rows and runChunk returns done:true, so it
---   completes in one tick with no side effects. Dev devs do not need
---   to do anything; the row is harmless.
---
--- After production deploy
---   /cron/run-background-migrations picks the row up within 5 minutes.
---   /cron/detect-orphan-spans (hourly at xx:17) provides the watchdog
---   alert if the job stalls and orphans accumulate above 100.
---
--- See:
---   apps/server/src/lib/background-migrations/registry/migrations/orphan-span-link.ts
---   apps/server/src/api/cron.ts (/cron/detect-orphan-spans)
-
-INSERT INTO background_migrations (name, status)
-VALUES ('orphan-span-link', 'pending')
-ON CONFLICT (name) DO NOTHING;
-
-
--- -----------------------------------------------------------------------------
 -- Migration: 20260609170000_register_orphan_span_link_v3.sql
 -- -----------------------------------------------------------------------------
 -- Migration: register_orphan_span_link_v3
@@ -8316,4 +8282,2454 @@ DROP FUNCTION IF EXISTS public.get_model_prior_window_cost(uuid, text, text, tim
 DROP FUNCTION IF EXISTS public.aggregate_usage_daily(date);
 
 COMMIT;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260821120000_seed_models_2026_08b.sql
+-- -----------------------------------------------------------------------------
+-- Model price refresh — 2026-08-21.
+--
+-- Verified against the official pricing pages on 2026-08-21:
+--   OpenAI    developers.openai.com/api/docs/pricing
+--   Anthropic platform.claude.com  (Pricing + Models overview)
+--   Gemini    ai.google.dev/gemini-api/docs/pricing?hl=en
+--   xAI       docs.x.ai/docs/models
+--   Groq      console.groq.com/docs/models
+--   Mistral   mistral.ai/pricing/api
+--   DeepSeek  api-docs.deepseek.com/quick_start/pricing
+--   Cohere    cohere.com/pricing + docs.cohere.com/docs/models
+--
+-- Why this migration exists — customer impact, worst first:
+--
+--   1. gemini-3.6-flash was over-reporting by exactly 2x on all three axes.
+--      Google's flash pricing is $0.75 / $3.75 / cache $0.075 THROUGH
+--      2026-12-31; the $1.50 / $7.50 / $0.15 numbers the 2026-08-11 seed used
+--      are the rates that start 2027-01-01. Flash is a high-volume family, so
+--      this is the largest dollar error in the audit.
+--
+--   2. DeepSeek replaced flat pricing with a time-of-day schedule, and both
+--      tiers are more expensive than what we had. That means we were UNDER-
+--      reporting: the customer's DeepSeek invoice was larger than the number
+--      our dashboard showed them, which is the worse direction to be wrong in.
+--
+--        model              off-peak (17h)          peak (7h)
+--        deepseek-v4-flash  0.22 / 0.66 / 0.007     0.44 / 1.32 / 0.014
+--        deepseek-v4-pro    0.66 / 1.98 / 0.022     1.32 / 3.96 / 0.044
+--
+--      Peak is 01:00-04:00 and 06:00-10:00 UTC and is exactly 2x off-peak.
+--      model_prices has one price per axis and no time dimension, so one of
+--      the two has to be wrong for part of the day. Seeding OFF-PEAK is
+--      correct for 17 of 24 hours (~15% mean absolute error against uniform
+--      traffic); seeding peak would be correct for 7 (~71%). The residual is a
+--      50% under-report during peak hours. The real fix is a time-of-day
+--      dimension on this table; revisit if DeepSeek volume grows.
+--
+--   3. Five models had no row at all, so their requests logged cost_usd = NULL
+--      and rendered as a gap in the dashboard (gotcha #2):
+--        - gemini-3.7-flash   Google's new flash flagship, same introductory
+--                             pricing window as 3.6-flash.
+--        - grok-4.6           xAI's new flagship. Note the cache rate is
+--                             $0.50, NOT grok-4.5's $0.30; copying the 4.5
+--                             row would have mispriced every cache hit.
+--        - gpt-5.5-cyber      Cyber table. Input/cached/output are published;
+--                             cache WRITE is blank on the page, so NULL.
+--        - gpt-5-search-api   Specialized models table.
+--        - zai-glm-5-2        new in Mistral's Specialized section.
+--
+-- NOT a price change, but the reason this migration is urgent:
+--   Anthropic CANCELLED the 2026-09-01 Sonnet 5 increase. The pricing page now
+--   reads: "The $2/$10 ... announced at launch as introductory pricing through
+--   August 31, 2026, is now the standard price. The previously scheduled
+--   increase to $3/$15 ... on September 1, 2026 will not occur."
+--   (note id: claude-sonnet-5-introductory-pricing)
+--   The DB rows were already correct at 2.00/10.00/0.20/2.50 and are untouched
+--   here. What was wrong was every *instruction to change them*: the seed
+--   mirror, FALLBACK_PRICES and the refresh skill's pending-obligations list
+--   all told the next reader to raise Sonnet 5 on 2026-09-01. This refresh
+--   routine runs on the 1st and 15th, so it would have fired on exactly that
+--   date and over-reported every Sonnet 5 request by 50%. All three are
+--   corrected in the same PR.
+--
+-- Deliberately NOT seeded:
+--   - gpt-5.4-cyber: every price cell in the Cyber table is blank for this
+--     row. There is no honest number to put in, and a NULL cost is a visible
+--     gap rather than a silent wrong answer.
+--   - Gemini modality-split models: output billed per image, per second or per
+--     character cannot be expressed by a single completion_price_per_1m.
+--     gemini-*-image, gemini-*-tts, gemini-3.1-flash-live-preview,
+--     gemini-3.5-live-translate-preview, and gemini-omni-flash-preview
+--     ($9.00/1M text vs $17.50/1M video output). Standing reason, unchanged
+--     from 20260811120000.
+--   - gemini-embedding-2's non-text input rates (image $0.45, audio $6.50,
+--     video $12.00). The row carries the text rate ($0.20) only.
+--   - xAI Imagine (per image / per second) and Voice (per minute / per char).
+--   - groq/compound and groq/compound-mini: billed at the underlying model's
+--     rates, no rate of their own. minimaxai/minimax-m2.7: "Contact Sales".
+--     Groq's Whisper (per hour) and Orpheus (per 1M characters) are not
+--     per-token.
+--   - Cohere command-a-plus-05-2026 and command-a-{reasoning,vision,translate}:
+--     still no public per-token price.
+--
+-- Dropped off their provider's pricing page since 2026-08-11; rows are KEPT so
+-- historical requests still price, and listed here so the next refresh does not
+-- re-add them as "missing":
+--   - groq:     llama-3.3-70b-versatile, llama-3.1-8b-instant,
+--               moonshotai/kimi-k2-instruct-0905 (catalogue shrank to 11)
+--   - deepseek: deepseek-chat, deepseek-reasoner. Gone from the docs entirely.
+--               These were compatibility aliases onto the current v4 model. If
+--               they still resolve, they are now under-reported, but the page
+--               no longer says WHICH v4 they point at and flash vs pro is a 3x
+--               spread, so guessing risks making it worse. Rows left at their
+--               old values; verify with a live API key.
+--   - cohere:   command-a-03-2025 and command-r7b-12-2024 no longer show a
+--               per-token price. Rows kept at their last published rates.
+--
+-- NEW dated obligation, 2027-01-01: gemini-3.6-flash and gemini-3.7-flash both
+-- step up to 1.50 / 7.50 / 0.15. Missing it under-reports both by 50%. Pinned
+-- by a test in model-prices-cache.test.ts so CI catches drift in either
+-- direction.
+--
+-- Idempotent: ON CONFLICT DO UPDATE on the (provider, model) unique index.
+
+INSERT INTO model_prices (
+  provider, model,
+  prompt_price_per_1m, completion_price_per_1m,
+  cache_read_price_per_1m, cache_write_price_per_1m
+) VALUES
+  -- Gemini: introductory flash pricing through 2026-12-31.
+  -- 3.6-flash was seeded with the 2027 rates by mistake; 3.7-flash is new.
+  -- Neither publishes a long-context tier (that split is Pro-only).
+  ('gemini', 'gemini-3.6-flash',        0.75,   3.75,   0.075,  NULL),
+  ('gemini', 'gemini-3.7-flash',        0.75,   3.75,   0.075,  NULL),
+  -- DeepSeek: off-peak rates (see header for the peak/off-peak choice).
+  ('deepseek', 'deepseek-v4-flash',     0.22,   0.66,   0.007,  NULL),
+  ('deepseek', 'deepseek-v4-pro',       0.66,   1.98,   0.022,  NULL),
+  -- xAI: new flagship. Cache is 0.50, not grok-4.5's 0.30.
+  ('xai', 'grok-4.6',                   2.00,   6.00,   0.50,   NULL),
+  -- OpenAI: Cyber + Specialized rows that were logging NULL.
+  -- gpt-5.5-cyber publishes no cache-write rate (blank cell on the page).
+  ('openai', 'gpt-5.5-cyber',          12.50,  75.00,   1.25,   NULL),
+  ('openai', 'gpt-5-search-api',        1.25,  10.00,   0.125,  NULL),
+  -- Mistral: GLM 5.2, new in the Specialized section.
+  ('mistral', 'zai-glm-5-2',            1.40,   4.40,   NULL,   NULL)
+ON CONFLICT (provider, model) DO UPDATE
+  SET prompt_price_per_1m      = EXCLUDED.prompt_price_per_1m,
+      completion_price_per_1m  = EXCLUDED.completion_price_per_1m,
+      cache_read_price_per_1m  = EXCLUDED.cache_read_price_per_1m,
+      cache_write_price_per_1m = EXCLUDED.cache_write_price_per_1m,
+      updated_at               = now();
+
+-- xAI grok-4.6: crossing 200k re-rates the ENTIRE request at 2x, not just the
+-- overage, which is exactly how long_context_threshold_tokens is applied, so it
+-- maps cleanly. All three axes double: 2.00 -> 4.00, 6.00 -> 12.00,
+-- 0.50 -> 1.00.
+UPDATE model_prices
+   SET long_context_threshold_tokens = 200000,
+       long_prompt_price_per_1m      =  4.00,
+       long_completion_price_per_1m  = 12.00,
+       long_cache_read_price_per_1m  =  1.00,
+       updated_at                    = now()
+ WHERE provider = 'xai' AND model = 'grok-4.6';
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260928120000_seed_models_2026_09.sql
+-- -----------------------------------------------------------------------------
+-- Model price refresh — 2026-09-28.
+--
+-- Verified against the official pricing pages on 2026-09-28:
+--   OpenAI    developers.openai.com/api/docs/pricing
+--   Anthropic platform.claude.com  (Pricing + Models overview)
+--   Gemini    ai.google.dev/gemini-api/docs/pricing?hl=en
+--   xAI       docs.x.ai/docs/models
+--   Groq      console.groq.com/docs/models
+--   Mistral   mistral.ai/pricing/api
+--   DeepSeek  api-docs.deepseek.com/quick_start/pricing
+--   Cohere    cohere.com/pricing + docs.cohere.com/docs/models
+--
+-- Busiest refresh since this routine started: a new OpenAI generation (GPT-6),
+-- three new Anthropic models, and two silent 2x over-reports.
+--
+-- Why this migration exists — customer impact, worst first:
+--
+--   1. gemini-robotics-er-2-preview and -streaming-preview are both on
+--      INTRODUCTORY pricing through 2026-12-31 (1.00 / 5.00 / cache 0.10) and
+--      we were charging the post-2027 rates (2.00 / 10.00 / 0.20). Exactly the
+--      gemini-3.6-flash mistake of 2026-08, on two more rows: the seed took the
+--      "starting January 1, 2027" column. Every Robotics ER 2 request since
+--      2026-08-11 was over-reported by 2x on every axis.
+--
+--   2. gpt-5.6-sol was CUT and we did not follow it down. Input 5.00 -> 4.00,
+--      output 30.00 -> 20.00, cache read 0.50 -> 0.40, cache write 6.25 -> 5.00,
+--      and the long tier with it (10/45/1.00/12.50 -> 8/30/0.80/10.00). That is
+--      a 20% input and 33% output over-report on OpenAI's most-used flagship.
+--      Its siblings did NOT move — terra and luna are unchanged — which is the
+--      same "a family does not move together" trap that hid the 2026-08 terra
+--      and luna cuts. Diff every member, every run.
+--
+--   3. Eleven models had no row at all, so their requests logged
+--      cost_usd = NULL and rendered as a gap in the dashboard:
+--
+--        gpt-6-astra / gpt-6-sol / gpt-6-luna   OpenAI's new flagship family,
+--                                               all three with a 272k tier.
+--        gpt-rosalind-research                  new Life Sciences specialized row.
+--        omni-moderation-latest                 listed Free; seeded at 0, not
+--                                               left out, so it renders $0.00
+--                                               instead of "no data".
+--        claude-opus-5-5                        4 / 20, cache read 0.20.
+--        claude-fable-5-1 (+ claude-mythos-5-1) 10 / 50, cache read 0.25.
+--        gemini-3.8-flash                       same introductory window as 3.6
+--                                               and 3.7.
+--        grok-4.7                               identical rates to grok-4.6.
+--        qwen/qwen3.8-27b                       replaces qwen3.6-27b on Groq.
+--        deepseek-flash                         replaces deepseek-v4-flash.
+--        zai-glm-5-3                            new on Mistral.
+--
+--   4. Anthropic broke the 0.1x cache rule. Cache reads have been derivable as
+--      0.1x base input for every Claude model until now. They are not any more:
+--      Fable 5.1 and Mythos 5.1 read at 0.025x (0.25 on a 10.00 base) and
+--      Opus 5.5 at 0.05x (0.20 on a 4.00 base). Deriving instead of reading the
+--      column would over-charge cache hits by 4x and 2x respectively. A test
+--      pins all three.
+--
+-- OpenAI Daybreak aliases, now seeded:
+--   The pricing page states plainly that gpt-daybreak-blue-latest and
+--   gpt-daybreak-red-latest currently point at gpt-5.6-sol and gpt-5.6-cyber.
+--   They were previously left out because a moving pointer goes stale silently,
+--   and a stale price is worse than a gap. Seeding them wins anyway: the gap is
+--   certain and affects every request today, while the staleness is bounded by
+--   this routine running on the 1st and 15th. The obligation to re-verify both
+--   targets each run is recorded in the skill, and a test pins each alias to
+--   the row it mirrors so an internal edit cannot desync them. If OpenAI
+--   repoints either alias, that is caught by the audit, not by CI.
+--
+-- DeepSeek, two changes:
+--   deepseek-v4-flash is gone, replaced by deepseek-flash at a LOWER rate
+--   (0.15 / 0.60 / 0.003 off-peak vs 0.22 / 0.66 / 0.007). Separate id, so the
+--   old row stays and prices history; the new row is added.
+--   The peak window also narrowed: still 01:00-04:00 and 06:00-10:00 UTC, but
+--   now "Monday through Friday, excluding Chinese public holidays" rather than
+--   every day. Off-peak therefore covers ~79% of the year instead of ~71%,
+--   which makes the standing off-peak choice (see 20260821120000) more correct,
+--   not less. Peak-hour requests remain 50% under-reported until this table
+--   grows a time-of-day dimension.
+--
+-- Deliberately NOT seeded:
+--   - gpt-5.4-cyber: every price cell in its row is still blank.
+--   - Gemini modality-split models, output billed per image / second /
+--     character and not expressible as one completion_price_per_1m. New this
+--     month: gemini-3.8-live, gemini-3.8-live-extended-thinking,
+--     gemini-3.8-flash-tts, gemini-3.8-flash-lite-tts, gemini-omni-1.1-flash
+--     ($9.00/1M text vs $17.50/1M video output), gemini-3.5-transcribe and
+--     gemini-3.5-transcribe-live (per-minute audio alternative), lyria-3.5.
+--     Standing reason, unchanged from 20260811120000.
+--   - gemini-embedding-2's non-text input rates; the row carries text only.
+--   - Groq: whisper (per audio hour), Orpheus (per 1M characters),
+--     minimaxai/minimax-m2.7 (Contact Sales).
+--   - Mistral: OCR 4.1 (per 1000 pages), Voxtral TTS (per 1k characters),
+--     Voxtral Mini Transcribe Realtime (per minute), the Classifier API
+--     fine-tunes (priced per fine-tune, no stable id).
+--   - Cohere command-a-plus and the command-a-{reasoning,vision,translate}
+--     variants: still no public per-token price.
+--
+-- Two ids could not be read off a page and follow the vendor's own convention.
+-- Both are additive, so the worst case is a row that never matches rather than
+-- a wrong price, but the next refresh should confirm them:
+--   - claude-mythos-5-1: the pricing page lists "Claude Mythos 5.1" but the
+--     models overview omits invitation-only ids. Follows claude-mythos-5 and
+--     the documented claude-fable-5-1.
+--   - zai-glm-5-3: Mistral's pricing page stopped rendering API ids this month
+--     (it showed them in 2026-08, which is where zai-glm-5-2 came from).
+--     Prices are identical to GLM 5.2.
+--
+-- Dropped off their provider's pricing page since 2026-08-21; rows are KEPT so
+-- historical requests still price, and listed here so the next refresh does not
+-- re-add them as "missing":
+--   - gemini:   gemini-robotics-er-1.6-preview,
+--               gemini-2.5-flash-lite-preview-09-2025
+--   - groq:     qwen/qwen3.6-27b (superseded by qwen3.8-27b)
+--   - deepseek: deepseek-v4-flash (superseded by deepseek-flash)
+--   - mistral:  magistral-*, devstral-*, pixtral-* (unchanged since 2026-08)
+--
+-- Back on a pricing page but now UNPRICED, so the rows stay at their last
+-- published rates and cannot be improved:
+--   - groq:   llama-3.3-70b-versatile, llama-3.1-8b-instant. Delisted entirely
+--             in 2026-08, listed again now as "Contact Sales".
+--   - cohere: command-a-03-2025, command-r7b-12-2024.
+--
+-- DATED OBLIGATION — 2027-01-01, now five rows rather than two:
+--   gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash  -> 1.50 / 7.50 / 0.15
+--   gemini-robotics-er-2-preview                          -> 2.00 / 10.00 / 0.20
+--   gemini-robotics-er-2-streaming-preview                -> 2.00 / 10.00
+--   Missing it under-reports all five by 50%; applying it early over-reports by
+--   2x. Pinned on both sides by tests in model-prices-cache.test.ts.
+--
+-- Idempotent: ON CONFLICT DO UPDATE on the (provider, model) unique index.
+
+INSERT INTO model_prices (
+  provider, model,
+  prompt_price_per_1m, completion_price_per_1m,
+  cache_read_price_per_1m, cache_write_price_per_1m
+) VALUES
+  -- OpenAI: the GPT-6 generation. All three publish a 272k tier (set below).
+  ('openai', 'gpt-6-astra',                 10.00,  50.00,   1.00,  12.500),
+  ('openai', 'gpt-6-sol',                    2.00,  10.00,   0.20,   2.500),
+  ('openai', 'gpt-6-luna',                   0.10,   0.50,   0.01,   0.125),
+  -- OpenAI: gpt-5.6-sol was cut. terra and luna did not move.
+  ('openai', 'gpt-5.6-sol',                  4.00,  20.00,   0.40,   5.000),
+  -- OpenAI: new Specialized rows. omni-moderation-latest is listed Free, and 0
+  -- is the honest number — a missing row would render as "no data", not $0.00.
+  ('openai', 'gpt-rosalind-research',        5.00,  25.00,   0.50,   NULL),
+  ('openai', 'omni-moderation-latest',       0.00,   0.000,  NULL,   NULL),
+  -- OpenAI Daybreak aliases; mirror gpt-5.6-sol and gpt-5.6-cyber exactly.
+  -- Re-verify both targets every refresh: these repoint without notice.
+  ('openai', 'gpt-daybreak-blue-latest',     4.00,  20.00,   0.40,   5.000),
+  ('openai', 'gpt-daybreak-red-latest',     12.50,  75.00,   1.25,  15.625),
+  -- Anthropic: cache reads are NOT 0.1x on these three.
+  -- Fable/Mythos 5.1 read at 0.025x base; Opus 5.5 at 0.05x.
+  ('anthropic', 'claude-fable-5-1',         10.00,  50.00,   0.25,  12.50),
+  ('anthropic', 'claude-mythos-5-1',        10.00,  50.00,   0.25,  12.50),
+  ('anthropic', 'claude-opus-5-5',           4.00,  20.00,   0.20,   5.00),
+  -- Gemini: 3.8-flash joins 3.6 and 3.7 on introductory pricing through
+  -- 2026-12-31. Flash has no long-context tier; that split is Pro-only.
+  ('gemini', 'gemini-3.8-flash',             0.75,   3.75,   0.075, NULL),
+  -- Gemini: Robotics ER 2 was seeded with the 2027 rates by mistake.
+  ('gemini', 'gemini-robotics-er-2-preview',           1.00,  5.00,  0.10,  NULL),
+  ('gemini', 'gemini-robotics-er-2-streaming-preview', 1.00,  5.00,  NULL,  NULL),
+  -- xAI: grok-4.7 ships at grok-4.6's rates, including the 0.50 cache read.
+  ('xai', 'grok-4.7',                        2.00,   6.00,   0.50,   NULL),
+  -- Groq: qwen3.8-27b replaces qwen3.6-27b, at a higher rate.
+  ('groq', 'qwen/qwen3.8-27b',               0.80,   4.00,   NULL,   NULL),
+  -- DeepSeek: off-peak rates (see header, and 20260821120000 for the choice).
+  ('deepseek', 'deepseek-flash',             0.15,   0.60,   0.003,  NULL),
+  -- Mistral: GLM 5.3, same rates as GLM 5.2. Id follows the 5.2 convention.
+  ('mistral', 'zai-glm-5-3',                 1.40,   4.40,   NULL,   NULL)
+ON CONFLICT (provider, model) DO UPDATE
+  SET prompt_price_per_1m      = EXCLUDED.prompt_price_per_1m,
+      completion_price_per_1m  = EXCLUDED.completion_price_per_1m,
+      cache_read_price_per_1m  = EXCLUDED.cache_read_price_per_1m,
+      cache_write_price_per_1m = EXCLUDED.cache_write_price_per_1m,
+      updated_at               = now();
+
+-- ── OpenAI GPT-6: 272k long-context tier, every axis exactly 2x ─────────────
+UPDATE model_prices
+   SET long_context_threshold_tokens = 272000,
+       long_prompt_price_per_1m      = 20.00,
+       long_completion_price_per_1m  = 75.00,
+       long_cache_read_price_per_1m  =  2.00,
+       long_cache_write_price_per_1m = 25.00,
+       updated_at                    = now()
+ WHERE provider = 'openai' AND model = 'gpt-6-astra';
+
+UPDATE model_prices
+   SET long_context_threshold_tokens = 272000,
+       long_prompt_price_per_1m      =  4.00,
+       long_completion_price_per_1m  = 15.00,
+       long_cache_read_price_per_1m  =  0.40,
+       long_cache_write_price_per_1m =  5.00,
+       updated_at                    = now()
+ WHERE provider = 'openai' AND model = 'gpt-6-sol';
+
+UPDATE model_prices
+   SET long_context_threshold_tokens = 272000,
+       long_prompt_price_per_1m      =  0.20,
+       long_completion_price_per_1m  =  0.75,
+       long_cache_read_price_per_1m  =  0.02,
+       long_cache_write_price_per_1m =  0.25,
+       updated_at                    = now()
+ WHERE provider = 'openai' AND model = 'gpt-6-luna';
+
+-- ── OpenAI gpt-5.6-sol: the long tier followed the cut down ─────────────────
+-- Was 10.00 / 45.00 / 1.00 / 12.50 (migration 20260729100000).
+UPDATE model_prices
+   SET long_context_threshold_tokens = 272000,
+       long_prompt_price_per_1m      =  8.00,
+       long_completion_price_per_1m  = 30.00,
+       long_cache_read_price_per_1m  =  0.80,
+       long_cache_write_price_per_1m = 10.00,
+       updated_at                    = now()
+ WHERE provider = 'openai' AND model IN ('gpt-5.6-sol', 'gpt-daybreak-blue-latest');
+
+-- ── xAI grok-4.7: reaching 200k re-rates the WHOLE request at 2x ────────────
+UPDATE model_prices
+   SET long_context_threshold_tokens = 200000,
+       long_prompt_price_per_1m      =  4.00,
+       long_completion_price_per_1m  = 12.00,
+       long_cache_read_price_per_1m  =  1.00,
+       updated_at                    = now()
+ WHERE provider = 'xai' AND model = 'grok-4.7';
+
+-- omni-moderation-latest is served by /v1/moderations, not chat completions.
+UPDATE model_prices
+   SET chat_capable = FALSE,
+       updated_at   = now()
+ WHERE provider = 'openai' AND model = 'omni-moderation-latest';
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260928160000_deepseek_legacy_aliases.sql
+-- -----------------------------------------------------------------------------
+-- DeepSeek legacy aliases — 2026-09-28, follow-up to 20260928120000.
+--
+-- Source: api-docs.deepseek.com/quick_start/pricing, re-read 2026-09-28 while
+-- chasing the deepseek-chat / deepseek-reasoner question. The page has a
+-- legacy-names note that the earlier pass of the same audit missed:
+--
+--   "The legacy names deepseek-v4-flash and deepseek-v4-flash-vision-exp are
+--    still accepted, but the corresponding models have been retired, their
+--    requests are served by the DeepSeek-V4.1-Flash model and billed at the
+--    Flash price."
+--
+-- That changes two things.
+--
+--   1. deepseek-v4-flash is NOT delisted, it is re-pointed. Migration
+--      20260928120000 kept it at its last published rates (0.22 / 0.66 / 0.007)
+--      under the standing "a model gone from the pricing page keeps its row"
+--      rule. Wrong rule for this case: the id still works and DeepSeek now
+--      bills it at the Flash price, so we were over-reporting input by 47%,
+--      output by 10% and cache reads by 133%. Re-pointed to 0.15 / 0.60 / 0.003.
+--
+--      The general lesson, now recorded in the skill: "gone from the page" and
+--      "aliased onto a new model" look identical in a diff, and only the second
+--      one means the price moved. Read the alias notes before freezing a row.
+--
+--   2. deepseek-v4-flash-vision-exp is a second live alias we have never had a
+--      row for, so it logged cost_usd = NULL. Same Flash price.
+--
+-- deepseek-chat / deepseek-reasoner are DELETED, which is a deliberate
+-- exception to the "keep the row" rule. The rule exists so historical requests
+-- still price, and the justification does not hold here:
+--
+--   • DeepSeek publishes a legacy-alias list, and these two are absent from it.
+--     Their absence is now an explicit statement, not merely an omission — the
+--     same page names two other aliases and says exactly how they bill.
+--   • `requests` contains zero rows for provider = 'deepseek' over all
+--     retained history, so there is no past to re-price and no recompute path
+--     (api/requests.ts) that can reach them.
+--   • The rows claim 0.14 / 0.28 / 0.0028, which is not a price DeepSeek
+--     charges for anything today. Keeping them preserves a wrong number rather
+--     than a historical one.
+--
+-- If either id turns out to still resolve, re-add it pointed at whatever the
+-- docs then say it bills as — do not restore the 0.14 / 0.28 values.
+
+INSERT INTO model_prices (
+  provider, model,
+  prompt_price_per_1m, completion_price_per_1m,
+  cache_read_price_per_1m, cache_write_price_per_1m
+) VALUES
+  -- Both are live aliases onto DeepSeek-V4.1-Flash, billed at the Flash price.
+  -- Off-peak, consistent with every other DeepSeek row (see 20260821120000).
+  ('deepseek', 'deepseek-v4-flash',            0.15,  0.60,  0.003,  NULL),
+  ('deepseek', 'deepseek-v4-flash-vision-exp', 0.15,  0.60,  0.003,  NULL)
+ON CONFLICT (provider, model) DO UPDATE
+  SET prompt_price_per_1m      = EXCLUDED.prompt_price_per_1m,
+      completion_price_per_1m  = EXCLUDED.completion_price_per_1m,
+      cache_read_price_per_1m  = EXCLUDED.cache_read_price_per_1m,
+      cache_write_price_per_1m = EXCLUDED.cache_write_price_per_1m,
+      updated_at               = now();
+
+DELETE FROM model_prices
+ WHERE provider = 'deepseek'
+   AND model IN ('deepseek-chat', 'deepseek-reasoner');
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929100000_revoke_client_direct_writes.sql
+-- -----------------------------------------------------------------------------
+-- Close the Data API as a write path, and seal the `requests` partitions.
+--
+-- The browser holds the anon key and the signed-in user's JWT, and the
+-- Supabase Data API accepts both: PostgREST at /rest/v1, and pg_graphql at
+-- /graphql/v1 wherever that extension is installed. Spanlens never meant
+-- either to be a write path. Every write goes through apps/server, which
+-- checks the caller's org role and key scope first and then writes with
+-- service_role (supabaseAdmin) or the pooled `postgres` connection, both of
+-- which bypass RLS. The database did not enforce that, and three audit
+-- findings (docs/quality/XVERIFY-2026-09-28.md) follow from the gap:
+--
+--   C2.1  organizations: org_insert / org_update check only owner_id, and the
+--         hosted platform grants authenticated INSERT and UPDATE on every
+--         column. An owner could PATCH /rest/v1/organizations and set their
+--         own plan to enterprise (unlimited quota, 365-day retention), or
+--         rewrite paddle_customer_id, without paying.
+--
+--   C2.2  api_keys, provider_keys, projects, datasets and the other org
+--         tables: the write policies ask only is_org_member(), never the
+--         role. A viewer could insert a working full-scope API key with a raw
+--         value they chose, deactivate an admin's key, repoint the org's
+--         provider key at their own key, or delete a project and cascade
+--         every key under it, all without touching the server's role checks,
+--         audit log or cache invalidation.
+--
+--   C2.3  requests: RLS and privileges are per-table in Postgres and are not
+--         inherited by partitions. The parent has RLS plus a restrictive deny
+--         policy, but every monthly partition and requests_default had RLS
+--         off and the platform's default grants (full access for anon and
+--         authenticated). PostgREST happens to hide partitions from its schema
+--         cache; pg_graphql does not, and served every tenant's prompt and
+--         response bodies to the anon key in local reproduction. Production
+--         does not have pg_graphql installed today, which is luck rather than
+--         design, and a self-hosted stack with GraphQL on is exposed at once.
+--
+-- Evidence that nothing legitimate writes through those roles (checked
+-- against every call site at the time of writing):
+--   * apps/web uses supabase-js with the user's session for auth.* calls
+--     only (getUser, getSession, sign-in, identities). Its only table reads,
+--     in middleware.ts, go through a service_role client. No .from(), .rpc(),
+--     storage or realtime call runs as anon or authenticated.
+--   * apps/server uses its anon client (supabaseClient) for auth.getUser()
+--     only; every table and RPC call goes through supabaseAdmin or the pooler.
+--   * The Playwright specs seed through the service_role key.
+--
+-- So the model becomes: anon and authenticated may read what their SELECT
+-- policies allow and nothing else. It is enforced twice, independently:
+--
+--   1. Privileges. No INSERT/UPDATE/DELETE/TRUNCATE (or REFERENCES, TRIGGER,
+--      MAINTAIN) on any relation in public; no privilege at all on the
+--      requests tables; EXECUTE on no public function except
+--      is_org_member(uuid), which the SELECT policies call as authenticated.
+--   2. RLS. Every permissive write policy open to public/anon/authenticated
+--      is dropped, and every requests partition gets RLS enabled with no
+--      policy. If a later GRANT puts privileges back, RLS still refuses.
+--
+-- SELECT grants and SELECT policies are left exactly as they are.
+--
+-- The privilege half lives in enforce_client_privileges() so it can be
+-- re-applied, not just applied once: scripts/local-db-setup.mjs mirrors the
+-- hosted platform's creation-time grants onto a local stack and then calls
+-- it, which is what keeps local permissions identical to production. It also
+-- sets this role's default privileges so tables created by later migrations
+-- start without client write grants.
+--
+-- supabase/tests/direct-write-privileges.sql proves both layers, each one on
+-- its own, and fails on any public function, table or policy that drifts
+-- from this model.
+--
+-- Functions are handled by the sweep in enforce_client_privileges() rather
+-- than by default privileges. Postgres grants EXECUTE on new functions to
+-- PUBLIC globally, and anon and authenticated inherit from PUBLIC, so a
+-- per-schema default revoke would change nothing. A migration that adds a
+-- function should REVOKE it from PUBLIC, anon and authenticated itself; the
+-- test above catches one that forgets.
+
+BEGIN;
+
+-- Section 3 takes every table lock this migration needs in one statement,
+-- and explains how long that may take. After it nothing should wait on a
+-- lock at all; if something does, fail within a second instead of holding
+-- the tables already taken while it queues.
+SET LOCAL lock_timeout = '1s';
+
+-- ── 1. The privilege model, as a function that can be re-applied ─────────
+
+CREATE OR REPLACE FUNCTION public.enforce_client_privileges()
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  -- Postgres 17 added MAINTAIN (LOCK TABLE, VACUUM, REINDEX, ...). The
+  -- hosted platform grants it to both client roles.
+  has_maintain constant boolean :=
+    current_setting('server_version_num')::integer >= 170000;
+  rel record;
+  fn  record;
+BEGIN
+  -- Client roles may read what their SELECT policies allow and write nothing.
+  FOR rel IN
+    SELECT n.nspname, c.relname, c.relkind
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  LOOP
+    EXECUTE format(
+      'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE %I.%I'
+      || ' FROM PUBLIC, anon, authenticated',
+      rel.nspname, rel.relname
+    );
+    IF has_maintain AND rel.relkind IN ('r', 'p', 'm') THEN
+      EXECUTE format(
+        'REVOKE MAINTAIN ON TABLE %I.%I FROM PUBLIC, anon, authenticated',
+        rel.nspname, rel.relname
+      );
+    END IF;
+  END LOOP;
+
+  REVOKE USAGE, UPDATE ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+
+  -- The request log is read only by the server, and only through
+  -- lib/requests-query.ts, which scopes every query to one organization.
+  -- Nothing on the client side needs even SELECT. pg_partition_tree covers
+  -- the parent, every monthly partition and requests_default, because
+  -- neither privileges nor the RLS switch are inherited from the parent.
+  FOR rel IN
+    SELECT n.nspname, c.relname, c.relkind, c.relrowsecurity
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.oid IN (
+      SELECT relid FROM pg_partition_tree(to_regclass('public.requests'))
+      UNION ALL
+      SELECT to_regclass('public.requests_fallback')
+    )
+  LOOP
+    EXECUTE format(
+      'REVOKE ALL ON TABLE %I.%I FROM PUBLIC, anon, authenticated',
+      rel.nspname, rel.relname
+    );
+    -- Skipped when already on: the ALTER takes ACCESS EXCLUSIVE, and the
+    -- current month's partition is taking proxy writes.
+    IF NOT rel.relrowsecurity THEN
+      EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', rel.nspname, rel.relname);
+    END IF;
+  END LOOP;
+
+  -- No public function is callable through /rest/v1/rpc by a client role.
+  -- Trigger functions keep working: Postgres checks EXECUTE on a trigger
+  -- function when the trigger is created, not when it fires. service_role is
+  -- granted explicitly so the server's RPCs never depended on PUBLIC.
+  FOR fn IN
+    SELECT n.nspname, p.proname, pg_get_function_identity_arguments(p.oid) AS args
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.oid IS DISTINCT FROM to_regprocedure('public.is_org_member(uuid)')
+  LOOP
+    EXECUTE format(
+      'REVOKE EXECUTE ON ROUTINE %I.%I(%s) FROM PUBLIC, anon, authenticated',
+      fn.nspname, fn.proname, fn.args
+    );
+    EXECUTE format(
+      'GRANT EXECUTE ON ROUTINE %I.%I(%s) TO service_role',
+      fn.nspname, fn.proname, fn.args
+    );
+  END LOOP;
+
+  -- The one exception. Every membership SELECT policy calls is_org_member()
+  -- as authenticated, so revoking it would turn those reads into errors.
+  -- anon has no membership to check.
+  IF to_regprocedure('public.is_org_member(uuid)') IS NOT NULL THEN
+    REVOKE EXECUTE ON FUNCTION public.is_org_member(uuid) FROM PUBLIC, anon;
+    GRANT EXECUTE ON FUNCTION public.is_org_member(uuid) TO authenticated, service_role;
+  END IF;
+
+  -- Tables and sequences created later by migrations (which run as postgres)
+  -- and by ensure_requests_partitions() (which runs as its owner, postgres)
+  -- start out read-only for client roles. SELECT stays in the default so a
+  -- new table behaves like every existing one.
+  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+    REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLES
+    FROM anon, authenticated;
+  IF has_maintain THEN
+    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public'
+         || ' REVOKE MAINTAIN ON TABLES FROM anon, authenticated';
+  END IF;
+  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+    REVOKE USAGE, UPDATE ON SEQUENCES FROM anon, authenticated;
+END;
+$$;
+
+-- ── 2. New request partitions are sealed the moment they exist ───────────
+--
+-- Identical to 20260820100000 apart from the hardening block. CREATE OR
+-- REPLACE keeps the owner (postgres), SECURITY DEFINER and the existing
+-- EXECUTE revoke; enforce_client_privileges() below re-asserts the revoke.
+
+CREATE OR REPLACE FUNCTION public.ensure_requests_partitions(
+  months_ahead integer DEFAULT 3,
+  months_back  integer DEFAULT 1
+)
+RETURNS TABLE (partition_name text, created boolean)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  m           integer;
+  range_start date;
+  range_end   date;
+  part_name   text;
+  existed     boolean;
+BEGIN
+  FOR m IN -GREATEST(months_back, 0)..GREATEST(months_ahead, 0) LOOP
+    range_start := date_trunc('month', now())::date + (m || ' months')::interval;
+    range_end   := range_start + interval '1 month';
+    part_name   := 'requests_' || to_char(range_start, 'YYYY_MM');
+
+    SELECT EXISTS (
+      SELECT 1 FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = part_name
+    ) INTO existed;
+
+    IF NOT existed THEN
+      EXECUTE format(
+        'CREATE TABLE public.%I PARTITION OF public.requests FOR VALUES FROM (%L) TO (%L)',
+        part_name, range_start, range_end
+      );
+      -- Column compression is not reliably inherited by new partitions the way
+      -- indexes are, so set it here rather than assuming.
+      EXECUTE format(
+        'ALTER TABLE public.%I ALTER COLUMN request_body SET COMPRESSION lz4,'
+        || ' ALTER COLUMN response_body SET COMPRESSION lz4',
+        part_name
+      );
+      -- Neither RLS nor privileges are inherited from public.requests either.
+      -- Left alone, a new month would carry this role's default grants (full
+      -- access for anon and authenticated on the hosted platform) with RLS
+      -- off, readable and writable through pg_graphql by the anon key. The
+      -- table is brand new and already locked by the CREATE, so sealing it
+      -- here costs nothing and happens before the first row can land.
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', part_name);
+      EXECUTE format(
+        'REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated',
+        part_name
+      );
+    END IF;
+
+    partition_name := part_name;
+    created := NOT existed;
+    RETURN NEXT;
+  END LOOP;
+END;
+$$;
+
+-- ── 3. Take every table lock at once, under one time limit ───────────────
+--
+-- DROP POLICY (section 4) and ALTER TABLE ... ENABLE ROW LEVEL SECURITY
+-- (enforce_client_privileges(), section 5) each take ACCESS EXCLUSIVE on
+-- their table and keep it until COMMIT. Taken one at a time as those
+-- sections reach them, the locks pile up: the policy sweep runs in name
+-- order, so api_keys, organizations, projects and provider_keys would be
+-- locked early and then held while the migration queued for spans, traces
+-- and the current requests partition. lock_timeout limits each of those
+-- waits separately, so the hot tables would stay locked for the sum of all
+-- of them. Measured locally, two waits of about four seconds each kept
+-- api_keys locked for 7.5 seconds, and the migration still succeeded.
+--
+-- So one LOCK TABLE statement takes the whole set before anything changes,
+-- and statement_timeout caps that statement as a whole: at most 3 seconds of
+-- waiting in total, at most 1 second on any one table (lock_timeout above),
+-- and nothing after it waits. The request log goes first because long reads
+-- on it are the likeliest thing to wait for, and waiting there before
+-- anything else is held keeps api_keys and the rest free during that wait.
+-- On an idle database this takes milliseconds. On a timeout the migration
+-- rolls back having changed nothing, and the next deploy runs it again.
+--
+-- The set is built with the same filters sections 4 and 5 use, so it is
+-- exactly the tables they alter.
+
+SET LOCAL statement_timeout = '3s';
+
+DO $$
+DECLARE
+  targets text;
+BEGIN
+  SELECT string_agg(format('ONLY %I.%I', n.nspname, c.relname), ', '
+                    ORDER BY t.is_log DESC, c.relname)
+    INTO targets
+  FROM (
+    SELECT relid, bool_or(is_log) AS is_log
+    FROM (
+      -- Tables whose client write policies section 4 drops.
+      SELECT format('%I.%I', schemaname, tablename)::regclass::oid AS relid,
+             false AS is_log
+      FROM pg_policies
+      WHERE schemaname = 'public'
+        AND permissive = 'PERMISSIVE'
+        AND cmd IN ('INSERT', 'UPDATE', 'DELETE')
+        AND roles && ARRAY['public', 'anon', 'authenticated']::name[]
+      UNION ALL
+      -- Request tables that enforce_client_privileges() turns RLS on for.
+      SELECT p.oid, true
+      FROM pg_class p
+      WHERE p.oid IN (
+          SELECT relid FROM pg_partition_tree(to_regclass('public.requests'))
+          UNION ALL
+          SELECT to_regclass('public.requests_fallback')
+        )
+        AND NOT p.relrowsecurity
+    ) AS wanted
+    GROUP BY relid
+  ) AS t
+  JOIN pg_class c ON c.oid = t.relid
+  JOIN pg_namespace n ON n.oid = c.relnamespace;
+
+  IF targets IS NOT NULL THEN
+    EXECUTE 'LOCK TABLE ' || targets || ' IN ACCESS EXCLUSIVE MODE';
+  END IF;
+END;
+$$;
+
+SET LOCAL statement_timeout TO DEFAULT;
+
+-- ── 4. Drop the write policies that granted access by membership alone ───
+--
+-- With the privileges gone these policies can no longer admit anything, but
+-- they are the second layer: without them, a GRANT that comes back later
+-- (a platform permissions reset, a careless GRANT ALL in a future migration)
+-- reopens exactly the holes above. The server writes as service_role or as
+-- the table owner and bypasses RLS, so none of them was ever on a real path.
+--
+-- Swept from the catalog rather than listed, so a policy that exists in
+-- production but in no migration goes too. Restrictive (deny) policies and
+-- policies for service_role are untouched, as is every SELECT policy.
+DO $$
+DECLARE
+  pol record;
+BEGIN
+  FOR pol IN
+    SELECT schemaname, tablename, policyname, cmd
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND permissive = 'PERMISSIVE'
+      AND cmd IN ('INSERT', 'UPDATE', 'DELETE')
+      AND roles && ARRAY['public', 'anon', 'authenticated']::name[]
+    ORDER BY tablename, policyname
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I',
+                   pol.policyname, pol.schemaname, pol.tablename);
+    RAISE NOTICE 'dropped client write policy %.% (%)', pol.tablename, pol.policyname, pol.cmd;
+  END LOOP;
+END;
+$$;
+
+-- ── 5. Apply ──────────────────────────────────────────────────────────────
+
+SELECT public.enforce_client_privileges();
+
+COMMIT;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929110000_paddle_subscription_event_rpc.sql
+-- -----------------------------------------------------------------------------
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Paddle subscription events: ordered, atomic application + plan recompute.
+--
+-- WHY (quality audit 2026-09-28, C3.1 / C4.2):
+--   The webhook used to SELECT metadata.occurred_at, compare in JS, then
+--   UPSERT the whole row, then UPDATE organizations.plan in a separate
+--   request whose { error } it never read. Three problems followed:
+--     1. Two events for the same subscription arriving together could both
+--        pass the ordering check against the same old timestamp. The later
+--        writer won and could move occurred_at backwards.
+--     2. An org UPDATE that failed was answered with HTTP 200, so Paddle
+--        never retried and subscriptions / organizations.plan disagreed.
+--     3. A canceled event flipped the org to 'free' even when another
+--        subscription on the same org was still active.
+--
+-- WHAT:
+--   apply_paddle_subscription_event() does the ordering check inside the
+--   ON CONFLICT ... DO UPDATE ... WHERE clause, so Postgres evaluates it
+--   against the locked, latest committed row. The org row is locked first,
+--   so events for different subscriptions of one org serialize too. The
+--   org plan is then recomputed from every live subscription of the org in
+--   the same transaction: either both writes land or neither does, and the
+--   caller turns a failure into a 5xx that Paddle retries.
+--
+--   An event whose occurred_at EQUALS the stored one is re-applied. That is
+--   what makes a Paddle retry (or a manual resend from the dashboard) of an
+--   event that previously failed half way safe and useful.
+--
+--   past_due_since now starts a delinquency cycle only on the transition
+--   into past_due. A repeated past_due event keeps the stored value, which
+--   stays NULL after the downgrade cron has closed the cycle, so the same
+--   cycle is not re-opened and re-warned. Recovery (active/trialing) clears
+--   it as before, so the next failure starts a fresh cycle.
+--
+-- All functions are service_role only.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Lenient timestamptz parse: NULL instead of an exception for bad input.
+-- Paddle always sends ISO-8601, but a malformed stored value must not make
+-- every later event for that subscription fail.
+CREATE OR REPLACE FUNCTION public.billing_try_timestamptz(p_raw text)
+RETURNS timestamptz
+LANGUAGE plpgsql
+STABLE
+SET search_path = public
+AS $$
+BEGIN
+  IF p_raw IS NULL OR btrim(p_raw) = '' THEN
+    RETURN NULL;
+  END IF;
+  RETURN p_raw::timestamptz;
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END;
+$$;
+
+-- The plan an org is entitled to from its live (active / trialing) Paddle
+-- subscriptions: the highest tier wins, no live subscription means 'free'.
+-- p_exclude_paddle_subscription_id drops one subscription from the pick,
+-- which is how an approved refund removes its own entitlement before Paddle
+-- sends the matching subscription.canceled.
+CREATE OR REPLACE FUNCTION public.org_plan_from_live_subscriptions(
+  p_organization_id uuid,
+  p_exclude_paddle_subscription_id text DEFAULT NULL
+)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  SELECT COALESCE(
+    (
+      SELECT s.plan
+        FROM public.subscriptions s
+       WHERE s.organization_id = p_organization_id
+         AND s.status IN ('active', 'trialing')
+         AND (p_exclude_paddle_subscription_id IS NULL
+              OR s.paddle_subscription_id <> p_exclude_paddle_subscription_id)
+       ORDER BY CASE s.plan
+                  WHEN 'enterprise' THEN 3
+                  WHEN 'team' THEN 2
+                  WHEN 'starter' THEN 1
+                  ELSE 0
+                END DESC
+       LIMIT 1
+    ),
+    'free'
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.apply_paddle_subscription_event(
+  p_organization_id uuid,
+  p_paddle_subscription_id text,
+  p_paddle_customer_id text,
+  p_paddle_price_id text,
+  p_plan text,
+  p_status text,
+  p_current_period_start timestamptz,
+  p_current_period_end timestamptz,
+  p_cancel_at_period_end boolean,
+  p_metadata jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_incoming timestamptz := public.billing_try_timestamptz(p_metadata->>'occurred_at');
+  v_subscription_id uuid;
+  v_org_plan text;
+BEGIN
+  -- Serialize every event that touches this org (lock order: org, then sub).
+  PERFORM 1 FROM public.organizations WHERE id = p_organization_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'organization % not found', p_organization_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  INSERT INTO public.subscriptions AS s (
+    organization_id, paddle_subscription_id, paddle_customer_id, paddle_price_id,
+    plan, status, current_period_start, current_period_end, cancel_at_period_end,
+    metadata, past_due_since
+  )
+  VALUES (
+    p_organization_id, p_paddle_subscription_id, p_paddle_customer_id, p_paddle_price_id,
+    p_plan, p_status, p_current_period_start, p_current_period_end,
+    COALESCE(p_cancel_at_period_end, false),
+    p_metadata,
+    CASE WHEN p_status = 'past_due' THEN now() END
+  )
+  ON CONFLICT (paddle_subscription_id) DO UPDATE SET
+    organization_id      = EXCLUDED.organization_id,
+    paddle_customer_id   = EXCLUDED.paddle_customer_id,
+    paddle_price_id      = EXCLUDED.paddle_price_id,
+    plan                 = EXCLUDED.plan,
+    status               = EXCLUDED.status,
+    current_period_start = EXCLUDED.current_period_start,
+    current_period_end   = EXCLUDED.current_period_end,
+    cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+    metadata             = EXCLUDED.metadata,
+    past_due_since       = CASE
+      WHEN EXCLUDED.status = 'past_due' AND s.status = 'past_due' THEN s.past_due_since
+      WHEN EXCLUDED.status = 'past_due' THEN COALESCE(s.past_due_since, now())
+      WHEN EXCLUDED.status IN ('active', 'trialing') THEN NULL
+      ELSE s.past_due_since
+    END
+  -- Skip only when the incoming event is provably OLDER than the stored one.
+  -- Ambiguous comparisons (either side missing or unparsable) apply, as the
+  -- previous application-level guard did.
+  WHERE v_incoming IS NULL
+     OR public.billing_try_timestamptz(s.metadata->>'occurred_at') IS NULL
+     OR public.billing_try_timestamptz(s.metadata->>'occurred_at') <= v_incoming
+  RETURNING s.id INTO v_subscription_id;
+
+  IF v_subscription_id IS NULL THEN
+    RETURN jsonb_build_object('applied', false, 'org_plan', NULL);
+  END IF;
+
+  -- past_due and paused leave the org plan alone: past_due has a 7-day grace
+  -- period owned by the downgrade cron, paused waits for resume or cancel.
+  IF p_status IN ('active', 'trialing', 'canceled') THEN
+    v_org_plan := public.org_plan_from_live_subscriptions(p_organization_id, NULL);
+    UPDATE public.organizations
+       SET plan = v_org_plan,
+           paddle_customer_id = CASE
+             WHEN p_status IN ('active', 'trialing') THEN p_paddle_customer_id
+             ELSE paddle_customer_id
+           END
+     WHERE id = p_organization_id;
+  END IF;
+
+  RETURN jsonb_build_object('applied', true, 'org_plan', v_org_plan);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.apply_paddle_refund(
+  p_organization_id uuid,
+  p_paddle_subscription_id text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_org_plan text;
+BEGIN
+  PERFORM 1 FROM public.organizations WHERE id = p_organization_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'organization % not found', p_organization_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  v_org_plan := public.org_plan_from_live_subscriptions(
+    p_organization_id, p_paddle_subscription_id
+  );
+  UPDATE public.organizations SET plan = v_org_plan WHERE id = p_organization_id;
+
+  RETURN jsonb_build_object('org_plan', v_org_plan);
+END;
+$$;
+
+-- Supabase grants EXECUTE on new public functions to anon and authenticated
+-- directly (not only through PUBLIC), so revoke from all three.
+REVOKE ALL ON FUNCTION public.billing_try_timestamptz(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.org_plan_from_live_subscriptions(uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apply_paddle_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, jsonb
+) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apply_paddle_refund(uuid, text) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.billing_try_timestamptz(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.org_plan_from_live_subscriptions(uuid, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apply_paddle_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, jsonb
+) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apply_paddle_refund(uuid, text) TO service_role;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929110100_billing_checkout_sessions.sql
+-- -----------------------------------------------------------------------------
+-- ─────────────────────────────────────────────────────────────────────────────
+-- billing_checkout_sessions — one open Paddle checkout per organization.
+--
+-- WHY (quality audit 2026-09-28, C4.1 / C4.2):
+--   POST /api/v1/billing/checkout guarded against double billing only by
+--   looking for a live row in `subscriptions`. That row is written by the
+--   webhook AFTER payment, so before payment (two tabs, two admins, or an
+--   abandoned checkout completed later) any number of Paddle transactions
+--   could be created and each one could become its own subscription.
+--   Separately, a webhook event that arrives without custom_data had no way
+--   to map its transaction back to the org that started it, so it fell back
+--   to paddle_customer_id, which is shared by every workspace a person pays
+--   for (Paddle customers are unique per email).
+--
+-- WHAT:
+--   A row per checkout attempt. The partial UNIQUE index allows at most one
+--   'creating' or 'open' row per org, which is the org-level idempotency key:
+--   a concurrent second request fails the INSERT (23505) instead of creating
+--   a second Paddle transaction. The API reuses an open session for the same
+--   price within 30 minutes and refuses a different plan until it expires.
+--   paddle_transaction_id gives the webhook an exact transaction -> org map.
+--
+--   Lifecycle: creating -> open (Paddle transaction created)
+--                       -> failed (Paddle call failed)
+--              open     -> completed (transaction.completed webhook)
+--              creating/open -> expired (older than the reuse window)
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.billing_checkout_sessions (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id        UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  price_id               TEXT NOT NULL,
+  plan                   TEXT NOT NULL CHECK (plan IN ('starter', 'team', 'enterprise')),
+  status                 TEXT NOT NULL DEFAULT 'creating'
+                           CHECK (status IN ('creating', 'open', 'completed', 'failed', 'expired')),
+  paddle_transaction_id  TEXT UNIQUE,
+  checkout_url           TEXT,
+  -- auth.users id of the admin who started it; audit only, so no FK.
+  created_by             UUID,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at           TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS billing_checkout_sessions_one_open_per_org
+  ON public.billing_checkout_sessions (organization_id)
+  WHERE status IN ('creating', 'open');
+
+CREATE INDEX IF NOT EXISTS billing_checkout_sessions_org_created_idx
+  ON public.billing_checkout_sessions (organization_id, created_at DESC);
+
+DROP TRIGGER IF EXISTS billing_checkout_sessions_updated_at ON public.billing_checkout_sessions;
+CREATE TRIGGER billing_checkout_sessions_updated_at
+  BEFORE UPDATE ON public.billing_checkout_sessions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+ALTER TABLE public.billing_checkout_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Server-only table (supabaseAdmin in api/billing.ts and api/paddleWebhook.ts).
+DROP POLICY IF EXISTS billing_checkout_sessions_deny_public ON public.billing_checkout_sessions;
+CREATE POLICY billing_checkout_sessions_deny_public ON public.billing_checkout_sessions
+  AS RESTRICTIVE FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
+
+COMMENT ON TABLE public.billing_checkout_sessions IS
+  'One row per Paddle checkout attempt. Partial UNIQUE (organization_id) WHERE status IN (creating, open) is the org-level checkout idempotency key; paddle_transaction_id maps webhook transactions back to their org.';
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929110200_past_due_downgrade_cycles.sql
+-- -----------------------------------------------------------------------------
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Past-due auto-downgrade: per-cycle dedupe, email outbox, atomic downgrade.
+--
+-- WHY (quality audit 2026-09-28, C3.2):
+--   1. billing_downgrade_notifications was UNIQUE (subscription_id, stage).
+--      A subscription that went past_due, was downgraded, paid, and went
+--      past_due AGAIN hit 23505 on every stage, so the second delinquency
+--      was never warned about or downgraded. The file header promised
+--      "a re-upgrade starts fresh"; the constraint made that impossible.
+--   2. The cron INSERTed the marker first and then ran the org UPDATE, the
+--      subscriptions UPDATE and the audit INSERT without reading { error }.
+--      A failed write still counted as "downgraded", and the marker made
+--      sure it was never retried. Email sends had the same shape: marker
+--      first, so a failed send was never re-sent.
+--   3. The downgrade did not re-check that the subscription was still past
+--      due, and forced 'free' even when the org had another live
+--      subscription.
+--
+-- WHAT:
+--   * cycle_started_at (= subscriptions.past_due_since of the cycle) joins
+--     the dedupe key: UNIQUE NULLS NOT DISTINCT (subscription_id, stage,
+--     cycle_started_at). Legacy rows keep NULL and stay unique among
+--     themselves; rows of the current cycle are backfilled so the deploy does
+--     not re-send a warning that already went out.
+--   * The table doubles as an email outbox: status pending -> sent | skipped
+--     | failed, with attempts / last_attempt_at / last_error / sent_at.
+--     Legacy rows become 'sent' (they were attempted by the old code); new
+--     rows default to 'pending' and are marked sent only after the provider
+--     accepted the email.
+--   * apply_past_due_downgrade() does the state change in one transaction:
+--     compare-and-set on (id, past_due_since, status IN past_due/paused),
+--     recompute the org plan from live subscriptions, write the audit row,
+--     and queue the 'downgraded' email only when the org actually lands on
+--     'free'. If the row changed underneath (recovered, canceled, new
+--     cycle) it returns 'stale' and changes nothing.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.billing_downgrade_notifications
+  ADD COLUMN IF NOT EXISTS cycle_started_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS status           TEXT NOT NULL DEFAULT 'sent',
+  ADD COLUMN IF NOT EXISTS attempts         INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_attempt_at  TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS last_error       TEXT,
+  ADD COLUMN IF NOT EXISTS sent_at          TIMESTAMPTZ;
+
+-- Existing rows were added with DEFAULT 'sent' above; from here on a new
+-- marker is an unsent outbox entry.
+ALTER TABLE public.billing_downgrade_notifications
+  ALTER COLUMN status SET DEFAULT 'pending';
+
+ALTER TABLE public.billing_downgrade_notifications
+  DROP CONSTRAINT IF EXISTS billing_downgrade_notifications_status_check;
+ALTER TABLE public.billing_downgrade_notifications
+  ADD CONSTRAINT billing_downgrade_notifications_status_check
+  CHECK (status IN ('pending', 'sent', 'skipped', 'failed'));
+
+-- Legacy rows the old code attempted: give them a sent_at for audit.
+UPDATE public.billing_downgrade_notifications
+   SET sent_at = created_at
+ WHERE status = 'sent' AND sent_at IS NULL;
+
+-- Attach markers of the CURRENT delinquency cycle to that cycle, so the new
+-- per-cycle key still dedupes against what was already sent.
+UPDATE public.billing_downgrade_notifications n
+   SET cycle_started_at = s.past_due_since
+  FROM public.subscriptions s
+ WHERE n.subscription_id = s.id
+   AND n.cycle_started_at IS NULL
+   AND s.past_due_since IS NOT NULL
+   AND n.created_at >= s.past_due_since;
+
+ALTER TABLE public.billing_downgrade_notifications
+  DROP CONSTRAINT IF EXISTS billing_downgrade_notifications_cycle_key;
+ALTER TABLE public.billing_downgrade_notifications
+  ADD CONSTRAINT billing_downgrade_notifications_cycle_key
+  UNIQUE NULLS NOT DISTINCT (subscription_id, stage, cycle_started_at);
+
+ALTER TABLE public.billing_downgrade_notifications
+  DROP CONSTRAINT IF EXISTS billing_downgrade_notifications_subscription_id_stage_key;
+
+CREATE INDEX IF NOT EXISTS idx_billing_downgrade_notifications_pending
+  ON public.billing_downgrade_notifications (created_at)
+  WHERE status = 'pending';
+
+COMMENT ON TABLE public.billing_downgrade_notifications IS
+  'Per-cycle idempotency + email outbox for the past-due downgrade cron. UNIQUE NULLS NOT DISTINCT (subscription_id, stage, cycle_started_at); cycle_started_at is the subscription''s past_due_since for that delinquency cycle. status pending -> sent | skipped | failed.';
+
+CREATE OR REPLACE FUNCTION public.apply_past_due_downgrade(
+  p_subscription_id uuid,
+  p_past_due_since timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid;
+  v_paddle_subscription_id text;
+  v_from_plan text;
+  v_to_plan text;
+  v_email_queued boolean := false;
+BEGIN
+  SELECT organization_id INTO v_org FROM public.subscriptions WHERE id = p_subscription_id;
+  IF v_org IS NULL THEN
+    RETURN jsonb_build_object('outcome', 'stale');
+  END IF;
+
+  -- Same lock order as apply_paddle_subscription_event: org, then sub.
+  SELECT plan INTO v_from_plan FROM public.organizations WHERE id = v_org FOR UPDATE;
+
+  -- Compare-and-set: only the cycle the cron looked at, only while it is
+  -- still delinquent. Closing the cycle is what stops the next run from
+  -- downgrading again.
+  UPDATE public.subscriptions
+     SET past_due_since = NULL
+   WHERE id = p_subscription_id
+     AND past_due_since = p_past_due_since
+     AND status IN ('past_due', 'paused')
+  RETURNING paddle_subscription_id INTO v_paddle_subscription_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('outcome', 'stale', 'organization_id', v_org);
+  END IF;
+
+  -- Another live subscription keeps its plan; otherwise the org is free.
+  v_to_plan := public.org_plan_from_live_subscriptions(v_org, NULL);
+  UPDATE public.organizations SET plan = v_to_plan WHERE id = v_org;
+
+  INSERT INTO public.audit_logs (
+    organization_id, user_id, action, resource_type, resource_id, metadata
+  ) VALUES (
+    v_org, NULL, 'billing.plan.auto_downgrade', 'organization', v_org::text,
+    jsonb_build_object(
+      'reason', 'past_due_7_days',
+      'past_due_since', p_past_due_since,
+      'paddle_subscription_id', v_paddle_subscription_id,
+      'from_plan', v_from_plan,
+      'to_plan', v_to_plan
+    )
+  );
+
+  IF v_to_plan = 'free' AND v_from_plan IS DISTINCT FROM 'free' THEN
+    INSERT INTO public.billing_downgrade_notifications (subscription_id, stage, cycle_started_at)
+    VALUES (p_subscription_id, 'downgraded', p_past_due_since)
+    ON CONFLICT DO NOTHING;
+    v_email_queued := true;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'outcome', 'downgraded',
+    'organization_id', v_org,
+    'from_plan', v_from_plan,
+    'to_plan', v_to_plan,
+    'email_queued', v_email_queued
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.apply_past_due_downgrade(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.apply_past_due_downgrade(uuid, timestamptz) TO service_role;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929110300_overage_settlement_ledger.sql
+-- -----------------------------------------------------------------------------
+-- ─────────────────────────────────────────────────────────────────────────────
+-- subscription_overage_charges: provisional charge + post-period true-up.
+--
+-- WHY (quality audit 2026-09-28, C4.3):
+--   The daily cron charges a period's overage inside the 48 hours before
+--   period_end, and UNIQUE (subscription_id, period_end) allowed exactly one
+--   row per period. The charge therefore counted usage up to the run, never
+--   the last 24-48 hours of the period, and nothing billed that tail later:
+--   a systematic 3-7% of every period's overage went unbilled. The 'retry'
+--   status the original migration documents had no code behind it, and the
+--   finalize UPDATE's { error } was ignored.
+--
+-- WHAT:
+--   * kind: 'provisional' (in-window charge, as before) or 'true_up' (after
+--     the period closes: recount the final usage and charge only the
+--     difference to what was already charged). UNIQUE (subscription_id,
+--     period_end, kind) replaces UNIQUE (subscription_id, period_end), so
+--     each kind is still charged at most once per period.
+--   * charged_quantity: what Paddle actually billed for the row. The true-up
+--     charges final_quantity - sum(charged_quantity) and never runs while a
+--     row of that period is in an unresolved state.
+--   * included_requests: the quota the period was measured against, so the
+--     true-up does not depend on the plan the subscription has by then.
+--   * status adds:
+--       no_charge            — nothing was owed (still recorded, so the
+--                              true-up knows the period was looked at)
+--       needs_reconciliation — the charge outcome is unknown (network error,
+--                              timeout, 5xx, or the ledger update failed after
+--                              Paddle answered). Never retried automatically:
+--                              check the subscription in Paddle, then set
+--                              status to 'charged' with the billed
+--                              charged_quantity, or to 'retry'.
+--       retry                — operator instruction: the cron re-attempts the
+--                              row's remaining quantity (quantity minus
+--                              charged_quantity), then settles as usual.
+--   Existing rows become kind 'provisional'; charged rows get
+--   charged_quantity = overage_quantity.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE public.subscription_overage_charges
+  ADD COLUMN IF NOT EXISTS kind              TEXT NOT NULL DEFAULT 'provisional',
+  ADD COLUMN IF NOT EXISTS charged_quantity  INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS included_requests INTEGER;
+
+UPDATE public.subscription_overage_charges
+   SET charged_quantity = overage_quantity
+ WHERE status = 'charged' AND charged_quantity = 0;
+
+ALTER TABLE public.subscription_overage_charges
+  DROP CONSTRAINT IF EXISTS subscription_overage_charges_kind_check;
+ALTER TABLE public.subscription_overage_charges
+  ADD CONSTRAINT subscription_overage_charges_kind_check
+  CHECK (kind IN ('provisional', 'true_up'));
+
+ALTER TABLE public.subscription_overage_charges
+  DROP CONSTRAINT IF EXISTS subscription_overage_charges_charged_quantity_check;
+ALTER TABLE public.subscription_overage_charges
+  ADD CONSTRAINT subscription_overage_charges_charged_quantity_check
+  CHECK (charged_quantity >= 0);
+
+ALTER TABLE public.subscription_overage_charges
+  DROP CONSTRAINT IF EXISTS subscription_overage_charges_status_check;
+ALTER TABLE public.subscription_overage_charges
+  ADD CONSTRAINT subscription_overage_charges_status_check
+  CHECK (status IN ('pending', 'charged', 'error', 'retry', 'no_charge', 'needs_reconciliation'));
+
+-- New key first, then drop the old one, so no moment is left unguarded.
+ALTER TABLE public.subscription_overage_charges
+  DROP CONSTRAINT IF EXISTS subscription_overage_charges_period_kind_key;
+ALTER TABLE public.subscription_overage_charges
+  ADD CONSTRAINT subscription_overage_charges_period_kind_key
+  UNIQUE (subscription_id, period_end, kind);
+ALTER TABLE public.subscription_overage_charges
+  DROP CONSTRAINT IF EXISTS subscription_overage_charges_subscription_id_period_end_key;
+
+-- Rows an operator or the cron has to act on.
+DROP INDEX IF EXISTS public.subscription_overage_charges_status_idx;
+CREATE INDEX IF NOT EXISTS subscription_overage_charges_open_status_idx
+  ON public.subscription_overage_charges (status)
+  WHERE status IN ('pending', 'error', 'retry', 'needs_reconciliation');
+
+-- The settlement pass scans recently closed periods.
+CREATE INDEX IF NOT EXISTS subscription_overage_charges_period_end_idx
+  ON public.subscription_overage_charges (period_end);
+
+COMMENT ON TABLE public.subscription_overage_charges IS
+  'Overage charge ledger. One provisional row (in the 48h before period_end) and one true_up row (after the period closes) per subscription period, UNIQUE (subscription_id, period_end, kind). charged_quantity is what Paddle billed; needs_reconciliation rows are never retried automatically.';
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929110400_live_subscription_validity.sql
+-- -----------------------------------------------------------------------------
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Plan recompute: only trust live subscription rows that still look real.
+--
+-- WHY (review of the 2026-09-28 billing fixes, follow-up to 20260929110000):
+--   org_plan_from_live_subscriptions() picked the highest tier among EVERY
+--   active/trialing row of the org. Before that migration a cancel or an
+--   approved refund always set 'free'; after it, one stale row was enough to
+--   keep a canceled, refunded or delinquent org on a paid plan, silently:
+--     * a row whose subscription.canceled webhook was lost stays 'active'
+--       forever, with a current_period_end that stops moving;
+--     * sandbox rows accumulate in the production database, because Preview
+--       deployments talk to Paddle sandbox but share the production Supabase
+--       (CLAUDE.md gotcha #6). They carry a sandbox ctm_ customer id.
+--   Separately, nothing told the webhook that a NEW subscription had just been
+--   created for an org that already pays for one (two checkouts both paid).
+--
+-- WHAT:
+--   org_live_plan_resolution(org, exclude, trusted) returns the plan plus the
+--   evidence: which subscription it came from, which live rows counted and
+--   which were ignored. A live row counts when
+--     * it is the subscription the current event is about (trusted), or
+--     * its paddle_customer_id matches the org's stored customer (or the org
+--       has none stored), AND its current_period_end is unknown or no more
+--       than 3 days in the past. 3 days covers a renewal webhook that is late
+--       or still in Paddle's retry backoff; past that, an 'active' row whose
+--       period ended is a row whose cancel never arrived.
+--   The three state-changing functions are redefined on top of it and return
+--   plan_source / ignored_live_subscriptions, so the server can log when a
+--   sibling keeps an org paid and when stale rows need cleaning up.
+--   apply_paddle_subscription_event also returns `created` and
+--   `other_live_subscriptions`, which the webhook turns into a duplicate
+--   subscription alert.
+--
+--   The event function now stores the incoming customer on the org BEFORE the
+--   recompute (active / trialing only, as before), so siblings are checked
+--   against the customer the org is paying with now.
+--
+-- BEFORE DEPLOY (ops, read only): orgs holding more than one live row are the
+-- ones this changes. Review them, and cancel sandbox leftovers in the table:
+--   SELECT organization_id, count(*), array_agg(paddle_subscription_id),
+--          array_agg(paddle_customer_id), array_agg(current_period_end)
+--     FROM public.subscriptions
+--    WHERE status IN ('active', 'trialing')
+--    GROUP BY organization_id
+--   HAVING count(*) > 1;
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.org_live_plan_resolution(
+  p_organization_id uuid,
+  p_exclude_paddle_subscription_id text DEFAULT NULL,
+  p_trusted_paddle_subscription_id text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  WITH org AS (
+    SELECT o.paddle_customer_id AS customer_id
+      FROM public.organizations o
+     WHERE o.id = p_organization_id
+  ),
+  live AS (
+    SELECT s.paddle_subscription_id,
+           s.plan,
+           CASE s.plan
+             WHEN 'enterprise' THEN 3
+             WHEN 'team' THEN 2
+             WHEN 'starter' THEN 1
+             ELSE 0
+           END AS tier,
+           (
+             s.paddle_subscription_id = p_trusted_paddle_subscription_id
+             OR (
+               (
+                 (SELECT customer_id FROM org) IS NULL
+                 OR s.paddle_customer_id = (SELECT customer_id FROM org)
+               )
+               AND (
+                 s.current_period_end IS NULL
+                 OR s.current_period_end > now() - interval '3 days'
+               )
+             )
+           ) IS TRUE AS counts
+      FROM public.subscriptions s
+     WHERE s.organization_id = p_organization_id
+       AND s.status IN ('active', 'trialing')
+       AND (p_exclude_paddle_subscription_id IS NULL
+            OR s.paddle_subscription_id <> p_exclude_paddle_subscription_id)
+  ),
+  best AS (
+    SELECT paddle_subscription_id, plan
+      FROM live
+     WHERE counts
+     ORDER BY tier DESC, paddle_subscription_id
+     LIMIT 1
+  )
+  SELECT jsonb_build_object(
+    'plan', COALESCE((SELECT plan FROM best), 'free'),
+    'source', (SELECT paddle_subscription_id FROM best),
+    'counted', COALESCE(
+      (SELECT jsonb_agg(paddle_subscription_id ORDER BY paddle_subscription_id) FROM live WHERE counts),
+      '[]'::jsonb
+    ),
+    'ignored', COALESCE(
+      (SELECT jsonb_agg(paddle_subscription_id ORDER BY paddle_subscription_id) FROM live WHERE NOT counts),
+      '[]'::jsonb
+    )
+  );
+$$;
+
+-- Kept for any caller of the old name; same rules as above.
+CREATE OR REPLACE FUNCTION public.org_plan_from_live_subscriptions(
+  p_organization_id uuid,
+  p_exclude_paddle_subscription_id text DEFAULT NULL
+)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = public
+AS $$
+  SELECT public.org_live_plan_resolution(
+    p_organization_id, p_exclude_paddle_subscription_id, NULL
+  )->>'plan';
+$$;
+
+CREATE OR REPLACE FUNCTION public.apply_paddle_subscription_event(
+  p_organization_id uuid,
+  p_paddle_subscription_id text,
+  p_paddle_customer_id text,
+  p_paddle_price_id text,
+  p_plan text,
+  p_status text,
+  p_current_period_start timestamptz,
+  p_current_period_end timestamptz,
+  p_cancel_at_period_end boolean,
+  p_metadata jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_incoming timestamptz := public.billing_try_timestamptz(p_metadata->>'occurred_at');
+  v_is_live boolean := p_status IN ('active', 'trialing');
+  v_created boolean;
+  v_subscription_id uuid;
+  v_resolution jsonb;
+  v_org_plan text;
+BEGIN
+  -- Serialize every event that touches this org (lock order: org, then sub).
+  PERFORM 1 FROM public.organizations WHERE id = p_organization_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'organization % not found', p_organization_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  -- Read after taking the org lock: a concurrent event for the same new
+  -- subscription has committed by now, so only one of them sees "created".
+  v_created := NOT EXISTS (
+    SELECT 1 FROM public.subscriptions WHERE paddle_subscription_id = p_paddle_subscription_id
+  );
+
+  INSERT INTO public.subscriptions AS s (
+    organization_id, paddle_subscription_id, paddle_customer_id, paddle_price_id,
+    plan, status, current_period_start, current_period_end, cancel_at_period_end,
+    metadata, past_due_since
+  )
+  VALUES (
+    p_organization_id, p_paddle_subscription_id, p_paddle_customer_id, p_paddle_price_id,
+    p_plan, p_status, p_current_period_start, p_current_period_end,
+    COALESCE(p_cancel_at_period_end, false),
+    p_metadata,
+    CASE WHEN p_status = 'past_due' THEN now() END
+  )
+  ON CONFLICT (paddle_subscription_id) DO UPDATE SET
+    organization_id      = EXCLUDED.organization_id,
+    paddle_customer_id   = EXCLUDED.paddle_customer_id,
+    paddle_price_id      = EXCLUDED.paddle_price_id,
+    plan                 = EXCLUDED.plan,
+    status               = EXCLUDED.status,
+    current_period_start = EXCLUDED.current_period_start,
+    current_period_end   = EXCLUDED.current_period_end,
+    cancel_at_period_end = EXCLUDED.cancel_at_period_end,
+    metadata             = EXCLUDED.metadata,
+    past_due_since       = CASE
+      WHEN EXCLUDED.status = 'past_due' AND s.status = 'past_due' THEN s.past_due_since
+      WHEN EXCLUDED.status = 'past_due' THEN COALESCE(s.past_due_since, now())
+      WHEN EXCLUDED.status IN ('active', 'trialing') THEN NULL
+      ELSE s.past_due_since
+    END
+  -- Skip only when the incoming event is provably OLDER than the stored one.
+  -- Ambiguous comparisons (either side missing or unparsable) apply, and an
+  -- EQUAL occurred_at re-applies, so a Paddle retry after a 5xx is useful.
+  WHERE v_incoming IS NULL
+     OR public.billing_try_timestamptz(s.metadata->>'occurred_at') IS NULL
+     OR public.billing_try_timestamptz(s.metadata->>'occurred_at') <= v_incoming
+  RETURNING s.id INTO v_subscription_id;
+
+  IF v_subscription_id IS NULL THEN
+    RETURN jsonb_build_object('applied', false, 'created', false, 'org_plan', NULL);
+  END IF;
+
+  -- The customer the org pays with now, stored before the recompute so the
+  -- sibling check compares against it.
+  IF v_is_live THEN
+    UPDATE public.organizations
+       SET paddle_customer_id = p_paddle_customer_id
+     WHERE id = p_organization_id;
+  END IF;
+
+  v_resolution := public.org_live_plan_resolution(
+    p_organization_id,
+    NULL,
+    CASE WHEN v_is_live THEN p_paddle_subscription_id END
+  );
+
+  -- past_due and paused leave the org plan alone: past_due has a 7-day grace
+  -- period owned by the downgrade cron, paused waits for resume or cancel.
+  IF v_is_live OR p_status = 'canceled' THEN
+    v_org_plan := v_resolution->>'plan';
+    UPDATE public.organizations SET plan = v_org_plan WHERE id = p_organization_id;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'applied', true,
+    'created', v_created,
+    'org_plan', v_org_plan,
+    'plan_source', CASE WHEN v_org_plan IS NOT NULL THEN v_resolution->>'source' END,
+    'other_live_subscriptions', COALESCE(
+      (SELECT jsonb_agg(id ORDER BY id)
+         FROM jsonb_array_elements_text(v_resolution->'counted') AS c(id)
+        WHERE id <> p_paddle_subscription_id),
+      '[]'::jsonb
+    ),
+    'ignored_live_subscriptions', v_resolution->'ignored'
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.apply_paddle_refund(
+  p_organization_id uuid,
+  p_paddle_subscription_id text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_resolution jsonb;
+BEGIN
+  PERFORM 1 FROM public.organizations WHERE id = p_organization_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'organization % not found', p_organization_id
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+
+  v_resolution := public.org_live_plan_resolution(p_organization_id, p_paddle_subscription_id, NULL);
+  UPDATE public.organizations SET plan = v_resolution->>'plan' WHERE id = p_organization_id;
+
+  RETURN jsonb_build_object(
+    'org_plan', v_resolution->>'plan',
+    'plan_source', v_resolution->>'source',
+    'ignored_live_subscriptions', v_resolution->'ignored'
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.apply_past_due_downgrade(
+  p_subscription_id uuid,
+  p_past_due_since timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_org uuid;
+  v_paddle_subscription_id text;
+  v_from_plan text;
+  v_resolution jsonb;
+  v_to_plan text;
+  v_email_queued boolean := false;
+BEGIN
+  SELECT organization_id INTO v_org FROM public.subscriptions WHERE id = p_subscription_id;
+  IF v_org IS NULL THEN
+    RETURN jsonb_build_object('outcome', 'stale');
+  END IF;
+
+  -- Same lock order as apply_paddle_subscription_event: org, then sub.
+  SELECT plan INTO v_from_plan FROM public.organizations WHERE id = v_org FOR UPDATE;
+
+  -- Compare-and-set: only the cycle the cron looked at, only while it is
+  -- still delinquent. Closing the cycle is what stops the next run from
+  -- downgrading again.
+  UPDATE public.subscriptions
+     SET past_due_since = NULL
+   WHERE id = p_subscription_id
+     AND past_due_since = p_past_due_since
+     AND status IN ('past_due', 'paused')
+  RETURNING paddle_subscription_id INTO v_paddle_subscription_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('outcome', 'stale', 'organization_id', v_org);
+  END IF;
+
+  -- Another VALID live subscription keeps its plan; otherwise the org is free.
+  v_resolution := public.org_live_plan_resolution(v_org, NULL, NULL);
+  v_to_plan := v_resolution->>'plan';
+  UPDATE public.organizations SET plan = v_to_plan WHERE id = v_org;
+
+  INSERT INTO public.audit_logs (
+    organization_id, user_id, action, resource_type, resource_id, metadata
+  ) VALUES (
+    v_org, NULL, 'billing.plan.auto_downgrade', 'organization', v_org::text,
+    jsonb_build_object(
+      'reason', 'past_due_7_days',
+      'past_due_since', p_past_due_since,
+      'paddle_subscription_id', v_paddle_subscription_id,
+      'from_plan', v_from_plan,
+      'to_plan', v_to_plan,
+      'plan_source', v_resolution->>'source',
+      'ignored_live_subscriptions', v_resolution->'ignored'
+    )
+  );
+
+  IF v_to_plan = 'free' AND v_from_plan IS DISTINCT FROM 'free' THEN
+    INSERT INTO public.billing_downgrade_notifications (subscription_id, stage, cycle_started_at)
+    VALUES (p_subscription_id, 'downgraded', p_past_due_since)
+    ON CONFLICT DO NOTHING;
+    v_email_queued := true;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'outcome', 'downgraded',
+    'organization_id', v_org,
+    'from_plan', v_from_plan,
+    'to_plan', v_to_plan,
+    'email_queued', v_email_queued,
+    'plan_source', v_resolution->>'source',
+    'ignored_live_subscriptions', v_resolution->'ignored'
+  );
+END;
+$$;
+
+-- CREATE OR REPLACE keeps the grants of the functions that already existed;
+-- restate them so this file is correct on its own. Supabase grants EXECUTE on
+-- new public functions to anon and authenticated directly, so revoke all three.
+REVOKE ALL ON FUNCTION public.org_live_plan_resolution(uuid, text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.org_plan_from_live_subscriptions(uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apply_paddle_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, jsonb
+) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apply_paddle_refund(uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.apply_past_due_downgrade(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.org_live_plan_resolution(uuid, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.org_plan_from_live_subscriptions(uuid, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apply_paddle_subscription_event(
+  uuid, text, text, text, text, text, timestamptz, timestamptz, boolean, jsonb
+) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apply_paddle_refund(uuid, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apply_past_due_downgrade(uuid, timestamptz) TO service_role;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929110500_overage_charged_quantity_guard.sql
+-- -----------------------------------------------------------------------------
+-- ─────────────────────────────────────────────────────────────────────────────
+-- subscription_overage_charges: a 'charged' row must record what it charged.
+--
+-- WHY (review of the 2026-09-28 billing fixes, follow-up to 20260929110300):
+--   The true-up charges final_quantity - sum(charged_quantity). The runbook
+--   for needs_reconciliation rows, and for legacy 'error' rows where Paddle
+--   did charge, is to set status = 'charged' TOGETHER WITH charged_quantity.
+--   The original ledger migration (20260422140000) only told operators to
+--   flip the status. An operator who follows that older note leaves
+--   charged_quantity at 0, and the next settlement bills the whole period
+--   again, including the part Paddle already collected.
+--
+-- WHAT:
+--   CHECK (status <> 'charged' OR overage_quantity = 0 OR charged_quantity > 0).
+--   A status-only UPDATE now fails with 23514 instead of arming a double
+--   charge. A row that owed nothing (overage_quantity = 0) may still be
+--   'charged' with charged_quantity = 0. The settlement pass also refuses to
+--   true up a period holding such a row (paddle-overage-ledger.ts), so the
+--   guard holds even where this constraint is not deployed yet.
+--
+--   Rows the previous migration backfilled already satisfy the check. The
+--   same backfill is repeated here, scoped to the provisional rows it covered,
+--   so adding the constraint cannot fail on a row written in between.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+UPDATE public.subscription_overage_charges
+   SET charged_quantity = overage_quantity
+ WHERE status = 'charged'
+   AND kind = 'provisional'
+   AND charged_quantity = 0
+   AND overage_quantity > 0;
+
+ALTER TABLE public.subscription_overage_charges
+  DROP CONSTRAINT IF EXISTS subscription_overage_charges_charged_has_quantity;
+ALTER TABLE public.subscription_overage_charges
+  ADD CONSTRAINT subscription_overage_charges_charged_has_quantity
+  CHECK (status <> 'charged' OR overage_quantity = 0 OR charged_quantity > 0);
+
+COMMENT ON COLUMN public.subscription_overage_charges.charged_quantity IS
+  'Quantity Paddle actually billed for this row. When resolving a needs_reconciliation or error row by hand, set status = ''charged'' AND charged_quantity to what the Paddle subscription shows; a status-only update is rejected by subscription_overage_charges_charged_has_quantity.';
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929120000_webhook_delivery_claim.sql
+-- -----------------------------------------------------------------------------
+-- Migration: atomic claim for webhook delivery retries.
+--
+-- retryFailedWebhooks() used to read the due rows with a plain PostgREST
+-- SELECT and then POST each one. Nothing marked a row as taken between the
+-- read and the send, so two overlapping runs of /cron/retry-webhooks (it is
+-- fired by more than one scheduler, CLAUDE.md gotcha #32) sent the same event
+-- twice. Both runs then wrote the same absolute attempt_count, so the two
+-- sends were counted as one attempt.
+--
+-- This adds a lease to webhook_deliveries and one RPC that takes it:
+--
+--   claimed_until  the lease expiry. A row with a live lease is invisible to
+--                  other runs. If the run that holds it dies mid-send, the
+--                  lease lapses and the next run picks the row up again.
+--   claim_token    a fresh uuid per claim. The server writes the attempt's
+--                  result with UPDATE ... WHERE claim_token = <token>, so a
+--                  run whose lease lapsed and was taken over cannot overwrite
+--                  the newer attempt's result.
+--
+-- claim_webhook_deliveries() locks due rows with FOR UPDATE SKIP LOCKED and
+-- bumps attempt_count in the same statement, so concurrent callers split the
+-- queue instead of sharing it, and every send is counted exactly once, even
+-- one that never reports back.
+--
+-- It also dead-letters rows whose last allowed attempt was claimed but never
+-- finished. Without that sweep such a row would sit at attempt_count = max,
+-- which the claim filter excludes, and never reach dlq_at.
+--
+-- SECURITY INVOKER on purpose. The only caller is supabaseAdmin
+-- (service_role), which already has the table privileges and bypasses RLS.
+-- If EXECUTE were ever granted wider by mistake, the function would run with
+-- the caller's rights, and webhook_deliveries has no UPDATE policy, so it
+-- would claim nothing. EXECUTE is still revoked from everyone but
+-- service_role (same lockdown as increment_share_view_count).
+--
+-- Additive and idempotent: nullable columns, IF NOT EXISTS, CREATE OR REPLACE,
+-- no backfill (existing rows start unclaimed).
+
+ALTER TABLE public.webhook_deliveries
+  ADD COLUMN IF NOT EXISTS claimed_until TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS claim_token   UUID;
+
+COMMENT ON COLUMN public.webhook_deliveries.claimed_until IS
+  'Lease expiry while a retry run is sending this delivery. NULL = not claimed.';
+COMMENT ON COLUMN public.webhook_deliveries.claim_token IS
+  'Token of the current claim. The result write is conditional on it, so a run whose lease was taken over cannot overwrite a newer attempt.';
+
+-- Claimed rows are few and short-lived (the lease is cleared when the attempt
+-- is recorded), so this stays tiny. It serves the abandoned-lease sweep, which
+-- would otherwise scan the whole delivery log on every tick.
+CREATE INDEX IF NOT EXISTS webhook_deliveries_claimed_idx
+  ON public.webhook_deliveries (claimed_until)
+  WHERE claimed_until IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.claim_webhook_deliveries(
+  p_limit         integer,
+  p_lease_seconds integer,
+  p_max_attempts  integer
+)
+RETURNS TABLE (
+  id                uuid,
+  webhook_id        uuid,
+  event_type        text,
+  payload           jsonb,
+  attempt_count     integer,
+  claim_token       uuid,
+  webhook_url       text,
+  webhook_secret    text,
+  webhook_is_active boolean
+)
+LANGUAGE sql
+VOLATILE
+SET search_path = pg_catalog, public
+AS $$
+  -- 1. Final attempts that were claimed but never recorded (the run was killed
+  --    mid-send). They cannot be claimed again, so dead-letter them here.
+  UPDATE public.webhook_deliveries d
+     SET next_retry_at = NULL,
+         claimed_until = NULL,
+         claim_token   = NULL,
+         dlq_at        = now(),
+         dlq_reason    = 'exhausted'
+   WHERE d.claimed_until IS NOT NULL
+     AND d.claimed_until < now()
+     AND d.status = 'failed'
+     AND d.dlq_at IS NULL
+     AND d.attempt_count >= p_max_attempts;
+
+  -- 2. Claim due rows. SKIP LOCKED hands a row that another caller is
+  --    claiming right now to that caller alone; the lease keeps it away from
+  --    later callers until this run records the result or the lease lapses.
+  WITH due AS (
+    SELECT d.id
+      FROM public.webhook_deliveries d
+     WHERE d.status = 'failed'
+       AND d.dlq_at IS NULL
+       AND d.next_retry_at <= now()
+       AND d.attempt_count < p_max_attempts
+       AND (d.claimed_until IS NULL OR d.claimed_until < now())
+     ORDER BY d.next_retry_at
+     LIMIT p_limit
+     FOR UPDATE SKIP LOCKED
+  ),
+  claimed AS (
+    UPDATE public.webhook_deliveries d
+       SET attempt_count = d.attempt_count + 1,
+           claimed_until = now() + make_interval(secs => p_lease_seconds),
+           claim_token   = gen_random_uuid()
+      FROM due
+     WHERE d.id = due.id
+    RETURNING d.id, d.webhook_id, d.event_type, d.payload, d.attempt_count, d.claim_token
+  )
+  SELECT c.id, c.webhook_id, c.event_type, c.payload, c.attempt_count, c.claim_token,
+         w.url, w.secret, w.is_active
+    FROM claimed c
+    LEFT JOIN public.webhooks w ON w.id = c.webhook_id;
+$$;
+
+COMMENT ON FUNCTION public.claim_webhook_deliveries(integer, integer, integer) IS
+  'Claims up to p_limit due webhook deliveries for one retry run (FOR UPDATE SKIP LOCKED + lease), increments attempt_count, and dead-letters abandoned final attempts. Server only (service_role).';
+
+REVOKE EXECUTE ON FUNCTION public.claim_webhook_deliveries(integer, integer, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_webhook_deliveries(integer, integer, integer)
+  TO service_role;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929120100_webhook_delivery_retry_window.sql
+-- -----------------------------------------------------------------------------
+-- Migration: retry window for webhook delivery retries.
+--
+-- Follows 20260929120000_webhook_delivery_claim.sql, which made the retry
+-- claim atomic. That claim had no upper bound on age: any failed delivery
+-- whose next_retry_at had passed was due, however old it was. Until this
+-- release /cron/retry-webhooks had no scheduler, so failed deliveries have
+-- been piling up with next_retry_at in the past. The first scheduled run
+-- would have sent all of them, weeks-old request.created events and failed
+-- test pings included, to customer endpoints.
+--
+-- The normal schedule (retries 1, 2, 4 and 8 minutes apart, a run every
+-- 5 minutes) finishes in about 30 minutes. A delivery still pending far past
+-- that means the retry job itself was not running, and sending it now would
+-- deliver a stale event. claim_webhook_deliveries() therefore takes
+-- p_max_age_seconds (the server passes 24 hours), measured from delivered_at,
+-- which is set when the first attempt is recorded and never changed by a
+-- retry:
+--
+--   - A pending delivery older than the window is dead-lettered with the new
+--     reason 'expired', in the same call and before anything is claimed. The
+--     first run after deploy clears the historical backlog without sending
+--     any of it, and a future stall of the retry job cannot flood endpoints
+--     with day-old events either.
+--   - The claim itself only takes deliveries inside the window.
+--
+-- 'expired' is its own reason rather than 'exhausted' on purpose. 'exhausted'
+-- tells an operator that the customer's endpoint kept failing; 'expired' says
+-- our retry job was not running. The disaster-recovery runbook acts on them
+-- differently.
+--
+-- A new parameter makes a new function signature, so the three-argument
+-- version from 20260929120000 is dropped instead of being left behind as an
+-- overload without the window. Nothing calls it: both migrations ship in the
+-- same release as the server code, which calls the four-argument version.
+--
+-- Idempotent: the dlq_reason CHECK is rebuilt from pg_constraint, DROP
+-- FUNCTION IF EXISTS, CREATE OR REPLACE.
+
+-- ── dlq_reason gains 'expired' ─────────────────────────────────────────────
+-- The CHECK was declared inline in 20260701130000, so Postgres named it. Drop
+-- whichever CHECK covers dlq_reason instead of assuming that name.
+DO $$
+DECLARE
+  c record;
+BEGIN
+  FOR c IN
+    SELECT conname
+      FROM pg_constraint
+     WHERE conrelid = 'public.webhook_deliveries'::regclass
+       AND contype = 'c'
+       AND pg_get_constraintdef(oid) LIKE '%dlq_reason%'
+  LOOP
+    EXECUTE format('ALTER TABLE public.webhook_deliveries DROP CONSTRAINT %I', c.conname);
+  END LOOP;
+END $$;
+
+ALTER TABLE public.webhook_deliveries
+  ADD CONSTRAINT webhook_deliveries_dlq_reason_check
+  CHECK (dlq_reason IN ('exhausted', 'webhook_deleted', 'payload_missing', 'expired'));
+
+COMMENT ON COLUMN public.webhook_deliveries.dlq_reason IS
+  'Why it was dead-lettered: exhausted (hit MAX_ATTEMPTS), expired (still pending past the retry window, so the retry job was not running), webhook_deleted (endpoint removed/disabled), or payload_missing.';
+
+-- ── claim with a retry window ──────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.claim_webhook_deliveries(integer, integer, integer);
+
+CREATE OR REPLACE FUNCTION public.claim_webhook_deliveries(
+  p_limit           integer,
+  p_lease_seconds   integer,
+  p_max_attempts    integer,
+  p_max_age_seconds integer
+)
+RETURNS TABLE (
+  id                uuid,
+  webhook_id        uuid,
+  event_type        text,
+  payload           jsonb,
+  attempt_count     integer,
+  claim_token       uuid,
+  webhook_url       text,
+  webhook_secret    text,
+  webhook_is_active boolean
+)
+LANGUAGE sql
+VOLATILE
+SET search_path = pg_catalog, public
+AS $$
+  -- 1. Final attempts that were claimed but never recorded (the run was killed
+  --    mid-send). They cannot be claimed again, so dead-letter them here.
+  UPDATE public.webhook_deliveries d
+     SET next_retry_at = NULL,
+         claimed_until = NULL,
+         claim_token   = NULL,
+         dlq_at        = now(),
+         dlq_reason    = 'exhausted'
+   WHERE d.claimed_until IS NOT NULL
+     AND d.claimed_until < now()
+     AND d.status = 'failed'
+     AND d.dlq_at IS NULL
+     AND d.attempt_count >= p_max_attempts;
+
+  -- 2. Deliveries still pending past the retry window: dead-letter them
+  --    instead of sending a stale event. One under a live lease is being sent
+  --    right now; the run holding it records the result, and if that attempt
+  --    fails too, the next call sweeps it. The first two predicates imply the
+  --    predicate of the partial index webhook_deliveries_retry_idx, so the
+  --    planner can read the pending set through it instead of scanning the
+  --    whole delivery log on every tick.
+  UPDATE public.webhook_deliveries d
+     SET next_retry_at = NULL,
+         claimed_until = NULL,
+         claim_token   = NULL,
+         dlq_at        = now(),
+         dlq_reason    = 'expired'
+   WHERE d.status = 'failed'
+     AND d.next_retry_at IS NOT NULL
+     AND d.dlq_at IS NULL
+     AND d.delivered_at < now() - make_interval(secs => p_max_age_seconds)
+     AND (d.claimed_until IS NULL OR d.claimed_until < now());
+
+  -- 3. Claim due rows inside the window. SKIP LOCKED hands a row that another
+  --    caller is claiming right now to that caller alone; the lease keeps it
+  --    away from later callers until this run records the result or the
+  --    lease lapses.
+  WITH due AS (
+    SELECT d.id
+      FROM public.webhook_deliveries d
+     WHERE d.status = 'failed'
+       AND d.dlq_at IS NULL
+       AND d.next_retry_at <= now()
+       AND d.delivered_at >= now() - make_interval(secs => p_max_age_seconds)
+       AND d.attempt_count < p_max_attempts
+       AND (d.claimed_until IS NULL OR d.claimed_until < now())
+     ORDER BY d.next_retry_at
+     LIMIT p_limit
+     FOR UPDATE SKIP LOCKED
+  ),
+  claimed AS (
+    UPDATE public.webhook_deliveries d
+       SET attempt_count = d.attempt_count + 1,
+           claimed_until = now() + make_interval(secs => p_lease_seconds),
+           claim_token   = gen_random_uuid()
+      FROM due
+     WHERE d.id = due.id
+    RETURNING d.id, d.webhook_id, d.event_type, d.payload, d.attempt_count, d.claim_token
+  )
+  SELECT c.id, c.webhook_id, c.event_type, c.payload, c.attempt_count, c.claim_token,
+         w.url, w.secret, w.is_active
+    FROM claimed c
+    LEFT JOIN public.webhooks w ON w.id = c.webhook_id;
+$$;
+
+COMMENT ON FUNCTION public.claim_webhook_deliveries(integer, integer, integer, integer) IS
+  'Claims up to p_limit due webhook deliveries for one retry run (FOR UPDATE SKIP LOCKED + lease) and increments attempt_count. Dead-letters abandoned final attempts (exhausted) and deliveries pending longer than p_max_age_seconds since the first attempt (expired). Server only (service_role).';
+
+REVOKE EXECUTE ON FUNCTION public.claim_webhook_deliveries(integer, integer, integer, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_webhook_deliveries(integer, integer, integer, integer)
+  TO service_role;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929120200_webhook_claim_service_role_grants.sql
+-- -----------------------------------------------------------------------------
+-- claim_webhook_deliveries() (20260929120000, redefined in 20260929120100) is
+-- SECURITY INVOKER, so the role that calls it needs the table privileges its
+-- statements use: SELECT and UPDATE on webhook_deliveries, SELECT on webhooks.
+--
+-- Hosted Supabase grants service_role full table privileges on every public
+-- table by default, so production already has them. Some Supabase CLI images
+-- do not grant them on tables created by migrations, and there the claim
+-- failed with "permission denied for table webhook_deliveries" (CI, running
+-- supabase/tests/webhook-claim-smoke.sql). Granting them explicitly makes the
+-- function work wherever the schema is installed, including self-hosted
+-- databases built from supabase/init.sql.
+--
+-- Idempotent: GRANT on an existing privilege is a no-op.
+
+GRANT SELECT, UPDATE ON public.webhook_deliveries TO service_role;
+GRANT SELECT ON public.webhooks TO service_role;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929130000_org_members_atomic_ops.sql
+-- -----------------------------------------------------------------------------
+-- Atomic membership operations + exact member email lookup (2026-09-29).
+--
+-- Three defects in apps/server/src/api/{members,invitations}.ts shared one
+-- root cause: every membership decision was a read in one PostgREST call and
+-- a write in another, with nothing holding the roster still in between.
+--
+--   1. Last-admin protection (C5.1). PATCH/DELETE counted admins, then issued
+--      a separate UPDATE/DELETE. Two admins demoting each other concurrently
+--      both read "2 admins", both wrote, and the workspace ended up with zero
+--      admins: billing, members and security settings locked for good, with
+--      no in-app recovery.
+--   2. Seat limits (C5.2). SEAT_LIMITS was declared but never enforced. The
+--      join-time check has to see the member count and insert under the same
+--      lock, or two invitees accepting at once both pass a "2 of 3 seats" read.
+--   3. Member emails (C5.3). The roster and the invite dedup called
+--      auth.admin.listUsers({ perPage: 200 }), which is the first page of the
+--      whole Auth project, not of the org. Past 200 signups, members showed as
+--      "(unknown)" and existing members could be re-invited.
+--
+-- Locking: each write takes a transaction-scoped advisory lock keyed on the
+-- org, then re-reads under it. READ COMMITTED gives every statement a fresh
+-- snapshot, so the read after the lock sees whatever the previous holder
+-- committed. An advisory lock (rather than a row lock on organizations) keeps
+-- FK checks and plan updates on the organizations row out of the queue. The
+-- key is 64-bit (hashtextextended), so unrelated orgs effectively never share
+-- a lock.
+--
+-- All functions are SECURITY DEFINER with a pinned search_path and are callable
+-- only by service_role (supabaseAdmin). The roster functions read auth.users,
+-- which must never be reachable from anon/authenticated via PostgREST.
+-- Idempotent: CREATE OR REPLACE + REVOKE/GRANT can be re-run safely.
+
+-- ── Role change with last-admin protection ───────────────────────────────────
+-- Returns { status, previous_role } where status is one of:
+--   ok | unchanged | not_found | last_admin
+CREATE OR REPLACE FUNCTION public.org_change_member_role(
+  p_org_id uuid,
+  p_user_id uuid,
+  p_new_role public.org_role
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_current public.org_role;
+  v_admins integer;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('org_members:' || p_org_id::text, 0));
+
+  SELECT role INTO v_current
+  FROM public.org_members
+  WHERE organization_id = p_org_id AND user_id = p_user_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+
+  IF v_current = p_new_role THEN
+    RETURN jsonb_build_object('status', 'unchanged', 'previous_role', v_current);
+  END IF;
+
+  IF v_current = 'admin' AND p_new_role <> 'admin' THEN
+    SELECT count(*) INTO v_admins
+    FROM public.org_members
+    WHERE organization_id = p_org_id AND role = 'admin';
+
+    IF v_admins <= 1 THEN
+      RETURN jsonb_build_object('status', 'last_admin', 'previous_role', v_current);
+    END IF;
+  END IF;
+
+  UPDATE public.org_members
+  SET role = p_new_role
+  WHERE organization_id = p_org_id AND user_id = p_user_id;
+
+  RETURN jsonb_build_object('status', 'ok', 'previous_role', v_current);
+END;
+$$;
+
+-- ── Member removal with last-admin protection ────────────────────────────────
+-- Returns { status, removed_role } where status is one of:
+--   ok | not_found | last_admin
+CREATE OR REPLACE FUNCTION public.org_remove_member(
+  p_org_id uuid,
+  p_user_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_current public.org_role;
+  v_admins integer;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('org_members:' || p_org_id::text, 0));
+
+  SELECT role INTO v_current
+  FROM public.org_members
+  WHERE organization_id = p_org_id AND user_id = p_user_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+
+  IF v_current = 'admin' THEN
+    SELECT count(*) INTO v_admins
+    FROM public.org_members
+    WHERE organization_id = p_org_id AND role = 'admin';
+
+    IF v_admins <= 1 THEN
+      RETURN jsonb_build_object('status', 'last_admin', 'removed_role', v_current);
+    END IF;
+  END IF;
+
+  DELETE FROM public.org_members
+  WHERE organization_id = p_org_id AND user_id = p_user_id;
+
+  RETURN jsonb_build_object('status', 'ok', 'removed_role', v_current);
+END;
+$$;
+
+-- ── Invitation accept with an atomic seat check ──────────────────────────────
+-- p_seat_limit is the org's seat allowance, resolved by the server from
+-- SEAT_LIMITS (apps/server/src/lib/quota.ts, the single source of truth).
+-- NULL means unlimited (Enterprise, or an instance that does not sell seats).
+-- The limit only gates NEW members: an org already above it after a downgrade
+-- keeps everyone, and a user who is already a member just has the invitation
+-- marked accepted.
+--
+-- The server validates the token/id and the invitee's email before calling;
+-- accepted_at and expires_at are re-checked here under the lock because a
+-- concurrent accept can land between that read and this call.
+--
+-- Returns { status, organization_id, role, members?, seat_limit? } where
+-- status is one of:
+--   joined | already_member | not_found | already_accepted | expired | seat_limit
+CREATE OR REPLACE FUNCTION public.org_accept_invitation(
+  p_invitation_id uuid,
+  p_user_id uuid,
+  p_seat_limit integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_org_id uuid;
+  v_inv public.org_invitations%ROWTYPE;
+  v_members integer;
+  v_is_member boolean;
+BEGIN
+  SELECT organization_id INTO v_org_id
+  FROM public.org_invitations
+  WHERE id = p_invitation_id;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('org_members:' || v_org_id::text, 0));
+
+  SELECT * INTO v_inv
+  FROM public.org_invitations
+  WHERE id = p_invitation_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'not_found');
+  END IF;
+
+  IF v_inv.accepted_at IS NOT NULL THEN
+    RETURN jsonb_build_object('status', 'already_accepted', 'organization_id', v_inv.organization_id);
+  END IF;
+
+  IF v_inv.expires_at < now() THEN
+    RETURN jsonb_build_object('status', 'expired', 'organization_id', v_inv.organization_id);
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.org_members
+    WHERE organization_id = v_inv.organization_id AND user_id = p_user_id
+  ) INTO v_is_member;
+
+  IF NOT v_is_member THEN
+    IF p_seat_limit IS NOT NULL THEN
+      SELECT count(*) INTO v_members
+      FROM public.org_members
+      WHERE organization_id = v_inv.organization_id;
+
+      IF v_members >= p_seat_limit THEN
+        RETURN jsonb_build_object(
+          'status', 'seat_limit',
+          'organization_id', v_inv.organization_id,
+          'members', v_members,
+          'seat_limit', p_seat_limit
+        );
+      END IF;
+    END IF;
+
+    INSERT INTO public.org_members (organization_id, user_id, role, invited_by)
+    VALUES (v_inv.organization_id, p_user_id, v_inv.role, v_inv.invited_by);
+  END IF;
+
+  UPDATE public.org_invitations
+  SET accepted_at = now()
+  WHERE id = p_invitation_id;
+
+  RETURN jsonb_build_object(
+    'status', CASE WHEN v_is_member THEN 'already_member' ELSE 'joined' END,
+    'organization_id', v_inv.organization_id,
+    'role', v_inv.role
+  );
+END;
+$$;
+
+-- ── Exact member email lookup ─────────────────────────────────────────────────
+-- One row per member of the org, with the auth email (NULL if the auth row is
+-- somehow missing, so the roster never silently drops a member). Replaces the
+-- project-wide listUsers page for both the roster and the invite dedup.
+CREATE OR REPLACE FUNCTION public.org_member_emails(p_org_id uuid)
+RETURNS TABLE (user_id uuid, email text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT m.user_id, u.email::text
+  FROM public.org_members m
+  LEFT JOIN auth.users u ON u.id = m.user_id
+  WHERE m.organization_id = p_org_id
+  ORDER BY m.created_at;
+$$;
+
+-- ── Lock every function down to the server ───────────────────────────────────
+-- Postgres grants EXECUTE to PUBLIC on every new function, and Supabase's
+-- default privileges add anon/authenticated. Without these revokes any signed
+-- in user could POST /rest/v1/rpc/org_change_member_role and promote
+-- themselves, or read another org's member emails.
+REVOKE EXECUTE ON FUNCTION public.org_change_member_role(uuid, uuid, public.org_role)
+  FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.org_remove_member(uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.org_accept_invitation(uuid, uuid, integer)
+  FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.org_member_emails(uuid)
+  FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.org_change_member_role(uuid, uuid, public.org_role) TO service_role;
+GRANT EXECUTE ON FUNCTION public.org_remove_member(uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.org_accept_invitation(uuid, uuid, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.org_member_emails(uuid) TO service_role;
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929130100_pending_deletions_execution_claim.sql
+-- -----------------------------------------------------------------------------
+-- Execution claim for the soft-delete queue (2026-09-29).
+--
+-- The restore endpoint and the hard-delete cron used to race (C5.4):
+--   * the cron SELECTed a batch of due rows, then hard-deleted each one without
+--     re-checking it, so a restore that finished in between was followed by a
+--     hard delete anyway. The UI said "restored" while the prompt version was
+--     gone.
+--   * restore reactivated the resource first and only then stamped
+--     cancelled_at, so the cron could delete between the two steps and restore
+--     still answered 200.
+--
+-- Both paths now claim the row with a conditional UPDATE before touching the
+-- resource. Restore claims by setting cancelled_at (terminal). The cron claims
+-- by setting execution_claimed_at, deletes, then stamps executed_at. Each
+-- claim requires the other side's marker to be absent, so exactly one of them
+-- wins.
+--
+-- Why a separate claim column instead of stamping executed_at up front: if the
+-- function dies between the claim and the delete, an early executed_at would
+-- record a deletion that never happened, and nothing would ever retry it. A
+-- claim older than the lease (15 minutes, enforced in
+-- apps/server/src/api/pendingDeletions.ts) is treated as abandoned, so the
+-- next cron run picks the row up again. The hard delete is idempotent.
+--
+-- Additive and idempotent: nullable column, no backfill, no rewrite.
+ALTER TABLE public.pending_deletions
+  ADD COLUMN IF NOT EXISTS execution_claimed_at timestamptz;
+
+COMMENT ON COLUMN public.pending_deletions.execution_claimed_at IS
+  'Set by the hard-delete cron when it claims a due row, before deleting the resource. Restore refuses rows with a live claim; a claim older than the lease is considered abandoned.';
+
+
+-- -----------------------------------------------------------------------------
+-- Migration: 20260929170000_merge_span_metadata.sql
+-- -----------------------------------------------------------------------------
+-- merge_span_metadata(): shallow-merge a patch into spans.metadata in one
+-- statement.
+--
+-- PATCH /ingest/spans/:id used to overwrite the whole metadata column. The JS
+-- and Python SDKs send the caller's metadata (tenant ids and similar) on the
+-- span POST and a provider/model tag on the closing PATCH, so every successful
+-- span lost the caller's keys. The ingest handler now calls this function
+-- instead: `metadata || patch` keeps existing keys and lets the patch win on
+-- conflicts, and doing it inside one UPDATE means two concurrent patches
+-- cannot overwrite each other's keys the way a read-merge-write would.
+--
+-- Scoped by organization_id as well as id, the same way every ingest write is,
+-- so an API key can only ever touch spans of its own organization.
+--
+-- Returns true when a span matched, false when none did (the caller answers
+-- 404). A stored value that is not an object (NULL, or an array written by an
+-- old client) is replaced by the patch, since there is nothing to merge into.
+--
+-- Additive and idempotent: CREATE OR REPLACE, grants re-applied every run.
+
+CREATE OR REPLACE FUNCTION public.merge_span_metadata(
+  p_span_id         uuid,
+  p_organization_id uuid,
+  p_patch           jsonb
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object' THEN
+    RAISE EXCEPTION 'merge_span_metadata: p_patch must be a JSON object'
+      USING ERRCODE = '22023';
+  END IF;
+
+  UPDATE public.spans
+     SET metadata = CASE
+                      WHEN jsonb_typeof(metadata) = 'object' THEN metadata || p_patch
+                      ELSE p_patch
+                    END
+   WHERE id = p_span_id
+     AND organization_id = p_organization_id;
+
+  RETURN FOUND;
+END;
+$$;
+
+COMMENT ON FUNCTION public.merge_span_metadata(uuid, uuid, jsonb) IS
+  'Shallow-merges p_patch into spans.metadata (patch keys win) for one span of one organization. Returns false when no span matched. Called by PATCH /ingest/spans/:id through the service role.';
+
+-- Server-only: the ingest router calls it with the service role. anon and
+-- authenticated get nothing, so the function is not a write path around RLS
+-- for dashboard sessions.
+REVOKE ALL ON FUNCTION public.merge_span_metadata(uuid, uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.merge_span_metadata(uuid, uuid, jsonb) TO service_role;
 

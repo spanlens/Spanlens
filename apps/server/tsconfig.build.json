@@ -1,0 +1,8 @@
+{
+  // Emit config for `pnpm --filter server build` (node dist/index.js).
+  // Same source set the Dockerfile compiles: .dockerignore drops tests from the
+  // build context, so tests are excluded here too. That also keeps the build
+  // free of @spanlens/api-types, which only a contract test imports.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "src/**/*.test.ts"]
+}

@@ -8,12 +8,24 @@ importers:
 
   .:
     devDependencies:
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.60.1
+        version: 8.60.1(@typescript-eslint/parser@8.60.1(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3))(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.60.1
+        version: 8.60.1(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@2.7.0)
+      globals:
+        specifier: ^16.5.0
+        version: 16.5.0
       lefthook:
         specifier: ^2.1.9
         version: 2.1.9
+      pg:
+        specifier: ^8.23.0
+        version: 8.23.0
       prettier:
         specifier: ^3.3.3
         version: 3.8.3

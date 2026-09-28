@@ -1,16 +1,16 @@
 import { defineConfig } from 'vitest/config'
+import { integrationEnv } from './src/__tests__/integration/local-stack'
 
 // Integration tests run against a real local Supabase instance.
-// Requires: supabase start
+// Requires: `supabase start` (or `pnpm db:local`), then
 //
-// Run: pnpm --filter server test:integration
-
-const LOCAL_URL = 'http://127.0.0.1:54321'
-// Standard Supabase local dev credentials — identical for all local projects.
-const LOCAL_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
-const LOCAL_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU'
+//   pnpm --filter server test:integration
+//
+// No env vars are needed. The database URL defaults to the local stack's
+// direct Postgres port; an explicit SUPABASE_DB_POOLER_URL overrides it but
+// must be local unless SPANLENS_INTEGRATION_ALLOW_REMOTE_DB=1. See
+// src/__tests__/integration/local-stack.ts. CI runs this suite right after
+// `supabase db reset` in .github/workflows/ci.yml.
 
 export default defineConfig({
   test: {
@@ -23,11 +23,7 @@ export default defineConfig({
     poolOptions: { forks: { singleFork: true } },
     testTimeout: 30_000,
     hookTimeout: 30_000,
-    // Inject local Supabase credentials so lib/db.ts connects to the local instance
-    env: {
-      SUPABASE_URL: LOCAL_URL,
-      SUPABASE_ANON_KEY: LOCAL_ANON_KEY,
-      SUPABASE_SERVICE_ROLE_KEY: LOCAL_SERVICE_ROLE_KEY,
-    },
+    // Point lib/db.ts and lib/postgres.ts at the local instance.
+    env: integrationEnv(process.env),
   },
 })

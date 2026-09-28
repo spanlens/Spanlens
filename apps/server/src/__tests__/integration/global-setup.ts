@@ -1,10 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { TestProject } from 'vitest/node'
-
-// Standard local Supabase credentials — same for every local project.
-const LOCAL_URL = 'http://127.0.0.1:54321'
-const LOCAL_SRK =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU'
+import { LOCAL_SERVICE_ROLE_KEY, LOCAL_SUPABASE_URL } from './local-stack.js'
 
 // Extend Vitest's ProvidedContext so inject() is fully typed in test files.
 declare module 'vitest' {
@@ -21,7 +17,7 @@ declare module 'vitest' {
 let userId = ''
 
 function adminClient() {
-  return createClient(LOCAL_URL, LOCAL_SRK, {
+  return createClient(LOCAL_SUPABASE_URL, LOCAL_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 }

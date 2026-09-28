@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createOpenAI, DEFAULT_SPANLENS_OPENAI_PROXY } from '../integrations/openai.js'
 import { createAnthropic, DEFAULT_SPANLENS_ANTHROPIC_PROXY } from '../integrations/anthropic.js'
-import { createGemini, DEFAULT_SPANLENS_GEMINI_PROXY } from '../integrations/gemini.js'
+import { createGemini } from '../integrations/gemini.js'
 
 describe('integration helpers', () => {
   const originalEnv = process.env.SPANLENS_API_KEY

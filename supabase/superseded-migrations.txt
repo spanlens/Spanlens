@@ -1,0 +1,23 @@
+# Superseded migrations: the single list every fresh-database path skips.
+#
+# A migration lands here when it is broken on a fresh database, was
+# fake-applied in production through supabase_migrations.schema_migrations,
+# and has a later file that does the same work correctly (CLAUDE.md, "Broken
+# migration 복구 절차"). The file itself stays in git for the audit trail.
+#
+# Read by scripts/superseded-migrations.mjs, which is the only parser. Its
+# consumers:
+#   - scripts/generate-init-sql.mjs     leaves these out of supabase/init.sql
+#   - .github/workflows/ci.yml          removes them before `supabase db reset`
+#   - .github/workflows/e2e.yml         same, before `supabase start`
+#   - scripts/local-db-setup.mjs        parks them while the local stack starts
+#
+# Before this file existed CI deleted the broken file with a hard-coded `rm`
+# while the init.sql generator had no exclusion at all, so every self-host
+# install through the SQL Editor stopped at the broken INSERT and rolled back
+# everything after it, the `requests` table included.
+#
+# Format: one filename per line, `#` starts a comment. Add an entry only after
+# the production fake-apply has been done, and say what supersedes it.
+
+20260609150000_register_orphan_span_link.sql  # superseded by 20260609170000_register_orphan_span_link_v3.sql (INSERT omitted NOT NULL description)
