@@ -3,9 +3,9 @@
  *
  * Each provider parses the incoming body the same way: read text, attempt
  * JSON parse (non-JSON bodies pass through verbatim), detect streaming.
- * OpenAI + Azure also inject `stream_options: { include_usage: true }` so
- * the last SSE chunk carries token usage — without it the stream parser
- * sees nothing and the log row records zero tokens.
+ * OpenAI + Azure also inject `stream_options: { include_usage: true }` on
+ * chat-completions streams so the last SSE chunk carries token usage — without
+ * it the stream parser sees nothing and the log row records zero tokens.
  */
 
 import type { Context } from 'hono'
@@ -22,8 +22,31 @@ export interface ParsedProxyBody {
 export interface ParseOptions {
   /** When true, inject `stream_options.include_usage = true` on streaming
    * requests so the last chunk includes usage. OpenAI + Azure require this;
-   * Anthropic + Gemini have native usage in their stream protocols. */
+   * Anthropic + Gemini have native usage in their stream protocols. Applied
+   * only to endpoints that accept the parameter (see acceptsIncludeUsage). */
   injectOpenAIStreamOptions?: boolean
+}
+
+/**
+ * `stream_options.include_usage` exists on Chat Completions and the legacy
+ * Completions endpoint only. The Responses API (`/v1/responses`) reports usage
+ * on its terminal `response.completed` event and has no such field, and other
+ * streaming endpoints (Assistants runs, audio) do not take it either.
+ */
+const INCLUDE_USAGE_PATH_RE = /\/(?:chat\/)?completions\/?$/
+
+export function acceptsIncludeUsage(path: string): boolean {
+  return INCLUDE_USAGE_PATH_RE.test(path)
+}
+
+function withIncludeUsage(body: Record<string, unknown>): Record<string, unknown> {
+  // Keep any stream_options the caller set (e.g. include_obfuscation).
+  const existing = body.stream_options
+  const callerOptions =
+    typeof existing === 'object' && existing !== null && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {}
+  return { ...body, stream_options: { ...callerOptions, include_usage: true } }
 }
 
 export async function parseProxyRequestBody(
@@ -37,11 +60,8 @@ export async function parseProxyRequestBody(
   try {
     reqBodyJson = JSON.parse(reqBodyText) as Record<string, unknown>
     isStreaming = reqBodyJson.stream === true
-    if (isStreaming && opts.injectOpenAIStreamOptions) {
-      reqBodyJson = {
-        ...reqBodyJson,
-        stream_options: { include_usage: true },
-      }
+    if (isStreaming && opts.injectOpenAIStreamOptions && acceptsIncludeUsage(c.req.path)) {
+      reqBodyJson = withIncludeUsage(reqBodyJson)
     }
   } catch {
     /* non-JSON body — pass through verbatim */

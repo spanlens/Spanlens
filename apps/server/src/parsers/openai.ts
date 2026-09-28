@@ -13,7 +13,8 @@ export type ServiceTier = 'default' | 'standard' | 'auto' | 'flex' | 'priority' 
 export interface ParsedUsage {
   /**
    * Total input tokens (INCLUDING any cached portion).
-   * For OpenAI this is `usage.prompt_tokens` as-reported.
+   * For OpenAI this is `usage.prompt_tokens` (Chat Completions) or
+   * `usage.input_tokens` (Responses API) as-reported.
    * cache_read_tokens is a SUBSET of this number, not an addition.
    */
   promptTokens: number
@@ -22,7 +23,9 @@ export interface ParsedUsage {
   model: string
   /**
    * Cached input tokens (subset of promptTokens).
-   * OpenAI: `usage.prompt_tokens_details.cached_tokens`.
+   * OpenAI: `usage.prompt_tokens_details.cached_tokens`, or
+   * `usage.input_tokens_details.cached_tokens` on the Responses API.
+   * Gemini: `usageMetadata.cachedContentTokenCount`.
    * Charged at the reduced cache_read price in lib/cost.ts.
    */
   cacheReadTokens?: number | undefined
@@ -54,21 +57,106 @@ function coerceServiceTier(value: unknown): ServiceTier | undefined {
   return KNOWN_TIERS.has(value as ServiceTier) ? (value as ServiceTier) : undefined
 }
 
-export function parseOpenAIResponse(body: Record<string, unknown>): ParsedUsage | null {
-  const usage = body.usage as Record<string, unknown> | undefined
-  if (!usage) return null
-  const promptDetails = usage.prompt_tokens_details as Record<string, number> | undefined
-  const cacheReadTokens = promptDetails?.cached_tokens ?? 0
+/**
+ * Which `usage` schema an OpenAI endpoint returns.
+ *
+ *   'chat'      Chat Completions (and embeddings / legacy completions):
+ *               `prompt_tokens` / `completion_tokens` / `total_tokens`, with
+ *               the cached subset at `prompt_tokens_details.cached_tokens`.
+ *   'responses' Responses API (`POST /v1/responses`): `input_tokens` /
+ *               `output_tokens` / `total_tokens`, with the cached subset at
+ *               `input_tokens_details.cached_tokens`. `output_tokens` already
+ *               includes `output_tokens_details.reasoning_tokens`, just as
+ *               `completion_tokens` does on Chat Completions.
+ */
+export type OpenAIUsageSchema = 'chat' | 'responses'
+
+/**
+ * Pick the usage schema from the endpoint path. Only the Responses CREATE call
+ * (`/v1/responses`) uses the Responses schema. Retrieving a stored response
+ * (`GET /v1/responses/{id}`) maps to 'chat' on purpose: the create call already
+ * recorded that spend, so reading it again would double-count it. Its
+ * Responses-shaped usage then reads as unknown (see isOpenAIUsageUnknown).
+ */
+export function openAIUsageSchemaForPath(path: string): OpenAIUsageSchema {
+  return /\/responses\/?$/.test(path) ? 'responses' : 'chat'
+}
+
+type JsonRecord = Record<string, unknown>
+
+function asRecord(value: unknown): JsonRecord | undefined {
+  return typeof value === 'object' && value !== null ? (value as JsonRecord) : undefined
+}
+
+function tokenCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+const USAGE_FIELDS: Record<OpenAIUsageSchema, { input: string; output: string; details: string }> = {
+  chat: { input: 'prompt_tokens', output: 'completion_tokens', details: 'prompt_tokens_details' },
+  responses: { input: 'input_tokens', output: 'output_tokens', details: 'input_tokens_details' },
+}
+
+/**
+ * Normalize one `usage` object. Returns null when neither of the schema's
+ * token fields is present: usage we cannot read must surface as unknown
+ * (cost null), never as zero tokens, which would log a misleading $0 row.
+ */
+function readUsage(
+  usage: JsonRecord,
+  schema: OpenAIUsageSchema,
+  model: string,
+  serviceTier: unknown,
+): ParsedUsage | null {
+  const fields = USAGE_FIELDS[schema]
+  if (typeof usage[fields.input] !== 'number' && typeof usage[fields.output] !== 'number') {
+    return null
+  }
   return {
-    promptTokens: (usage.prompt_tokens as number) ?? 0,
-    completionTokens: (usage.completion_tokens as number) ?? 0,
-    totalTokens: (usage.total_tokens as number) ?? 0,
-    model: (body.model as string) ?? '',
-    cacheReadTokens,
+    promptTokens: tokenCount(usage[fields.input]),
+    completionTokens: tokenCount(usage[fields.output]),
+    totalTokens: tokenCount(usage.total_tokens),
+    model,
+    cacheReadTokens: tokenCount(asRecord(usage[fields.details])?.cached_tokens),
     cacheWriteTokens: 0,
-    serviceTier: coerceServiceTier(body.service_tier),
+    serviceTier: coerceServiceTier(serviceTier),
   }
 }
+
+export function parseOpenAIResponse(
+  body: JsonRecord,
+  schema: OpenAIUsageSchema = 'chat',
+): ParsedUsage | null {
+  const usage = asRecord(body.usage)
+  if (!usage) return null
+  return readUsage(usage, schema, (body.model as string) ?? '', body.service_tier)
+}
+
+/**
+ * True when a successful response's cost cannot be known from its body, so
+ * the caller records cost_usd as null instead of pricing zero tokens as $0:
+ *   - a `usage` object is present but the schema's token fields are missing, or
+ *   - a Responses create call has no usage yet (background mode answers
+ *     `usage: null` while the response is still queued).
+ * Chat-style bodies with no usage at all (moderations, model lists, files)
+ * return false and keep their previous zero-token handling.
+ */
+export function isOpenAIUsageUnknown(body: JsonRecord, schema: OpenAIUsageSchema): boolean {
+  if (parseOpenAIResponse(body, schema)) return false
+  return schema === 'responses' || asRecord(body.usage) !== undefined
+}
+
+/**
+ * Terminal Responses API stream events. Each carries the full response object
+ * with its final `usage`; the earlier `response.created` / `response.in_progress`
+ * events carry `usage: null`. An incomplete response (max_output_tokens reached)
+ * is still billed for what it produced, so it counts too.
+ */
+const RESPONSES_TERMINAL_EVENTS: ReadonlySet<string> = new Set([
+  'response.completed',
+  'response.incomplete',
+  'response.failed',
+])
 
 export function extractOpenAIStreamText(lines: string[]): string {
   const parts: string[] = []
@@ -77,7 +165,12 @@ export function extractOpenAIStreamText(lines: string[]): string {
     const data = line.slice(6).trim()
     if (data === '[DONE]') break
     try {
-      const json = JSON.parse(data) as Record<string, unknown>
+      const json = JSON.parse(data) as JsonRecord
+      // Responses API streams carry text as `response.output_text.delta` events.
+      if (json.type === 'response.output_text.delta') {
+        if (typeof json.delta === 'string' && json.delta) parts.push(json.delta)
+        continue
+      }
       const choices = json.choices as Array<{ delta?: { content?: string } }> | undefined
       const content = choices?.[0]?.delta?.content
       if (content) parts.push(content)
@@ -91,19 +184,18 @@ export function parseOpenAIStreamChunk(line: string): Partial<ParsedUsage> | nul
   const data = line.slice(6).trim()
   if (data === '[DONE]') return null
   try {
-    const json = JSON.parse(data) as Record<string, unknown>
-    const usage = json.usage as Record<string, unknown> | null
-    if (!usage) return null
-    const promptDetails = usage.prompt_tokens_details as Record<string, number> | undefined
-    return {
-      promptTokens: (usage.prompt_tokens as number) ?? 0,
-      completionTokens: (usage.completion_tokens as number) ?? 0,
-      totalTokens: (usage.total_tokens as number) ?? 0,
-      model: (json.model as string) ?? '',
-      cacheReadTokens: promptDetails?.cached_tokens ?? 0,
-      cacheWriteTokens: 0,
-      serviceTier: coerceServiceTier(json.service_tier),
+    const json = JSON.parse(data) as JsonRecord
+    // Responses API: usage is nested in the response object of the terminal
+    // event. The `type` field names the protocol, so no path hint is needed.
+    if (typeof json.type === 'string' && RESPONSES_TERMINAL_EVENTS.has(json.type)) {
+      const response = asRecord(json.response)
+      const usage = asRecord(response?.usage)
+      if (!response || !usage) return null
+      return readUsage(usage, 'responses', (response.model as string) ?? '', response.service_tier)
     }
+    const usage = asRecord(json.usage)
+    if (!usage) return null
+    return readUsage(usage, 'chat', (json.model as string) ?? '', json.service_tier)
   } catch {
     return null
   }

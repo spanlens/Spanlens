@@ -52,6 +52,25 @@ describe('OpenAI stream text extraction', () => {
     ]
     expect(extractOpenAIStreamText(lines)).toBe('Partial response')
   })
+
+  it('joins response.output_text.delta events from a Responses API stream', () => {
+    // Responses API streams are named SSE events with a `type` discriminator
+    // instead of chat.completion.chunk objects, and they never send [DONE].
+    const lines = [
+      'event: response.created',
+      `data: ${JSON.stringify({ type: 'response.created', response: { status: 'in_progress', usage: null } })}`,
+      '',
+      'event: response.output_text.delta',
+      `data: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'msg_1', output_index: 0, content_index: 0, delta: 'Hello' })}`,
+      '',
+      'event: response.output_text.delta',
+      `data: ${JSON.stringify({ type: 'response.output_text.delta', item_id: 'msg_1', output_index: 0, content_index: 0, delta: ' there' })}`,
+      '',
+      'event: response.output_text.done',
+      `data: ${JSON.stringify({ type: 'response.output_text.done', text: 'Hello there' })}`,
+    ]
+    expect(extractOpenAIStreamText(lines)).toBe('Hello there')
+  })
 })
 
 describe('Anthropic stream text extraction', () => {

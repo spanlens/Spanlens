@@ -101,6 +101,20 @@ totalCost       = promptCost + cacheReadCost + cacheWriteCost + completionCost`}
         <code>cache_write_tokens</code> store the breakdown alongside every new row.
       </p>
       <p>
+        The same extraction covers two more sources. On the OpenAI Responses API
+        (<code>POST /v1/responses</code>), usage arrives as <code>input_tokens</code> and{' '}
+        <code>output_tokens</code>, with the cached share in{' '}
+        <code>input_tokens_details.cached_tokens</code>. For streamed responses it is read from the
+        final <code>response.completed</code> event. On Gemini, the cached share is{' '}
+        <code>usageMetadata.cachedContentTokenCount</code>, which covers both implicit caching
+        (on by default for Gemini 2.5 and later) and explicit <code>cachedContent</code>. In every
+        case the cached tokens are already counted inside the prompt total, so Spanlens bills that
+        subset at the cache-read rate and the rest at the regular input rate. If a successful
+        OpenAI response or a dashboard replay carries a usage object Spanlens cannot read, the row
+        records <code>cost_usd</code> as <code>NULL</code> rather than $0, so an unknown cost never
+        passes for a free call.
+      </p>
+      <p>
         Historical rows (pre-2026-05-14) keep their original <code>cost_usd</code> and have{' '}
         <code>cache_*_tokens = 0</code>, backfill isn&apos;t possible because the raw breakdown
         wasn&apos;t recorded.

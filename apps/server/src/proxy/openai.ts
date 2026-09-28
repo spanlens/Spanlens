@@ -7,7 +7,12 @@ import { customerRateLimit } from '../middleware/customerRateLimit.js'
 import { calculateCost } from '../lib/cost.js'
 import { logRequestAsync } from '../lib/logger.js'
 import { fireAndForget } from '../lib/wait-until.js'
-import { parseOpenAIResponse, type ServiceTier } from '../parsers/openai.js'
+import {
+  isOpenAIUsageUnknown,
+  openAIUsageSchemaForPath,
+  parseOpenAIResponse,
+  type ServiceTier,
+} from '../parsers/openai.js'
 import { buildUpstreamHeaders, buildDownstreamHeaders } from './utils.js'
 import { logOpenAIStream } from './stream-logger.js'
 import { assertProviderKey } from './shared/provider-key.js'
@@ -107,7 +112,8 @@ openaiProxy.all('/*', async (c) => {
     })
   }
 
-  const upstreamUrl = `${OPENAI_BASE}${c.req.path.replace(/^\/proxy\/openai/, '')}`
+  const upstreamPath = c.req.path.replace(/^\/proxy\/openai/, '')
+  const upstreamUrl = `${OPENAI_BASE}${upstreamPath}`
   const headers = buildUpstreamHeaders(c.req.raw.headers, {
     Authorization: `Bearer ${providerKey.plaintext}`,
     'Content-Type': 'application/json',
@@ -158,10 +164,15 @@ openaiProxy.all('/*', async (c) => {
   let cacheWriteTokens = 0
   let resolvedModel = model
   let serviceTier: ServiceTier | undefined
+  // Chat Completions and the Responses API name their usage fields
+  // differently; the endpoint decides which schema to read (XVERIFY C7.3).
+  const usageSchema = openAIUsageSchemaForPath(upstreamPath)
+  let usageUnknown = false
 
   if (upstreamRes.ok && resBodyJson) {
     try {
-      const p = parseOpenAIResponse(resBodyJson as Record<string, unknown>)
+      const body = resBodyJson as Record<string, unknown>
+      const p = parseOpenAIResponse(body, usageSchema)
       if (p) {
         resolvedModel = p.model || model
         promptTokens = p.promptTokens
@@ -170,13 +181,19 @@ openaiProxy.all('/*', async (c) => {
         cacheReadTokens = p.cacheReadTokens ?? 0
         cacheWriteTokens = p.cacheWriteTokens ?? 0
         serviceTier = p.serviceTier
+      } else {
+        usageUnknown = isOpenAIUsageUnknown(body, usageSchema)
       }
     } catch { /* ignore */ }
   }
 
-  const cost = calculateCost('openai', resolvedModel, {
-    promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
-  })
+  // Usage we could not read means the cost is unknown: record null, because
+  // pricing zero tokens would log a $0 row that reads as a real free call.
+  const cost = usageUnknown
+    ? null
+    : calculateCost('openai', resolvedModel, {
+        promptTokens, completionTokens, cacheReadTokens, cacheWriteTokens, serviceTier,
+      })
 
   // Cache MISS: store the successful JSON response off the response-critical
   // path (fireAndForget — gotcha #8). storeCachedProxyResponse re-checks the

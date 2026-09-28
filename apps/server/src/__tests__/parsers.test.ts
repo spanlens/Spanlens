@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { parseOpenAIResponse, parseOpenAIStreamChunk } from '../parsers/openai.js'
+import {
+  isOpenAIUsageUnknown,
+  openAIUsageSchemaForPath,
+  parseOpenAIResponse,
+  parseOpenAIStreamChunk,
+} from '../parsers/openai.js'
 import {
   parseAnthropicResponse,
   parseAnthropicStreamChunk,
@@ -101,6 +106,98 @@ describe('OpenAI parser', () => {
   })
 })
 
+describe('OpenAI Responses API usage', () => {
+  // POST /v1/responses reports usage as input_tokens / output_tokens. Reading
+  // it with the Chat Completions field names produced 0 / 0 tokens and a $0
+  // cost next to total_tokens = 1200 (XVERIFY C7.3).
+  const responsesBody = {
+    id: 'resp_1',
+    object: 'response',
+    model: 'gpt-4o-2024-08-06',
+    service_tier: 'flex',
+    usage: {
+      input_tokens: 1000,
+      input_tokens_details: { cached_tokens: 300 },
+      output_tokens: 200,
+      output_tokens_details: { reasoning_tokens: 50 },
+      total_tokens: 1200,
+    },
+  }
+
+  it('maps each endpoint path to the usage schema it returns', () => {
+    expect(openAIUsageSchemaForPath('/v1/responses')).toBe('responses')
+    expect(openAIUsageSchemaForPath('/v1/responses/')).toBe('responses')
+    expect(openAIUsageSchemaForPath('/v1/chat/completions')).toBe('chat')
+    expect(openAIUsageSchemaForPath('/v1/embeddings')).toBe('chat')
+    // Retrieving a stored response is not a new generation: its usage was
+    // already recorded by the create call, so it must not be read as spend.
+    expect(openAIUsageSchemaForPath('/v1/responses/resp_1')).toBe('chat')
+  })
+
+  it('parses input/output tokens, the cached subset, model, and tier', () => {
+    expect(parseOpenAIResponse(responsesBody, 'responses')).toEqual({
+      promptTokens: 1000,
+      // reasoning tokens are already included in output_tokens
+      completionTokens: 200,
+      totalTokens: 1200,
+      model: 'gpt-4o-2024-08-06',
+      cacheReadTokens: 300,
+      cacheWriteTokens: 0,
+      serviceTier: 'flex',
+    })
+  })
+
+  it('returns null (usage unknown), not zero tokens, when the schema does not match', () => {
+    expect(parseOpenAIResponse(responsesBody)).toBeNull()
+    expect(parseOpenAIResponse(
+      { model: 'gpt-4o', usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
+      'responses',
+    )).toBeNull()
+  })
+
+  it('flags usage as unknown when a usage object is present but unreadable', () => {
+    expect(isOpenAIUsageUnknown(responsesBody, 'chat')).toBe(true)
+    expect(isOpenAIUsageUnknown(responsesBody, 'responses')).toBe(false)
+    // Chat-style endpoints with no usage at all (moderations, model lists)
+    // keep the previous behavior: nothing to read, nothing unknown.
+    expect(isOpenAIUsageUnknown({ results: [] }, 'chat')).toBe(false)
+    // A Responses create call without usage (background mode answers
+    // `usage: null` while the response is still queued) has an unknown cost.
+    expect(isOpenAIUsageUnknown({ object: 'response', status: 'queued', usage: null }, 'responses')).toBe(true)
+  })
+
+  it('parses usage from the terminal response.completed stream event', () => {
+    const line = `data: ${JSON.stringify({
+      type: 'response.completed',
+      sequence_number: 9,
+      response: responsesBody,
+    })}`
+    const parsed = parseOpenAIStreamChunk(line)
+    expect(parsed?.promptTokens).toBe(1000)
+    expect(parsed?.completionTokens).toBe(200)
+    expect(parsed?.totalTokens).toBe(1200)
+    expect(parsed?.cacheReadTokens).toBe(300)
+    expect(parsed?.model).toBe('gpt-4o-2024-08-06')
+    expect(parsed?.serviceTier).toBe('flex')
+  })
+
+  it('parses usage from response.incomplete (max_output_tokens reached, still billed)', () => {
+    const line = `data: ${JSON.stringify({
+      type: 'response.incomplete',
+      response: { ...responsesBody, status: 'incomplete' },
+    })}`
+    expect(parseOpenAIStreamChunk(line)?.completionTokens).toBe(200)
+  })
+
+  it('ignores the non-terminal response.created event, whose usage is still null', () => {
+    const line = `data: ${JSON.stringify({
+      type: 'response.created',
+      response: { ...responsesBody, status: 'in_progress', usage: null },
+    })}`
+    expect(parseOpenAIStreamChunk(line)).toBeNull()
+  })
+})
+
 describe('Anthropic parser', () => {
   it('parses non-streaming response', () => {
     const body = { model: 'claude-sonnet-4-6', usage: { input_tokens: 10, output_tokens: 20 } }
@@ -173,7 +270,29 @@ describe('Gemini parser', () => {
       completionTokens: 10,
       totalTokens: 15,
       model: 'gemini-1.5-pro',
+      cacheReadTokens: 0,
     })
+  })
+
+  it('reports cachedContentTokenCount as cacheReadTokens, a subset of promptTokens', () => {
+    // Gemini 2.5+ caches implicitly, and promptTokenCount INCLUDES the cached
+    // portion (same convention as OpenAI prompt_tokens). The cached subset
+    // has to surface separately or calculateCost bills it at the full rate.
+    const body = {
+      modelVersion: 'gemini-2.5-flash',
+      usageMetadata: {
+        promptTokenCount: 1000,
+        cachedContentTokenCount: 900,
+        candidatesTokenCount: 60,
+        thoughtsTokenCount: 40,
+        totalTokenCount: 1100,
+      },
+    }
+    const parsed = parseGeminiResponse(body)
+    expect(parsed?.promptTokens).toBe(1000)
+    expect(parsed?.cacheReadTokens).toBe(900)
+    // Reasoning tokens stay folded into completion tokens (gotcha #1).
+    expect(parsed?.completionTokens).toBe(100)
   })
 
   it('extracts serviceTier from usageMetadata (lowercase + SCREAMING_SNAKE)', () => {

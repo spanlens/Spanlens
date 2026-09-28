@@ -264,6 +264,71 @@ describe('gemini proxy — model extraction + logging', () => {
     expect(row['providerKeyId']).toBe(proxyState.providerKeyId)
   })
 
+  // Gemini 2.5 Flash: $0.30 / 1M input, $0.03 / 1M cached input, $2.50 / 1M
+  // output. 1000 prompt tokens of which 900 were served from the implicit
+  // cache, 100 output tokens:
+  //   100 * 0.30/1e6 + 900 * 0.03/1e6 + 100 * 2.50/1e6 = $0.000307
+  // Ignoring the cache bills all 1000 at the full rate: $0.00055 (79% over).
+  const CACHED_USAGE_METADATA = {
+    promptTokenCount: 1000,
+    cachedContentTokenCount: 900,
+    candidatesTokenCount: 100,
+    totalTokenCount: 1100,
+  }
+
+  test('cached prompt tokens are recorded and billed at the cache-read rate (non-streaming)', async () => {
+    mockUpstream(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'ok' }], role: 'model' }, finishReason: 'STOP' }],
+      modelVersion: 'gemini-2.5-flash',
+      usageMetadata: CACHED_USAGE_METADATA,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    const app = await buildApp()
+
+    await app.request('/proxy/gemini/v1beta/models/gemini-2.5-flash:generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [] }),
+    })
+    await drainPendingTasks()
+
+    const row = proxyState.loggerCalls[0]!
+    expect(row['promptTokens']).toBe(1000)
+    expect(row['cacheReadTokens']).toBe(900)
+    expect(row['costUsd']).toBeCloseTo(0.000307, 9)
+  })
+
+  test('cached prompt tokens are recorded and billed at the cache-read rate (SSE streaming)', async () => {
+    const sse = [
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Hel' }], role: 'model' } }], modelVersion: 'gemini-2.5-flash' })}`,
+      '',
+      `data: ${JSON.stringify({
+        candidates: [{ content: { parts: [{ text: 'lo' }], role: 'model' }, finishReason: 'STOP' }],
+        modelVersion: 'gemini-2.5-flash',
+        usageMetadata: CACHED_USAGE_METADATA,
+      })}`,
+      '',
+      '',
+    ].join('\n')
+    mockUpstream(new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }))
+    const app = await buildApp()
+
+    const res = await app.request('/proxy/gemini/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [] }),
+    })
+    await res.text()
+    await drainPendingTasks()
+
+    expect(proxyState.loggerCalls).toHaveLength(1)
+    const row = proxyState.loggerCalls[0]!
+    expect(row['promptTokens']).toBe(1000)
+    expect(row['cacheReadTokens']).toBe(900)
+    expect(row['costUsd']).toBeCloseTo(0.000307, 9)
+    const usage = (row['responseBody'] as { usageMetadata: Record<string, number> }).usageMetadata
+    expect(usage['cachedContentTokenCount']).toBe(900)
+  })
+
   test('upstream error status passes through and is recorded', async () => {
     mockUpstream(new Response(
       JSON.stringify({ error: { code: 401, message: 'API key not valid' } }),
