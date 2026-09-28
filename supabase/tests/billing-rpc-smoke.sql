@@ -371,6 +371,44 @@ BEGIN
     'authenticated must not execute apply_past_due_downgrade';
 END $$;
 
+-- ── subscription_overage_charges ledger ─────────────────────────────────────
+
+-- 19. One provisional and one true-up row per period, each at most once.
+DO $$
+DECLARE v_sub uuid;
+BEGIN
+  SELECT id INTO v_sub FROM public.subscriptions WHERE paddle_subscription_id = 'sub_smoke_a3';
+  INSERT INTO public.subscription_overage_charges (
+    subscription_id, period_start, period_end, overage_requests, overage_quantity,
+    price_id, status, kind, charged_quantity, included_requests
+  ) VALUES
+    (v_sub, '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', 186458, 187, 'pri_ovg', 'charged', 'provisional', 187, 100000),
+    (v_sub, '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', 200000, 13, 'pri_ovg', 'needs_reconciliation', 'true_up', 0, 100000);
+  BEGIN
+    INSERT INTO public.subscription_overage_charges (
+      subscription_id, period_start, period_end, overage_requests, overage_quantity, price_id, status, kind
+    ) VALUES (v_sub, '2026-09-01T00:00:00Z', '2026-10-01T00:00:00Z', 1, 1, 'pri_ovg', 'pending', 'true_up');
+    RAISE EXCEPTION 'expected a unique violation for a second true_up';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+  BEGIN
+    INSERT INTO public.subscription_overage_charges (
+      subscription_id, period_start, period_end, overage_requests, overage_quantity, price_id, status, kind
+    ) VALUES (v_sub, '2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z', 1, 1, 'pri_ovg', 'no_charge', 'bogus');
+    RAISE EXCEPTION 'expected a check violation for an unknown kind';
+  EXCEPTION WHEN check_violation THEN
+    NULL;
+  END;
+  -- Legacy writers that do not send kind still get the provisional key.
+  INSERT INTO public.subscription_overage_charges (
+    subscription_id, period_start, period_end, overage_requests, overage_quantity, price_id, status
+  ) VALUES (v_sub, '2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z', 5, 1, 'pri_ovg', 'pending');
+  ASSERT (SELECT kind FROM public.subscription_overage_charges
+           WHERE subscription_id = v_sub AND period_end = '2026-11-01T00:00:00Z') = 'provisional',
+    'kind must default to provisional';
+END $$;
+
 -- ── privileges ──────────────────────────────────────────────────────────────
 
 DO $$
