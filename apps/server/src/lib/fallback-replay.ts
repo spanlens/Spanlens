@@ -235,7 +235,10 @@ interface BatchOutcome {
   deferredReason: string | null
 }
 
-function insertedPayloads(rows: readonly QueueRow[], insertedIds: ReadonlySet<string>): Array<Record<string, unknown>> {
+function insertedPayloads(
+  rows: readonly QueueRow[],
+  insertedIds: ReadonlySet<string>,
+): Array<Record<string, unknown>> {
   return rows.map((r) => r.payload).filter((p) => insertedIds.has(String(p['id'])))
 }
 
@@ -256,7 +259,13 @@ async function replayRowByRow(rows: readonly QueueRow[]): Promise<BatchOutcome> 
       inserted.push(...insertedPayloads([row], ids))
     } catch (err) {
       if (!isRowDataError(err)) {
-        return { landed, inserted, rejected, deferred: rows.slice(index), deferredReason: errorMessage(err) }
+        return {
+          landed,
+          inserted,
+          rejected,
+          deferred: rows.slice(index),
+          deferredReason: errorMessage(err),
+        }
       }
       rejected.push({ row, message: errorMessage(err) })
     }
@@ -267,14 +276,32 @@ async function replayRowByRow(rows: readonly QueueRow[]): Promise<BatchOutcome> 
 async function replayBatch(rows: readonly QueueRow[]): Promise<BatchOutcome> {
   try {
     const ids = await insertPayloads(rows.map((r) => r.payload))
-    return { landed: [...rows], inserted: insertedPayloads(rows, ids), rejected: [], deferred: [], deferredReason: null }
+    return {
+      landed: [...rows],
+      inserted: insertedPayloads(rows, ids),
+      rejected: [],
+      deferred: [],
+      deferredReason: null,
+    }
   } catch (err) {
     if (!isRowDataError(err)) {
-      return { landed: [], inserted: [], rejected: [], deferred: [...rows], deferredReason: errorMessage(err) }
+      return {
+        landed: [],
+        inserted: [],
+        rejected: [],
+        deferred: [...rows],
+        deferredReason: errorMessage(err),
+      }
     }
     // A single-row batch already told us which row it was.
     if (rows.length === 1) {
-      return { landed: [], inserted: [], rejected: [{ row: rows[0]!, message: errorMessage(err) }], deferred: [], deferredReason: null }
+      return {
+        landed: [],
+        inserted: [],
+        rejected: [{ row: rows[0]!, message: errorMessage(err) }],
+        deferred: [],
+        deferredReason: null,
+      }
     }
     return replayRowByRow(rows)
   }
