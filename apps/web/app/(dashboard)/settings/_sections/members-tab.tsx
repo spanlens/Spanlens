@@ -1,7 +1,9 @@
 'use client'
 import { useState, useSyncExternalStore } from 'react'
+import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import { describeInvitationFailure, type InvitationFailure } from '@/lib/invitation-errors'
 import { Section, PrimaryBtn, GhostBtn } from '@/components/ui/primitives'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -46,7 +48,7 @@ export function MembersTab() {
     () => true,
     () => false,
   )
-  const [inviteError, setInviteError] = useState('')
+  const [inviteError, setInviteError] = useState<InvitationFailure | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
 
@@ -56,7 +58,7 @@ export function MembersTab() {
 
   async function submitInvite(e: React.FormEvent) {
     e.preventDefault()
-    setInviteError('')
+    setInviteError(null)
     setInviteSuccess(null)
     try {
       const result = await inviteMutation.mutateAsync({ email: inviteEmail.trim(), role: inviteRole })
@@ -67,7 +69,9 @@ export function MembersTab() {
       }
       setInviteEmail('')
     } catch (err) {
-      setInviteError(err instanceof Error ? err.message : 'Failed to invite')
+      // A full workspace answers 402 with copy that names the plan and the
+      // way out; the dialog adds the link to billing.
+      setInviteError(describeInvitationFailure(err, 'Failed to send the invitation.'))
     }
   }
 
@@ -104,7 +108,7 @@ export function MembersTab() {
           isAdmin ? (
             <PrimaryBtn
               className={cn(PILL_PRIMARY, 'gap-1.5')}
-              onClick={() => { setInviteOpen(true); setInviteError(''); setInviteSuccess(null) }}
+              onClick={() => { setInviteOpen(true); setInviteError(null); setInviteSuccess(null) }}
             >
               <Plus className="w-3.5 h-3.5" /> Invite member
             </PrimaryBtn>
@@ -272,7 +276,19 @@ export function MembersTab() {
                 </SelectContent>
               </Select>
             </div>
-            {inviteError && <div className="text-[12.5px] text-bad">{inviteError}</div>}
+            {inviteError && (
+              <div role="alert" className="text-[12.5px] leading-[1.5] text-bad">
+                {inviteError.message}
+                {inviteError.seatLimit && (
+                  <>
+                    {' '}
+                    <Link href="/billing" className="font-medium underline underline-offset-2 hover:opacity-80">
+                      See plans
+                    </Link>
+                  </>
+                )}
+              </div>
+            )}
             {inviteSuccess && (
               <div className="text-[12px] text-good break-all">{inviteSuccess}</div>
             )}

@@ -1,9 +1,11 @@
 import { Hono, type Context } from 'hono'
-import { authJwt, type JwtContext, type OrgRole } from '../middleware/authJwt.js'
+import { authJwt, invalidateAuthCacheForUser, type JwtContext, type OrgRole } from '../middleware/authJwt.js'
 import { requireRole } from '../middleware/requireRole.js'
 import { supabaseAdmin } from '../lib/db.js'
 import { recordAuditEvent } from '../lib/audit-log.js'
 import { ApiError } from '../lib/errors.js'
+import { isUuid } from '../lib/params.js'
+import { changeMemberRole, listMemberEmails, removeMember } from '../lib/org-members.js'
 
 /**
  * /api/v1/organizations/:orgId/members — team roster + role management.
@@ -14,8 +16,14 @@ import { ApiError } from '../lib/errors.js'
  *
  * Last-admin protection: we never let the org slide into a 0-admin state.
  * If a demote or delete would leave the org with zero admins, we reject
- * with 400 before touching the DB. This replaces the old "owner is immortal"
- * rule from the owner-based model and covers self-demote/self-delete too.
+ * with 400. This replaces the old "owner is immortal" rule from the
+ * owner-based model and covers self-demote/self-delete too.
+ *
+ * The check and the write happen in one SQL function under an org-scoped
+ * lock (org_change_member_role / org_remove_member, see lib/org-members.ts).
+ * Counting admins in one request and writing in another let two admins
+ * demote each other concurrently, both reading "2 admins", and leave the org
+ * with none (C5.1).
  */
 
 export const membersRouter = new Hono<JwtContext>()
@@ -29,25 +37,11 @@ function orgMismatch(c: Context<JwtContext>): boolean {
   return c.req.param('orgId') !== c.get('orgId')
 }
 
-/** Count admins in the org. Used by last-admin protection. */
-async function adminCount(orgId: string): Promise<number> {
-  const { count } = await supabaseAdmin
-    .from('org_members')
-    .select('user_id', { count: 'exact', head: true })
-    .eq('organization_id', orgId)
-    .eq('role', 'admin')
-  return count ?? 0
-}
-
-/** Current role of a member, null if not a member. */
-async function memberRole(orgId: string, userId: string): Promise<OrgRole | null> {
-  const { data } = await supabaseAdmin
-    .from('org_members')
-    .select('role')
-    .eq('organization_id', orgId)
-    .eq('user_id', userId)
-    .maybeSingle()
-  return (data?.role as OrgRole | undefined) ?? null
+/** Path :userId, 404 when malformed (same answer as an unknown member). */
+function memberIdParam(c: Context<JwtContext>): string {
+  const userId = c.req.param('userId') ?? ''
+  if (!isUuid(userId)) throw new ApiError('NOT_FOUND', 'Member not found')
+  return userId
 }
 
 // ── GET /api/v1/organizations/:orgId/members ──────────────────
@@ -57,9 +51,6 @@ membersRouter.get('/', async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
-  // Join to auth.users for email. supabase-js can't join auth.users in a
-  // single .select() because it's cross-schema, so we fetch members then
-  // bulk-fetch emails via admin.listUsers — cheap for team-sized rosters.
   const { data: members, error } = await supabaseAdmin
     .from('org_members')
     .select('user_id, role, invited_by, created_at')
@@ -68,13 +59,12 @@ membersRouter.get('/', async (c) => {
 
   if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to fetch members')
 
-  const userIds = (members ?? []).map((m) => m.user_id)
+  // Emails live in auth.users, which PostgREST cannot join. org_member_emails
+  // reads them for exactly this org's members.
   const emails = new Map<string, string>()
-  if (userIds.length > 0) {
-    // listUsers is paginated; for a single org's roster it fits in one page.
-    const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 200 })
-    for (const u of userList?.users ?? []) {
-      if (userIds.includes(u.id) && u.email) emails.set(u.id, u.email)
+  if ((members ?? []).length > 0) {
+    for (const row of await listMemberEmails(orgId, 'Failed to fetch member emails')) {
+      if (row.email) emails.set(row.userId, row.email)
     }
   }
 
@@ -97,7 +87,7 @@ membersRouter.patch('/:userId', requireAdmin, async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
-  const userId = c.req.param('userId')
+  const userId = memberIdParam(c)
 
   let body: { role?: unknown }
   try {
@@ -111,30 +101,28 @@ membersRouter.patch('/:userId', requireAdmin, async (c) => {
   }
   const newRole = body.role as OrgRole
 
-  const current = await memberRole(orgId, userId)
-  if (!current) throw new ApiError('NOT_FOUND', 'Member not found')
-  if (current === newRole) return c.json({ success: true, data: { role: current } })
-
-  // Last-admin protection: demoting the last admin locks the org out.
-  if (current === 'admin' && newRole !== 'admin') {
-    if ((await adminCount(orgId)) <= 1) {
+  const outcome = await changeMemberRole(orgId, userId, newRole)
+  switch (outcome.status) {
+    case 'not_found':
+      throw new ApiError('NOT_FOUND', 'Member not found')
+    case 'last_admin':
+      // Demoting the last admin would lock the org out of billing and members.
       throw new ApiError('BAD_REQUEST', 'Cannot demote the last admin')
-    }
+    case 'unchanged':
+      return c.json({ success: true, data: { role: outcome.previousRole } })
+    case 'ok':
+      break
   }
 
-  const { error } = await supabaseAdmin
-    .from('org_members')
-    .update({ role: newRole })
-    .eq('organization_id', orgId)
-    .eq('user_id', userId)
-
-  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to update role')
+  // Writes already re-read the caller's role, so this only shortens how long
+  // the target keeps a stale role for reads on this instance.
+  invalidateAuthCacheForUser(userId)
 
   void recordAuditEvent(c, {
     action: 'member.role_change',
     resourceType: 'org_members',
     resourceId: userId,
-    metadata: { previous_role: current, new_role: newRole },
+    metadata: { previous_role: outcome.previousRole, new_role: newRole },
   })
 
   return c.json({ success: true, data: { role: newRole } })
@@ -147,27 +135,27 @@ membersRouter.delete('/:userId', requireAdmin, async (c) => {
   if (!orgId) throw new ApiError('NOT_FOUND', 'Organization not found')
   if (orgMismatch(c)) throw new ApiError('FORBIDDEN', 'Forbidden')
 
-  const userId = c.req.param('userId')
-  const current = await memberRole(orgId, userId)
-  if (!current) throw new ApiError('NOT_FOUND', 'Member not found')
+  const userId = memberIdParam(c)
 
-  if (current === 'admin' && (await adminCount(orgId)) <= 1) {
-    throw new ApiError('BAD_REQUEST', 'Cannot remove the last admin')
+  const outcome = await removeMember(orgId, userId)
+  switch (outcome.status) {
+    case 'not_found':
+      throw new ApiError('NOT_FOUND', 'Member not found')
+    case 'last_admin':
+      throw new ApiError('BAD_REQUEST', 'Cannot remove the last admin')
+    case 'ok':
+      break
   }
 
-  const { error } = await supabaseAdmin
-    .from('org_members')
-    .delete()
-    .eq('organization_id', orgId)
-    .eq('user_id', userId)
-
-  if (error) throw new ApiError('INTERNAL_ERROR', 'Failed to remove member')
+  // Drop the removed member's cached workspace on this instance so reads stop
+  // resolving it now instead of when the entry expires.
+  invalidateAuthCacheForUser(userId)
 
   void recordAuditEvent(c, {
     action: 'member.remove',
     resourceType: 'org_members',
     resourceId: userId,
-    metadata: { removed_role: current },
+    metadata: { removed_role: outcome.removedRole },
   })
 
   return c.json({ success: true })

@@ -36,6 +36,32 @@ vi.mock('../lib/db.js', async () => {
     __db: db,
     supabaseAdmin: {
       from: (table: string) => db.from(table),
+      // Minimal stand-ins for the org-member RPCs (the real SQL, including
+      // its org lock, is covered by supabase/tests/org-members-atomic.sql).
+      rpc: async (fn: string, args: Record<string, string>) => {
+        const members = (db.tables['org_members'] ?? []) as Array<Record<string, unknown>>
+        const inOrg = members.filter((m) => m['organization_id'] === args['p_org_id'])
+        const target = inOrg.find((m) => m['user_id'] === args['p_user_id'])
+        const admins = inOrg.filter((m) => m['role'] === 'admin').length
+        if (fn === 'org_member_emails') {
+          return { data: inOrg.map((m) => ({ user_id: m['user_id'], email: null })), error: null }
+        }
+        if (!target) return { data: { status: 'not_found' }, error: null }
+        const current = target['role']
+        if (fn === 'org_change_member_role') {
+          const next = args['p_new_role']
+          if (current === next) return { data: { status: 'unchanged', previous_role: current }, error: null }
+          if (current === 'admin' && admins <= 1) return { data: { status: 'last_admin' }, error: null }
+          target['role'] = next
+          return { data: { status: 'ok', previous_role: current }, error: null }
+        }
+        if (fn === 'org_remove_member') {
+          if (current === 'admin' && admins <= 1) return { data: { status: 'last_admin' }, error: null }
+          db.tables['org_members'] = members.filter((m) => m !== target)
+          return { data: { status: 'ok', removed_role: current }, error: null }
+        }
+        return { data: null, error: { message: `unexpected rpc ${fn}` } }
+      },
       auth: { admin: { listUsers: async () => ({ data: { users: [] } }) } },
     },
     supabaseClient: {
@@ -108,7 +134,7 @@ function addUser(token: string, id: string): void {
 
 function seedOrgWithMembers(members: Array<{ userId: string; role: string }>): void {
   db.tables['organizations'] = [
-    { id: 'org1', name: 'Acme', owner_id: 'ua', plan: 'team', created_at: 't0', updated_at: 't0' },
+    { id: 'org1', name: 'Acme', owner_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', plan: 'team', created_at: 't0', updated_at: 't0' },
   ]
   db.tables['org_members'] = members.map((m, i) => ({
     organization_id: 'org1',
@@ -183,13 +209,13 @@ describe('C1.1 new signup: bootstrap makes the workspace visible immediately', (
 
 describe('C1.2 demoted or removed admins lose write access immediately', () => {
   beforeEach(() => {
-    addUser('tok-a', 'ua')
-    addUser('tok-b', 'ub')
-    addUser('tok-c', 'uc')
+    addUser('tok-a', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    addUser('tok-b', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+    addUser('tok-c', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
     seedOrgWithMembers([
-      { userId: 'ua', role: 'admin' },
-      { userId: 'ub', role: 'admin' },
-      { userId: 'uc', role: 'editor' },
+      { userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'admin' },
+      { userId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', role: 'admin' },
+      { userId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', role: 'editor' },
     ])
   })
 
@@ -201,33 +227,33 @@ describe('C1.2 demoted or removed admins lose write access immediately', () => {
   test('demoted admin with a warm cache cannot change another member (403)', async () => {
     await warmCacheFor('tok-b')
 
-    const demote = await call('tok-a', 'PATCH', '/organizations/org1/members/ub', { role: 'viewer' })
+    const demote = await call('tok-a', 'PATCH', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { role: 'viewer' })
     expect(demote.status).toBe(200)
-    expect(roleOf('org1', 'ub')).toBe('viewer')
+    expect(roleOf('org1', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBe('viewer')
 
     at(5_000)
-    const res = await call('tok-b', 'PATCH', '/organizations/org1/members/uc', { role: 'viewer' })
+    const res = await call('tok-b', 'PATCH', '/organizations/org1/members/cccccccc-cccc-4ccc-8ccc-cccccccccccc', { role: 'viewer' })
     expect(res.status).toBe(403)
-    expect(roleOf('org1', 'uc')).toBe('editor')
+    expect(roleOf('org1', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')).toBe('editor')
   })
 
   test('demoted admin with a warm cache cannot re-promote themselves (403)', async () => {
     await warmCacheFor('tok-b')
-    await call('tok-a', 'PATCH', '/organizations/org1/members/ub', { role: 'viewer' })
+    await call('tok-a', 'PATCH', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { role: 'viewer' })
 
     at(5_000)
-    const res = await call('tok-b', 'PATCH', '/organizations/org1/members/ub', { role: 'admin' })
+    const res = await call('tok-b', 'PATCH', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { role: 'admin' })
     expect(res.status).toBe(403)
-    expect(roleOf('org1', 'ub')).toBe('viewer')
+    expect(roleOf('org1', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBe('viewer')
 
     // And the demotion sticks once the old cache entry would have expired.
     at(61_000)
-    expect(roleOf('org1', 'ub')).toBe('viewer')
+    expect(roleOf('org1', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBe('viewer')
   })
 
   test('demoted admin can still read as a viewer', async () => {
     await warmCacheFor('tok-b')
-    await call('tok-a', 'PATCH', '/organizations/org1/members/ub', { role: 'viewer' })
+    await call('tok-a', 'PATCH', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { role: 'viewer' })
 
     at(5_000)
     const res = await call('tok-b', 'GET', '/organizations/org1/members')
@@ -237,14 +263,14 @@ describe('C1.2 demoted or removed admins lose write access immediately', () => {
   test('removed admin with a warm cache cannot delete members or rename the workspace', async () => {
     await warmCacheFor('tok-b')
 
-    const remove = await call('tok-a', 'DELETE', '/organizations/org1/members/ub')
+    const remove = await call('tok-a', 'DELETE', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
     expect(remove.status).toBe(200)
-    expect(roleOf('org1', 'ub')).toBeUndefined()
+    expect(roleOf('org1', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBeUndefined()
 
     at(5_000)
-    const del = await call('tok-b', 'DELETE', '/organizations/org1/members/uc')
+    const del = await call('tok-b', 'DELETE', '/organizations/org1/members/cccccccc-cccc-4ccc-8ccc-cccccccccccc')
     expect(del.status).toBe(403)
-    expect(roleOf('org1', 'uc')).toBe('editor')
+    expect(roleOf('org1', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')).toBe('editor')
 
     const rename = await call('tok-b', 'PATCH', '/organizations/org1', { name: 'Hijacked' })
     expect(rename.status).toBe(403)
@@ -252,10 +278,10 @@ describe('C1.2 demoted or removed admins lose write access immediately', () => {
   })
 
   test('cold cache control: a demoted admin is rejected without any warm entry', async () => {
-    await call('tok-a', 'PATCH', '/organizations/org1/members/ub', { role: 'viewer' })
+    await call('tok-a', 'PATCH', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { role: 'viewer' })
     _clearAuthCacheForTests()
 
-    const res = await call('tok-b', 'PATCH', '/organizations/org1/members/ub', { role: 'admin' })
+    const res = await call('tok-b', 'PATCH', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { role: 'admin' })
     expect(res.status).toBe(403)
   })
 
@@ -263,19 +289,19 @@ describe('C1.2 demoted or removed admins lose write access immediately', () => {
     await warmCacheFor('tok-a')
 
     at(5_000)
-    const res = await call('tok-a', 'PATCH', '/organizations/org1/members/uc', { role: 'viewer' })
+    const res = await call('tok-a', 'PATCH', '/organizations/org1/members/cccccccc-cccc-4ccc-8ccc-cccccccccccc', { role: 'viewer' })
     expect(res.status).toBe(200)
-    expect(roleOf('org1', 'uc')).toBe('viewer')
+    expect(roleOf('org1', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')).toBe('viewer')
   })
 
   test('a freshly promoted member can write without waiting out the cache', async () => {
     await warmCacheFor('tok-c')
-    await call('tok-a', 'PATCH', '/organizations/org1/members/uc', { role: 'admin' })
+    await call('tok-a', 'PATCH', '/organizations/org1/members/cccccccc-cccc-4ccc-8ccc-cccccccccccc', { role: 'admin' })
 
     at(5_000)
-    const res = await call('tok-c', 'PATCH', '/organizations/org1/members/ub', { role: 'editor' })
+    const res = await call('tok-c', 'PATCH', '/organizations/org1/members/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', { role: 'editor' })
     expect(res.status).toBe(200)
-    expect(roleOf('org1', 'ub')).toBe('editor')
+    expect(roleOf('org1', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')).toBe('editor')
   })
 })
 
@@ -285,11 +311,11 @@ describe('ungated writes re-resolve the workspace instead of trusting the cache'
   const SHARE = { scope: 'trace', targetId: 'tr1', ttl: 'never', redactPii: false }
 
   beforeEach(() => {
-    addUser('tok-a', 'ua')
-    addUser('tok-c', 'uc')
+    addUser('tok-a', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    addUser('tok-c', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc')
     seedOrgWithMembers([
-      { userId: 'ua', role: 'admin' },
-      { userId: 'uc', role: 'viewer' },
+      { userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'admin' },
+      { userId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', role: 'viewer' },
     ])
     db.tables['traces'] = [{ id: 'tr1', organization_id: 'org1', name: 'checkout' }]
   })
@@ -311,7 +337,7 @@ describe('ungated writes re-resolve the workspace instead of trusting the cache'
 
   test('removed member with a warm cache cannot mint a public share link (404)', async () => {
     await warmCacheFor('tok-c')
-    await removeMember('uc')
+    await removeMember('cccccccc-cccc-4ccc-8ccc-cccccccccccc')
 
     at(5_000)
     const res = await call('tok-c', 'POST', '/shares', SHARE)
@@ -321,7 +347,7 @@ describe('ungated writes re-resolve the workspace instead of trusting the cache'
 
   test('the rejected write also drops the stale read entry on this instance', async () => {
     await warmCacheFor('tok-c')
-    await removeMember('uc')
+    await removeMember('cccccccc-cccc-4ccc-8ccc-cccccccccccc')
 
     at(5_000)
     await call('tok-c', 'POST', '/shares', SHARE)

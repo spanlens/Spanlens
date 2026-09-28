@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
+import { describeInvitationResponse } from '@/lib/invitation-errors'
 import {
   AuthFootnote,
   AuthHeading,
@@ -103,8 +104,11 @@ function InvitePageInner() {
         // Resolve invite meta from the server (public endpoint).
         const res = await fetch(`/api/v1/invitations/accept?token=${encodeURIComponent(token)}`)
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string }
-          setStatus({ kind: 'invalid', message: body.error ?? 'Invalid invitation.' })
+          const body: unknown = await res.json().catch(() => ({}))
+          setStatus({
+            kind: 'invalid',
+            message: describeInvitationResponse(body, res.status, 'Invalid invitation.').message,
+          })
           return
         }
         const body = (await res.json()) as { data: InviteMeta }
@@ -158,8 +162,11 @@ function InvitePageInner() {
         body: JSON.stringify({ token }),
       })
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string }
-        setAcceptError(body.error ?? 'Failed to accept invitation.')
+        // The server writes the copy, including the "workspace is out of
+        // seats, ask an admin" case. The body is the error envelope, so read
+        // its message rather than rendering the object.
+        const body: unknown = await res.json().catch(() => ({}))
+        setAcceptError(describeInvitationResponse(body, res.status, 'Failed to accept invitation.').message)
         setStatus({ kind: 'email_match', meta: prevMeta })
         return
       }
@@ -207,8 +214,8 @@ function InvitePageInner() {
         body: JSON.stringify({ token }),
       })
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string }
-        setAcceptError(body.error ?? 'Failed to decline invitation.')
+        const body: unknown = await res.json().catch(() => ({}))
+        setAcceptError(describeInvitationResponse(body, res.status, 'Failed to decline invitation.').message)
         setStatus({ kind: 'email_match', meta: prevMeta })
         return
       }

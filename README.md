@@ -48,7 +48,7 @@
 
 **Predictable bills, no quota cliff.** Free hits a hard `429` at 50K requests so a runaway loop in dev can't cost you money. Paid plans use a soft limit with authorized overage (Pro: +$8 / 100K, Team: +$5 / 100K) up to a hard cap you control, so a traffic spike charges you fairly instead of dropping requests.
 
-**Seats**: Free 1 · Pro 3 · Team 10 · Enterprise unlimited. Unlimited projects on every paid tier.
+**Seats**: Free 1 · Pro 3 · Team 10 · Enterprise unlimited. A seat is a member or a pending invitation, and there is no per-seat fee. Self-hosted instances have no seat limit. Unlimited projects on every paid tier.
 
 > ⭐ Like where this is going? A [star](https://github.com/spanlens/Spanlens/stargazers) helps more developers find a lightweight, open alternative in a space full of heavy, acquired tools.
 
@@ -204,6 +204,7 @@ Every request logged with model, provider, latency, tokens, cost, and full promp
 Spanlens is multi-user out of the box. Invite teammates, hand out roles, and spin up a separate workspace per client.
 
 - **Roles** are `admin` (members + billing), `editor` (data + settings), and `viewer` (read-only). The last admin is protected against demotion / removal.
+- **Seats** follow the plan and count members plus pending invitations. A full workspace answers new invitations with `402` and the upgrade path; the check runs again when someone accepts, and a lower limit never removes existing members.
 - **Email invitations** have a 7-day expiry with sha256-hashed tokens. Sent via [Resend](https://resend.com) when `RESEND_API_KEY` is set; falls back to console-logging the accept URL for local dev.
 - The **pending-invitation banner** surfaces unaccepted invites at the top of the dashboard, even if the recipient never opened the email. Accept joins and auto-switches the active workspace; Decline removes the row.
 - **Multi-workspace** lets you switch between workspaces from the sidebar (`sb-ws` cookie + hard reload so middleware re-resolves scope). Useful for consultants juggling multiple clients or one team running prod / staging as separate workspaces.
