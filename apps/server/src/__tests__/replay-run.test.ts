@@ -44,6 +44,8 @@ const state = {
 const ORG_ID = '00000000-0000-4000-8000-000000000001'
 const REQUEST_ID = '00000000-0000-4000-8000-0000000000aa'
 
+vi.mock('../middleware/requireRole.js', () => import('./helpers/cached-role-gate.js'))
+
 vi.mock('../middleware/authJwtOrApiKey.js', () => ({
   authJwtOrApiKey: (async (c: Context, next: Next) => {
     c.set('orgId', ORG_ID)
