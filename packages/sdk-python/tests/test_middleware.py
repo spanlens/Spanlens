@@ -19,6 +19,7 @@ pytest.importorskip("fastapi")
 from fastapi import FastAPI, Request  # noqa: E402
 from httpx import ASGITransport  # noqa: E402
 
+import spanlens.middleware  # noqa: E402
 from spanlens import SpanlensClient, SpanlensMiddleware  # noqa: E402
 
 SPANLENS_BASE = "https://test.spanlens.local"
@@ -150,11 +151,19 @@ async def test_middleware_records_error_and_reraises() -> None:
 
 
 @respx.mock
-async def test_middleware_builds_client_from_api_key() -> None:
+async def test_middleware_builds_client_from_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """When no client is passed, the middleware builds one from api_key and the
     request still succeeds (the request path must never depend on the trace
     flush, which is fire-and-forget on an internally-owned pool)."""
-    _mock_ingest()
+    routes = _mock_ingest()
+    built: list[SpanlensClient] = []
+
+    class _RecordingClient(SpanlensClient):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            built.append(self)
+
+    monkeypatch.setattr(spanlens.middleware, "SpanlensClient", _RecordingClient)
 
     app = FastAPI()
     app.add_middleware(
@@ -174,6 +183,15 @@ async def test_middleware_builds_client_from_api_key() -> None:
 
     assert resp.status_code == 200
     assert resp.json() == {"pong": "1"}
+
+    # Drain the middleware's own client while the mocks are still active.
+    # Otherwise its fire-and-forget trace calls outlive this test and go to
+    # the real network.
+    assert len(built) == 1
+    built[0].close()
+    assert routes["trace_post"].call_count == 1
+    sent = routes["trace_post"].calls[0].request.headers
+    assert sent["authorization"] == "Bearer sl_test_dummy"
 
 
 @respx.mock
