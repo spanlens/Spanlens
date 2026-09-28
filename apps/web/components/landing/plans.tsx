@@ -30,11 +30,11 @@ export function Plans({ plans }: { plans: LandingPlan[] }) {
       <div className="mx-auto max-w-[1200px]">
         <header className="mx-auto max-w-[700px] text-center">
           <h2 className="font-display track-h2 text-[30px] leading-[1.1] text-text lg:text-[44px]">
-            Billed on requests, never on seats
+            Priced on requests, seats included
           </h2>
           <p className="mt-4 text-[14.5px] leading-[1.58] text-text-muted lg:text-[16px]">
-            Bring the whole team on any plan. The repo stays MIT, so self-hosting is always the free
-            exit.
+            Every plan comes with its seats built in, with no per-seat fee, and more seats as you move
+            up. The repo stays MIT, so self-hosting with no seat limit is always the free exit.
           </p>
         </header>
 

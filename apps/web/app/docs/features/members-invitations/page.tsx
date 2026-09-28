@@ -18,8 +18,9 @@ export default function MembersInvitationsDocs() {
       <p className="lead">
         Spanlens is multi-user out of the box. Invite teammates by email,
         hand out roles, switch between workspaces, and watch every membership
-        event in the audit log. Nothing here costs extra, it&rsquo;s the
-        same flow on the Free plan as on Enterprise.
+        event in the audit log. The flow works the same way on every plan,
+        and the plan decides how many <a href="#seats">seats</a> the
+        workspace has.
       </p>
 
       <h2 id="roles">Roles</h2>
@@ -106,8 +107,9 @@ export default function MembersInvitationsDocs() {
       </ol>
 
       <p>
-        Both paths converge on the same server-side handler. Accept inserts
-        the <code>org_members</code> row, marks the invitation accepted,
+        Both paths converge on the same server-side handler. Accept checks
+        that the workspace still has a free seat, inserts the{' '}
+        <code>org_members</code> row, marks the invitation accepted,
         sets <code>onboarded_at</code> on the user&rsquo;s profile (so the
         dashboard layout&rsquo;s onboarding gate lets them through), and
         returns the joined organization id. The client writes that id to
@@ -132,6 +134,34 @@ export default function MembersInvitationsDocs() {
           not now.&rdquo;
         </li>
       </ul>
+
+      <h2 id="seats">Seats</h2>
+      <p>
+        Every member of a workspace takes a seat, and so does every
+        invitation that is still pending and has not expired. Free includes
+        1 seat, Pro includes 3, Team includes 10, and Enterprise has no
+        limit. Seats are part of the plan price, so there is no per-seat fee.
+      </p>
+      <p>
+        When every seat is taken, sending another invitation returns{' '}
+        <code>HTTP 402</code> with a <code>seat_limit_reached</code> reason,
+        and the invite dialog links to your plan options. Cancelling a
+        pending invitation or removing a member frees a seat right away.
+        The limit is checked again at the moment someone accepts, so two
+        people accepting at once cannot push a workspace past its plan. An
+        invitee who arrives at a full workspace is asked to contact a
+        workspace admin.
+      </p>
+      <p>
+        A lower limit never removes anyone. If a workspace has more members
+        than its plan allows, for example after a downgrade, everyone keeps
+        access and only new members wait for a free seat.
+      </p>
+      <p>
+        Self-hosted instances run without billing, so they have no seat
+        limit. To enforce the plan limits on your own deployment anyway, set{' '}
+        <code>SPANLENS_ENFORCE_SEAT_LIMITS=true</code> on the server.
+      </p>
 
       <h2 id="onboarding">First-signup behaviour</h2>
       <p>
