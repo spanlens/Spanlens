@@ -39,6 +39,31 @@ export type ChangelogTag =
 
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-09-28',
+    slug: 'model-price-refresh-2026-09',
+    title: 'Three models were costed too high, and sixteen more now have prices',
+    tags: ['fix'],
+    body: [
+      'Three models reported more than you were billed. OpenAI cut `gpt-5.6-sol` from $5.00 to $4.00 per million input tokens and from $30.00 to $20.00 on output, and we did not follow it down, so those requests read about 20 percent high on input and 33 percent high on output. Its siblings `gpt-5.6-terra` and `gpt-5.6-luna` did not move and were always correct. The two Gemini Robotics ER 2 previews were worse. They are on introductory pricing until the end of 2026, we had seeded the rates that begin in January 2027, and every request to them since August 11 was reported at exactly twice its real cost on input, output and cached reads. DeepSeek also renamed `deepseek-v4-flash` into an alias that bills at its cheaper Flash rate, which we missed, so that one read 47 percent high on input.',
+      'Sixteen models that logged a blank cost now have one. OpenAI\'s new GPT-6 family (`gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`), `gpt-rosalind-research` and the two Daybreak aliases; Claude Opus 5.5, Claude Fable 5.1 and Claude Mythos 5.1; `gemini-3.8-flash`; `grok-4.7`; Groq\'s `qwen/qwen3.8-27b`; `deepseek-flash` and `deepseek-v4-flash-vision-exp`; and Mistral\'s `zai-glm-5-3`. `omni-moderation-latest` is free, so it now shows $0.00 instead of a gap.',
+      'Prompt caching on the newest Claude models is cheaper than the old rule of thumb. A cache read cost a tenth of the input price on every Claude model until now. On Fable 5.1 and Mythos 5.1 it is 2.5 percent, and on Opus 5.5 it is 5 percent. We read those from Anthropic\'s published rates rather than deriving them, which on Fable 5.1 would have overstated a cached request by four times.',
+      'One more DeepSeek change works in your favour. Its peak window now runs on weekdays only, so the off-peak rate we record is right for about four fifths of the year rather than seven tenths. Requests inside the peak window, 01:00 to 04:00 and 06:00 to 10:00 UTC, are still reported at half their real cost until the price table can hold a time dimension.',
+      'Costs are recomputed at request time, so this changes what new requests report. Requests already logged keep the cost that was recorded when they ran.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-08-21',
+    slug: 'model-price-refresh-2026-08b',
+    title: 'Gemini Flash was costed at twice its price',
+    tags: ['fix'],
+    body: [
+      '`gemini-3.6-flash` was reported at exactly double its real cost on input, output and cached reads. Google publishes two prices for the model, one that runs until the end of 2026 and a higher one that starts in January 2027, and our August seed took the later pair. Every Flash request logged between August 11 and August 21 read high by a factor of two.',
+      'DeepSeek went the other way. It moved to time-of-day pricing and both of its tiers cost more than the flat rate we had, so `deepseek-v4-flash` and `deepseek-v4-pro` were reported below what you were actually billed, which is the more awkward direction to be wrong in. Both now carry the off-peak rate, correct for 17 hours out of every 24 at the time of the change.',
+      'Five models that had no price now have one: `gemini-3.7-flash`, `grok-4.6`, `gpt-5.5-cyber`, `gpt-5-search-api`, and Mistral\'s `zai-glm-5-2`.',
+      'Claude Sonnet 5 stays at $2 and $10 per million tokens. Anthropic had announced an increase to $3 and $15 for September 1 and then cancelled it, so nothing changes there. As before, corrected prices apply to requests logged from now on, and anything already logged keeps the cost recorded at the time.',
+    ].join('\n\n'),
+  },
+  {
     date: '2026-08-17',
     slug: 'new-design-across-the-app',
     title: 'A new look across the whole app',
@@ -214,8 +239,8 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['feature'],
     body: [
       'Two new proxies join OpenAI, Anthropic, Gemini, and Azure. Point the OpenAI SDK at `https://api.spanlens.io/proxy/mistral/v1` or `/proxy/openrouter/v1` with your Spanlens key and Mistral chat completions or any of OpenRouter\'s 100+ models route through Spanlens with cost, latency, and token counts on every row in /requests. Both APIs are OpenAI-compatible, so existing client code only needs a baseURL swap.',
-      'OpenRouter is a meta-provider that fronts models from 30+ vendors behind one key — `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-5`, `meta-llama/llama-3.3-70b-instruct`, `deepseek/deepseek-r1`, and so on. For these calls Spanlens prefers the `usage.cost` field on OpenRouter\'s response (the authoritative billed amount, which captures any volume discount or upstream-provider margin we don\'t see) over our local price-table lookup. Streaming responses get the same treatment via the final SSE chunk.',
-      'Register a provider key from /projects and the dropdown now lists both. Evaluators and experiments can also use Mistral or OpenRouter as the judge or run model — the New Evaluator dialog reads the live model catalog, so any new model in `model_prices` shows up automatically. See [the proxy guide](/docs/proxy) for code samples in TypeScript, Python, and curl.',
+      'OpenRouter is a meta-provider that fronts models from 30+ vendors behind one key: `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-5`, `meta-llama/llama-3.3-70b-instruct`, `deepseek/deepseek-r1`, and so on. For these calls Spanlens prefers the `usage.cost` field on OpenRouter\'s response (the authoritative billed amount, which captures any volume discount or upstream-provider margin we don\'t see) over our local price-table lookup. Streaming responses get the same treatment via the final SSE chunk.',
+      'Register a provider key from /projects and the dropdown now lists both. Evaluators and experiments can also use Mistral or OpenRouter as the judge or run model. The New Evaluator dialog reads the live model catalog, so any new model in `model_prices` shows up automatically. See [the proxy guide](/docs/proxy) for code samples in TypeScript, Python, and curl.',
     ].join('\n\n'),
   },
   {
@@ -226,7 +251,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     body: [
       'The dashboard now answers the obvious follow-up questions to the headline KPIs. Three new charts sit in a single block between Traffic & spend and Spend forecast: token volume split into prompt vs completion as a stacked area, errors broken out into 4xx / 429 / 5xx bands (429 is split out so quota issues read as a different escalation than schema regressions or upstream outages), and a cost-by-model horizontal bar that surfaces the top six (provider, model) pairs sorted by spend.',
       'The token chart reuses the existing timeseries endpoint with two new fields (`promptTokens`, `completionTokens`); the error chart pulls 429 specifically via a new `errors429` field; the cost-by-model chart reads from the existing `useStatsModels` hook so no extra request is made. All three respect the dashboard time range selector and re-render in place when you switch 24h / 7d / 30d.',
-      'See your spend trend? Now you can see whether it was tokens or model mix, and what kind of errors are driving the noise — without opening Requests.',
+      'See your spend trend? Now you can see whether it was tokens or model mix, and what kind of errors are driving the noise, without opening Requests.',
     ].join('\n\n'),
   },
   {
@@ -235,8 +260,8 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'OpenAI embedding calls now show up with cost in /requests',
     tags: ['improvement'],
     body: [
-      'RAG workloads send a lot more embedding calls than chat completions (retrieval queries fire roughly 10× per user query versus one chat completion), so the previously missing embedding cost was a meaningful slice of the dashboard total — anywhere from 30% to 50% for a retrieval-heavy app. The proxy and parser already handled the traffic correctly; the gap was a missing pricing row.',
-      'The three OpenAI embedding models now have list prices in `model_prices` and the in-memory fallback: `text-embedding-3-small` ($0.020 / 1M tokens), `text-embedding-3-large` ($0.130 / 1M), and `text-embedding-ada-002` ($0.100 / 1M). Completion price stays at 0 — embeddings are input-only. New rows land with the correct `cost_usd` immediately; historical rows are unaffected.',
+      'RAG workloads send a lot more embedding calls than chat completions (retrieval queries fire roughly 10× per user query versus one chat completion), so the previously missing embedding cost was a meaningful slice of the dashboard total, anywhere from 30% to 50% for a retrieval-heavy app. The proxy and parser already handled the traffic correctly; the gap was a missing pricing row.',
+      'The three OpenAI embedding models now have list prices in `model_prices` and the in-memory fallback: `text-embedding-3-small` ($0.020 / 1M tokens), `text-embedding-3-large` ($0.130 / 1M), and `text-embedding-ada-002` ($0.100 / 1M). Completion price stays at 0 because embeddings are input only. New rows land with the correct `cost_usd` immediately; historical rows are unaffected.',
       'See [Cost tracking](/docs/features/cost-tracking) for the formula and the model price table.',
     ].join('\n\n'),
   },
@@ -248,7 +273,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     body: [
       'The webhook target URL used to only require the `https://` scheme. That left the door open to register a URL resolving to a private IP, loopback, link-local, or a cloud-provider metadata endpoint (the AWS IMDS at 169.254.169.254 / GCP metadata.google.internal / Azure metadata.azure.internal). Spanlens would then dutifully POST your org events at that internal target on every event tick. The 2019 Capital One breach was the same class of bug.',
       'Webhook create and update now resolve the hostname and reject any URL that lands on a blocked CIDR (the RFC 1918 ranges, 127.0.0.0/8 loopback, 169.254.0.0/16 link-local including IMDS, IPv6 loopback and unique-local, plus the IPv4-mapped form so `::ffff:169.254.169.254` cannot slip through). The same check runs again at every dispatch so a DNS rebinding mid-stream cannot bypass the registration-time check.',
-      'No customer-facing migration is needed — existing webhooks were re-validated and only addresses pointing at internal targets are rejected on the next save. If you see a `BLOCKED_IP` or `BLOCKED_HOSTNAME` error code on a previously-working webhook, the target was unsafe and should be moved to a public endpoint.',
+      'No customer-facing migration is needed. Existing webhooks were re-validated and only addresses pointing at internal targets are rejected on the next save. If you see a `BLOCKED_IP` or `BLOCKED_HOSTNAME` error code on a previously-working webhook, the target was unsafe and should be moved to a public endpoint.',
     ].join('\n\n'),
   },
   {
@@ -257,7 +282,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Dedicated Vercel AI SDK integration guide',
     tags: ['docs'],
     body: [
-      'The Vercel AI SDK adapter (`@spanlens/sdk/vercel-ai`) shipped with the SDK back in 0.3.0 but lived as a short section on the SDK page. The standalone guide at [/docs/integrations/vercel-ai](/docs/integrations/vercel-ai) now covers `generateText`, `streamText`, `generateObject`, `streamObject`, multi-step tool calls, attaching to a long-lived trace for chat sessions, pairing with the proxy for billing-grade cost, and a troubleshooting FAQ. Same shape as the LangGraph / LlamaIndex / MCP guides — the four major TypeScript integrations now read consistently.',
+      'The Vercel AI SDK adapter (`@spanlens/sdk/vercel-ai`) shipped with the SDK back in 0.3.0 but lived as a short section on the SDK page. The standalone guide at [/docs/integrations/vercel-ai](/docs/integrations/vercel-ai) now covers `generateText`, `streamText`, `generateObject`, `streamObject`, multi-step tool calls, attaching to a long-lived trace for chat sessions, pairing with the proxy for billing-grade cost, and a troubleshooting FAQ. Same shape as the LangGraph, LlamaIndex and MCP guides, so the four major TypeScript integrations now read consistently.',
       'No SDK change. If you already wired `createSpanlensTracker` into a project, nothing has to move.',
     ].join('\n\n'),
   },
@@ -268,7 +293,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     tags: ['feature'],
     body: [
       'The submit-only feedback box is now a public roadmap. Visit [/feedback](/feedback) without logging in to read every suggestion ranked by community votes. Each item carries a status chip (new, planned, in progress, shipped, declined), the original message, and a public response from the Spanlens team when one is posted. Items moved to shipped link out to the matching changelog entry.',
-      'Signed in users can upvote any item, un-vote with the same click, and submit a new suggestion from the inline panel. The vote count updates optimistically and rolls back if the server rejects the write. Anonymous visitors see the same list but the vote pill links to sign in instead of casting a vote — no anonymous voting, no spam channel.',
+      'Signed in users can upvote any item, un-vote with the same click, and submit a new suggestion from the inline panel. The vote count updates optimistically and rolls back if the server rejects the write. Anonymous visitors see the same list but the vote pill links to sign in instead of casting a vote. Anonymous visitors cannot vote, which keeps the list from turning into a spam channel.',
       'Behind the scenes the new `/api/v1/feedback` endpoints follow the standard error envelope from the [API errors reference](/docs/api/errors), and admin status updates run through a separate authenticated endpoint that stamps the responder and timestamp on each row.',
     ].join('\n\n'),
   },
@@ -278,7 +303,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Every API endpoint now returns the standard error envelope',
     tags: ['improvement'],
     body: [
-      'The standard `{ error: { code, message, requestId } }` envelope rolled out for the first 8 routers in Sprint 7 has reached every endpoint the server exposes — proxy, ingest, OTLP, every `/api/v1/*` route, every webhook handler, every cron endpoint. The 18 stable codes in the [API errors reference](/docs/api/errors) cover every 4xx and 5xx the server emits.',
+      'The standard `{ error: { code, message, requestId } }` envelope rolled out for the first 8 routers in Sprint 7 has reached every endpoint the server exposes: proxy, ingest, OTLP, every `/api/v1/*` route, every webhook handler, every cron endpoint. The 18 stable codes in the [API errors reference](/docs/api/errors) cover every 4xx and 5xx the server emits.',
       'For SDK users this means `if (err.code === "RATE_LIMIT")` works against any response from any path. The TypeScript catch path narrows to a single `SpanlensApiError` shape regardless of which router answered. A new `INJECTION_BLOCKED` code (HTTP 422) joins the catalog for proxy requests rejected by the security policy when prompt injection is detected.',
       'The change is fully backward compatible. Existing clients that read `error.message` keep working; clients that want stable identifiers can switch to `error.code` at their own pace.',
     ].join('\n\n'),
@@ -366,7 +391,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     title: 'Unified events table now shadow-writes every LLM call',
     tags: ['infrastructure'],
     body: [
-      'First stage of the events-table unification work. New ClickHouse `events` table where an LLM generation, a trace, and a span are all variants of the same row shape — the same idea production-grade event analytics stores like PostHog have long converged on. Token kinds (vision input, reasoning, cache write) and per-provider cost breakdowns live in `Map(String, …)` columns so new keys don\'t need a column migration.',
+      'First stage of the events-table unification work. New ClickHouse `events` table where an LLM generation, a trace, and a span are all variants of the same row shape, the same idea that production-grade event analytics stores like PostHog have long converged on. Token kinds (vision input, reasoning, cache write) and per-provider cost breakdowns live in `Map(String, …)` columns so new keys don\'t need a column migration.',
       'Stage 1 is shadow-only: every successful `requests` insert and every `/ingest/traces` or `/ingest/spans` call also fans out a best-effort write to `events`. Reads are unchanged, so the dashboard still queries `requests` and the Postgres trace tables. A failed event write logs to the console but never affects the source insert.',
       'Stage 2 (background-migration backfill) and Stage 3 (feature-flag dashboard reads, route by route) ship over the coming weeks. The eventual win is one query for "show me everything in this trace" instead of the current cross-database join.',
     ].join('\n\n'),
