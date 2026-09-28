@@ -320,15 +320,39 @@ const res2 = await openai.chat.completions.create(
     },
   },
 )`}
-        py={`# Python helper coming soon, set the header directly
-from openai import OpenAI
+        py={`import os
 
+from openai import OpenAI
+from spanlens import observe_openai
+
+# Proxy only: every request from this client is stored without bodies
 openai = OpenAI(
-    api_key=os.environ['SPANLENS_API_KEY'],
-    base_url='https://api.spanlens.io/proxy/openai/v1',
-    default_headers={'x-spanlens-log-body': 'meta'},
+    api_key=os.environ["SPANLENS_API_KEY"],
+    base_url="https://api.spanlens.io/proxy/openai/v1",
+    default_headers={"x-spanlens-log-body": "meta"},
+)
+
+# With SDK tracing, pass log_body to the helper as well. The helper records
+# the response as the span output and can't see the client's default headers.
+res = observe_openai(
+    trace,
+    "pii-heavy-call",
+    lambda headers: openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": some_prompt_that_may_contain_pii}],
+        extra_headers=headers,
+    ),
+    log_body="meta",
 )`}
       />
+      <p>
+        If you trace calls with the Python <code>observe_*()</code> helpers, give them the same
+        setting through <code>log_body</code>. They record the provider response as the span
+        output, and they can&apos;t read headers configured on the client, so an opt-out set only
+        through <code>default_headers</code> keeps bodies off the request row but not off the span.
+        The helpers forward <code>log_body</code> to the proxy as{' '}
+        <code>x-spanlens-log-body</code> for you.
+      </p>
       <p>Raw curl:</p>
       <CodeBlock>{`curl https://api.spanlens.io/proxy/openai/v1/chat/completions \\
   -H "Authorization: Bearer $SPANLENS_API_KEY" \\
@@ -669,8 +693,9 @@ res = observe_openai(trace, "greeting", lambda headers:
       <p>
         Same pattern works with <code>observeAnthropic()</code> / <code>observe_anthropic()</code>{' '}
         and <code>observeGemini()</code> / <code>observe_gemini()</code>. The{' '}
-        <code>logBody</code> option on the options form maps 1:1 to the{' '}
-        <a href="#with-log-body"><code>withLogBody()</code></a> helper, and the{' '}
+        <code>logBody</code> option on the options form (the <code>log_body</code> keyword in
+        Python) maps 1:1 to the <a href="#with-log-body"><code>withLogBody()</code></a> helper,
+        and the{' '}
         <code>cache</code> option maps 1:1 to{' '}
         <a href="#with-cache"><code>withCache()</code></a>.
       </p>

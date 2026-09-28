@@ -179,20 +179,26 @@ The response is recorded as the span output, and the generic `observe()`
 records whatever your callable returns (streams and iterators are skipped).
 Pass `input=` to record the prompt on the span as well.
 
-### Keeping prompts and responses out of Spanlens: `log_body`
+### Controlling what the SDK sends: `log_body`
 
 Every `observe*` helper accepts `log_body="full" | "meta" | "none"`. With
-`"meta"` or `"none"`, the span's input and output (and those of any child
-spans you open under it) are never sent; only metadata such as model, token
-counts, and latency is. The provider helpers also forward the value to the
-proxy as the `x-spanlens-log-body` header, so the proxied request row follows
-the same rule.
+`"meta"` or `"none"`, the SDK does not send the span's input or output (or
+those of any child spans you open under it); it sends only metadata such as
+model, token counts, and latency. The provider helpers also forward the value
+to the proxy as the `x-spanlens-log-body` header, so the request row the proxy
+stores follows the same rule.
 
 ```python
 result = observe_openai(trace, "pii-heavy-call", call_openai, log_body="meta")
 ```
 
 An unknown value raises `ValueError` instead of silently storing everything.
+
+If you opted out by setting `x-spanlens-log-body` on the provider client
+itself (for example `OpenAI(default_headers={"x-spanlens-log-body": "meta"})`),
+pass `log_body="meta"` to the `observe_*()` helpers too. They can't see headers
+configured on the client, and without it they record the provider response as
+the span output.
 
 ### Async support
 

@@ -111,3 +111,53 @@ def test_streaming_inside_observe_python_example_runs() -> None:
     patches = _span_bodies("PATCH", "/ingest/spans/")
     assert any(p.get("total_tokens") == 7 for p in patches)
     assert any(p.get("output") == "Hello world" for p in patches)
+
+
+PROXY_URL = "https://api.spanlens.io/proxy/openai/v1/chat/completions"
+_COMPLETION = {
+    "id": "chatcmpl-1",
+    "object": "chat.completion",
+    "created": 1,
+    "model": "gpt-4o-mini",
+    "choices": [
+        {
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {"role": "assistant", "content": "PRIVATE ANSWER"},
+        }
+    ],
+    "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6},
+}
+
+
+@respx.mock
+def test_with_log_body_python_example_keeps_bodies_off_the_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Python withLogBody tab must opt the traced span out too, not just
+    the proxy row. A client-level ``default_headers`` opt-out alone is
+    invisible to ``observe_openai``, which would record the response."""
+    pytest.importorskip("openai")
+    monkeypatch.setenv("SPANLENS_API_KEY", "sl_test_dummy")
+    _mock_ingest()
+    proxy = respx.post(PROXY_URL).mock(return_value=httpx.Response(200, json=_COMPLETION))
+    snippet = _python_tab("with-log-body")
+
+    with SpanlensClient(api_key="sl_test_dummy", base_url=BASE_URL, silent=False) as client:
+        with client.start_trace("docs-example") as trace:
+            namespace: dict[str, Any] = {
+                "trace": trace,
+                "some_prompt_that_may_contain_pii": "my SSN is 000-00-0000",
+            }
+            exec(compile(snippet, "docs/sdk#with-log-body", "exec"), namespace)
+
+    assert namespace["res"].choices[0].message.content == "PRIVATE ANSWER"
+    sent = proxy.calls[0].request.headers
+    assert sent["x-spanlens-log-body"] == "meta"
+    assert "x-span-id" in sent
+
+    span_posts = [b for b in _span_bodies("POST", "/spans") if "span_type" in b]
+    assert span_posts and all("input" not in b for b in span_posts)
+    patches = _span_bodies("PATCH", "/ingest/spans/")
+    assert patches and all("output" not in p for p in patches)
+    assert any(p.get("total_tokens") == 6 for p in patches)

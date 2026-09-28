@@ -4,7 +4,7 @@
 
 ### Added
 
-- `log_body="full" | "meta" | "none"` on `observe()` and every `observe_*()` helper. `"meta"` and `"none"` keep the span's input and output (and those of spans opened under it) out of the ingest calls; only metadata such as model, tokens, and latency is sent. The provider helpers also forward the value to the proxy as `x-spanlens-log-body`. An unknown value raises `ValueError` before your callable runs.
+- `log_body="full" | "meta" | "none"` on `observe()` and every `observe_*()` helper. With `"meta"` and `"none"` the SDK leaves the span's input and output (and those of spans opened under it) out of its ingest calls and sends only metadata such as model, tokens, and latency. The provider helpers also forward the value to the proxy as `x-spanlens-log-body`. An unknown value raises `ValueError` before your callable runs.
 - `input=` on `observe()` and the `observe_*()` helpers records the prompt on the span when it is created.
 - `SpanlensClient.flush(timeout=5.0)` waits for pending ingest calls without closing the client, and `close()` now takes the same `timeout`.
 - `SpanlensClient(max_pending=...)` caps queued plus in-flight ingest calls (default 10,000). Calls beyond it are dropped and counted in `client.dropped_count` instead of growing memory while Spanlens is unreachable.
@@ -12,6 +12,7 @@
 
 ### Changed
 
+- **Check your body-logging opt-out.** `observe()` and the `observe_*()` helpers now send the return value or provider response as the span output (see Fixed). If you opted out of body logging by setting `x-spanlens-log-body` on the provider client, for example with `OpenAI(default_headers={"x-spanlens-log-body": "meta"})`, the helpers can't see that header. Pass `log_body="meta"` (or `"none"`) to each `observe_*()` call as well, or the response will be stored on the span.
 - `observe_ollama()` defaults to `log_body="meta"`, so local prompts and responses stay on your machine as the docs describe. Pass `log_body="full"` to record them.
 - `SPANLENS_BASE_URL` is now honoured everywhere, as the 0.8.1 notes said. It holds the origin of a self-hosted server: `create_openai()`, `create_async_openai()`, `create_anthropic()`, `create_async_anthropic()`, `create_gemini()`, and `configure_gemini()` append their proxy path to it, and `SpanlensClient` sends ingest calls there. An explicit `base_url=` still wins.
 - `spanlens init --server-url` now tells you to add `SPANLENS_BASE_URL` to your deployment environment next to `SPANLENS_API_KEY`.
