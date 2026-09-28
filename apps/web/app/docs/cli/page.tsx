@@ -26,8 +26,8 @@ const WIZARD_OUTPUT = `Spanlens setup
   ? Paste your Spanlens key > sl_live_*************
 
   Key valid - project chatbot-prod - providers: openai, anthropic, gemini
-  Updated SPANLENS_API_KEY in .env.local
   Installed @spanlens/sdk (pnpm add @spanlens/sdk)
+  Updated SPANLENS_API_KEY in .env.local
 
   Found 3 patches to apply
     - [openai] app/api/chat/route.ts
@@ -77,6 +77,13 @@ const MANUAL_EDIT_OUTPUT = `[openai] lib/openai.ts:4  The options come from \`pr
   - new OpenAI(providerOptions)
   + createOpenAI(providerOptions)
   Before you make this change, \`providerOptions\` must not set apiKey, baseURL, adminAPIKey, or workloadIdentity.`
+
+const HEADER_DIFF = `- const openai = new OpenAI({
+-   apiKey: process.env.OPENAI_API_KEY,
+-   baseURL: 'https://oai.helicone.ai/v1',
+-   defaultHeaders: { 'Helicone-Auth': \`Bearer \${process.env.HELICONE_API_KEY}\` },
+- })
++ const openai = createOpenAI()`
 
 const DRY_RUN_CMD = `npx @spanlens/cli init --dry-run`
 const SELF_HOST_CMD = `npx @spanlens/cli init --server-url https://spanlens.yourcompany.com`
@@ -209,8 +216,10 @@ export default function CliDocs() {
         address (<code>apiKey</code> and <code>baseURL</code>, plus{' '}
         <code>authToken</code>, <code>credentials</code>, <code>config</code>, and{' '}
         <code>profile</code> for Anthropic), and keep every other option
-        (<code>timeout</code>, <code>organization</code>, <code>defaultHeaders</code>,
-        etc.).
+        (<code>timeout</code>, <code>organization</code>, <code>maxRetries</code>,
+        etc.). The client can come from a default import or a named one such as{' '}
+        <code>{"import { OpenAI } from 'openai'"}</code>; both are rewritten, for
+        OpenAI and Anthropic alike.
       </p>
       <h3>OpenAI</h3>
       <CodeBlock language="diff">{OPENAI_DIFF}</CodeBlock>
@@ -218,6 +227,29 @@ export default function CliDocs() {
       <CodeBlock language="diff">{ANTHROPIC_DIFF}</CodeBlock>
       <h3>Gemini</h3>
       <CodeBlock language="diff">{GEMINI_DIFF}</CodeBlock>
+
+      <h3 id="headers">Headers and query parameters</h3>
+      <p>
+        <code>defaultHeaders</code> and <code>defaultQuery</code> stay, minus
+        any entry that carries a credential: <code>Authorization</code>,{' '}
+        <code>x-api-key</code>, <code>api-key</code>, names with key, token, or
+        secret in them, and every gateway header such as{' '}
+        <code>Helicone-*</code>, <code>x-portkey-*</code>, or{' '}
+        <code>cf-aig-*</code>. The provider SDKs send these after their own
+        auth header, so an <code>Authorization</code> left in place would
+        replace your Spanlens key and send your OpenAI key to Spanlens instead.
+        The preview lists every entry the wizard removes. A migration from
+        Helicone therefore comes out clean:
+      </p>
+      <CodeBlock language="diff">{HEADER_DIFF}</CodeBlock>
+      <p>
+        Helicone metadata headers such as <code>Helicone-User-Id</code> are
+        dropped too. Their Spanlens counterparts are listed in the{' '}
+        <Link href="/docs/migrate/from-helicone" className="text-accent hover:underline">
+          Helicone migration guide
+        </Link>
+        .
+      </p>
 
       <h3 id="imports">Imports the file still needs</h3>
       <p>
@@ -242,9 +274,36 @@ export default function CliDocs() {
         leaves that call unchanged and prints the exact edit to make:
       </p>
       <CodeBlock language="bash">{MANUAL_EDIT_OUTPUT}</CodeBlock>
+      <p>The same happens when:</p>
+      <ul>
+        <li>
+          <code>defaultHeaders</code> or <code>defaultQuery</code> comes from a
+          variable or a helper call, or a header value looks like a key.
+        </li>
+        <li>
+          The options pass a custom <code>fetch</code>, or{' '}
+          <code>fetchOptions</code> sets <code>headers</code>. Either can add its
+          own credentials.
+        </li>
+        <li>
+          The client is created from <code>require()</code>, a dynamic{' '}
+          <code>import()</code>, or a namespace import such as{' '}
+          <code>{"import * as oai from 'openai'"}</code>.
+        </li>
+        <li>
+          The client talks to Azure OpenAI (an Azure <code>baseURL</code>, an{' '}
+          <code>api-key</code> header, or an <code>api-version</code> query).{' '}
+          <code>createOpenAI()</code> would send those requests to OpenAI, so the
+          wizard points you at the Azure route in the{' '}
+          <Link href="/docs/proxy" className="text-accent hover:underline">proxy docs</Link>{' '}
+          instead of suggesting a rewrite.
+        </li>
+      </ul>
       <p>
         Until you make those edits, requests from those calls do not go through
         Spanlens, and the wizard says setup is almost done rather than complete.
+        If it finds no client at all, it says setup is not finished and shows the
+        factory imports to use.
       </p>
 
       <h2 id="python">Python CLI</h2>
@@ -352,12 +411,17 @@ export default function CliDocs() {
               <code>/api</code> and <code>/proxy</code>. The wizard validates your
               key against it and writes its origin, with no path and no trailing
               slash, to <code>SPANLENS_BASE_URL</code>. The{' '}
-              <code>@spanlens/sdk</code> factories read that variable and send
-              requests to <code>/proxy/openai/v1</code>,{' '}
-              <code>/proxy/anthropic</code>, or <code>/proxy/gemini</code> on
-              your server, and the wizard lists those exact addresses when it
-              finishes. If you paste a URL with a path, the path is ignored with a
-              warning. Both <code>--server-url &lt;url&gt;</code> and{' '}
+              <code>@spanlens/sdk</code> factories read that variable from
+              version 0.18.0 on and send requests to{' '}
+              <code>/proxy/openai/v1</code>, <code>/proxy/anthropic</code>, or{' '}
+              <code>/proxy/gemini</code> on your server, and the wizard lists
+              those exact addresses when it finishes. Older SDK versions ignore
+              the variable and would send your requests and your key to the
+              hosted service, so the wizard checks the installed version first.
+              It offers to upgrade an older one, and stops without writing your
+              env file or touching your code if you decline or no newer version
+              is available. If you paste a URL with a path, the path is ignored
+              with a warning. Both <code>--server-url &lt;url&gt;</code> and{' '}
               <code>--server-url=&lt;url&gt;</code> work.
               <CodeBlock language="bash">{SELF_HOST_CMD}</CodeBlock>
             </td>
