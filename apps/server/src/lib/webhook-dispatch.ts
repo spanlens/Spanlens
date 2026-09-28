@@ -14,6 +14,8 @@
  *     id, unchanged across retries. Delivery is at-least-once, so receivers
  *     dedupe on it.
  *   - A delivery whose last attempt fails is dead-lettered (dlq_at).
+ *   - A delivery still waiting for a retry MAX_DELIVERY_AGE_SECONDS after its
+ *     event is dead-lettered as 'expired' instead of being sent late.
  *
  * Outbound requests go through lib/safe-http.ts, which re-validates every
  * redirect hop and checks the resolved address at connect time.
@@ -49,6 +51,15 @@ const ATTEMPT_TIMEOUT_MS = 10_000
  * claimable again once this lapses.
  */
 const CLAIM_LEASE_SECONDS = 300
+
+/**
+ * Retry window, counted from the first attempt (delivered_at). The normal
+ * schedule finishes in about 30 minutes, so only a stalled retry job leaves a
+ * delivery pending this long. Past it, claim_webhook_deliveries dead-letters
+ * the delivery as 'expired' instead of sending a day-old event. Without this,
+ * the first run after a long stall would replay the whole backlog.
+ */
+const MAX_DELIVERY_AGE_SECONDS = 24 * 60 * 60
 
 /** Defaults for one /cron/retry-webhooks run. */
 const RETRY_DEFAULTS = {
@@ -209,7 +220,7 @@ export interface RetryWebhooksOptions {
   now?: () => number
 }
 
-/** A row returned by claim_webhook_deliveries (20260929120000). */
+/** A row returned by claim_webhook_deliveries (20260929120100). */
 interface ClaimedDelivery {
   id: string
   webhook_id: string
@@ -228,6 +239,7 @@ type RetryOutcome = 'succeeded' | 'failed' | 'exhausted' | 'skipped'
 /**
  * Atomically claims up to `limit` due deliveries (FOR UPDATE SKIP LOCKED plus
  * a lease), so overlapping runs split the queue instead of each sending it.
+ * The same call dead-letters deliveries that outlived the retry window.
  * A failed claim throws: reporting "nothing to do" would log the run as
  * healthy while the queue silently stops draining.
  */
@@ -236,6 +248,7 @@ async function claimDueDeliveries(limit: number): Promise<ClaimedDelivery[]> {
     p_limit: limit,
     p_lease_seconds: CLAIM_LEASE_SECONDS,
     p_max_attempts: MAX_ATTEMPTS,
+    p_max_age_seconds: MAX_DELIVERY_AGE_SECONDS,
   })
   if (error) {
     logError('WEBHOOK_FETCH_FAILED', { kind: 'retry_queue_claim' }, error.message)

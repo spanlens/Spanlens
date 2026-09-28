@@ -10,10 +10,12 @@ import { createHmac, randomUUID } from 'node:crypto'
  *     rejection would hide exactly the bug C12.1 describes (a failed queue
  *     read that resolved to "zero work" and was logged as a successful run).
  *   - `claim_webhook_deliveries` mirrors the SQL in
- *     20260929120000_webhook_delivery_claim.sql: the due filter, the lease,
- *     the attempt_count bump, a fresh token per row. The SQL itself is checked
- *     against Postgres separately; this suite checks that the server uses it
- *     correctly.
+ *     20260929120100_webhook_delivery_retry_window.sql: the retry-window
+ *     sweep, the due filter, the lease, the attempt_count bump, a fresh token
+ *     per row. Like PostgREST, it only answers a call whose named arguments
+ *     match the function's parameters exactly. The SQL itself is checked
+ *     against Postgres by supabase/tests/webhook-claim-smoke.sql; this suite
+ *     checks that the server uses it correctly.
  *   - every call yields to the event loop before it runs, so two overlapping
  *     runs interleave the way two serverless invocations would.
  *
@@ -48,6 +50,8 @@ interface DeliveryRow {
   dlq_reason: string | null
   claimed_until: string | null
   claim_token: string | null
+  /** Set once, when the first attempt is recorded. Retries never change it. */
+  delivered_at: string
 }
 
 interface HookRow {
@@ -157,7 +161,13 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError; count?: 
     const matches = tableRows(this.table).filter((r) => this.filters.every((f) => f(r)))
     if (this.op === 'insert') {
       if (injected.insert) return { data: null, error: injected.insert }
-      const defaults = { dlq_at: null, dlq_reason: null, claimed_until: null, claim_token: null }
+      const defaults = {
+        dlq_at: null,
+        dlq_reason: null,
+        claimed_until: null,
+        claim_token: null,
+        delivered_at: iso(Date.now()),
+      }
       for (const row of this.inserted) {
         const id = (row['id'] as string | undefined) ?? randomUUID()
         db.deliveries.set(id, { ...defaults, ...row, id } as unknown as DeliveryRow)
@@ -179,12 +189,42 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: DbError; count?: 
   }
 }
 
-function claimWebhookDeliveries(args: {
+interface ClaimArgs {
   p_limit: number
   p_lease_seconds: number
   p_max_attempts: number
-}): Row[] {
+  p_max_age_seconds: number
+}
+
+const CLAIM_PARAMS = ['p_lease_seconds', 'p_limit', 'p_max_age_seconds', 'p_max_attempts']
+
+const unleased = (d: DeliveryRow, now: number): boolean =>
+  d.claimed_until === null || Date.parse(d.claimed_until) < now
+
+function claimWebhookDeliveries(args: ClaimArgs): Row[] {
   const now = Date.now()
+  const oldest = now - args.p_max_age_seconds * 1000
+
+  // Retry-window sweep: still pending past the window, so dead-letter it.
+  for (const d of db.deliveries.values()) {
+    if (
+      d.status === 'failed' &&
+      d.dlq_at === null &&
+      d.next_retry_at !== null &&
+      Date.parse(d.delivered_at) < oldest &&
+      unleased(d, now)
+    ) {
+      db.deliveries.set(d.id, {
+        ...d,
+        next_retry_at: null,
+        claimed_until: null,
+        claim_token: null,
+        dlq_at: iso(now),
+        dlq_reason: 'expired',
+      })
+    }
+  }
+
   const due = [...db.deliveries.values()]
     .filter(
       (d) =>
@@ -192,8 +232,9 @@ function claimWebhookDeliveries(args: {
         d.dlq_at === null &&
         d.next_retry_at !== null &&
         Date.parse(d.next_retry_at) <= now &&
+        Date.parse(d.delivered_at) >= oldest &&
         d.attempt_count < args.p_max_attempts &&
-        (d.claimed_until === null || Date.parse(d.claimed_until) < now),
+        unleased(d, now),
     )
     .sort((a, b) => compare(a.next_retry_at, b.next_retry_at))
     .slice(0, args.p_limit)
@@ -224,11 +265,15 @@ function claimWebhookDeliveries(args: {
 const rpcMock = vi.fn(async (name: string, args: Record<string, number>) => {
   await tick()
   if (injected.queueRead) return { data: null, error: injected.queueRead }
-  if (name !== 'claim_webhook_deliveries') return { data: null, error: { message: `no rpc ${name}` } }
-  return {
-    data: claimWebhookDeliveries(args as Parameters<typeof claimWebhookDeliveries>[0]),
-    error: null,
+  const params = Object.keys(args).sort()
+  if (name !== 'claim_webhook_deliveries' || params.join() !== CLAIM_PARAMS.join()) {
+    // What PostgREST answers when no function matches the named arguments.
+    return {
+      data: null,
+      error: { message: `Could not find the function public.${name}(${params.join(', ')})` },
+    }
   }
+  return { data: claimWebhookDeliveries(args as unknown as ClaimArgs), error: null }
 })
 
 vi.mock('./db.js', () => ({
@@ -248,6 +293,7 @@ const {
 
 const T0 = Date.parse('2026-09-29T12:00:00.000Z')
 const MINUTE = 60_000
+const HOUR = 60 * MINUTE
 
 function addHook(overrides: Partial<HookRow> = {}): HookRow {
   const hook: HookRow = {
@@ -277,6 +323,7 @@ function addDelivery(hook: HookRow, overrides: Partial<DeliveryRow> = {}): Deliv
     dlq_reason: null,
     claimed_until: null,
     claim_token: null,
+    delivered_at: iso(T0 - 2 * MINUTE),
     ...overrides,
   }
   db.deliveries.set(row.id, row)
@@ -502,6 +549,48 @@ describe('retryFailedWebhooks — claim (C12.2)', () => {
     expect(result.retried).toBe(2)
     expect(sendMock).toHaveBeenCalledTimes(2)
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('WEBHOOK_DISPATCH_FAILED'))
+  })
+})
+
+describe('retryFailedWebhooks — retry window', () => {
+  test('a delivery still pending 24 hours after its event is dead-lettered, not sent', async () => {
+    const hook = addHook()
+    const stale = addDelivery(hook, {
+      attempt_count: 2,
+      delivered_at: iso(T0 - 24 * HOUR - MINUTE),
+      next_retry_at: iso(T0 - 24 * HOUR + MINUTE),
+    })
+    const recent = addDelivery(hook, { delivered_at: iso(T0 - 24 * HOUR + MINUTE) })
+
+    const result = await retryFailedWebhooks()
+
+    const sentTo = sendMock.mock.calls.map(([, opts]) => opts.headers['X-Spanlens-Delivery-Id'])
+    expect(sentTo).toEqual([recent.id])
+    expect(result).toMatchObject({ retried: 1, succeeded: 1 })
+    expect(row(stale.id)).toMatchObject({
+      attempt_count: 2,
+      next_retry_at: null,
+      dlq_reason: 'expired',
+      claimed_until: null,
+    })
+    expect(row(stale.id).dlq_at).not.toBeNull()
+  })
+
+  test('a backlog left by a stalled retry job is cleared without sending any of it', async () => {
+    const hook = addHook()
+    const backlog = Array.from({ length: 30 }, (_, i) =>
+      addDelivery(hook, {
+        event_type: i % 2 === 0 ? 'request.created' : 'test',
+        delivered_at: iso(T0 - (30 + i) * 24 * HOUR),
+        next_retry_at: iso(T0 - (30 + i) * 24 * HOUR + MINUTE),
+      }),
+    )
+
+    const result = await retryFailedWebhooks()
+
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(result.retried).toBe(0)
+    for (const b of backlog) expect(row(b.id).dlq_reason).toBe('expired')
   })
 })
 
