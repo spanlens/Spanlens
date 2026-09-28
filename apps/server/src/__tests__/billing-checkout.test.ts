@@ -55,11 +55,13 @@ vi.mock('../lib/audit-log.js', () => ({ recordAuditEvent: vi.fn().mockResolvedVa
 vi.mock('../lib/quota.js', () => ({ checkMonthlyQuota: vi.fn() }))
 
 const createTx = vi.fn()
+const cancelTx = vi.fn()
 vi.mock('../lib/paddle.js', async () => {
   const actual = await vi.importActual<typeof import('../lib/paddle.js')>('../lib/paddle.js')
   return {
     ...actual,
     createPaddleCheckoutTransaction: (...args: unknown[]) => createTx(...args),
+    cancelPaddleTransaction: (...args: unknown[]) => cancelTx(...args),
     findPaddleCustomerByEmail: async () => ({ id: 'ctm_existing', email: 'owner@example.com', name: null, status: 'active' }),
     createPaddleCustomer: async () => ({ id: 'ctm_new', email: 'owner@example.com', name: null, status: 'active' }),
     cancelPaddleSubscription: vi.fn(),
@@ -97,6 +99,7 @@ beforeEach(() => {
   process.env['PADDLE_PRICE_STARTER'] = PRICE_STARTER
   process.env['PADDLE_PRICE_TEAM'] = PRICE_TEAM
   txCounter = 0
+  cancelTx.mockReset().mockResolvedValue(undefined)
   createTx.mockReset().mockImplementation(async () => {
     txCounter += 1
     return { id: `txn_${txCounter}`, status: 'ready', checkout: { url: `https://pay.example/?_ptxn=txn_${txCounter}` } }
@@ -173,6 +176,84 @@ describe('checkout — one open Paddle checkout per org', () => {
     const byTxn = new Map(sessions().map((s) => [s['paddle_transaction_id'], s['status']]))
     expect(byTxn.get('txn_old')).toBe('expired')
     expect(byTxn.get('txn_1')).toBe('open')
+  })
+
+  it('expiring a session cancels its Paddle transaction so the old link cannot be paid later', async () => {
+    // Review of the C4.2 fix: marking the row expired left the Paddle
+    // transaction payable. Tab A opens a checkout, tab B starts a new one 31
+    // minutes later and pays, then tab A pays too: two subscriptions.
+    fake.seed('billing_checkout_sessions', [{
+      organization_id: ORG_ID,
+      price_id: PRICE_TEAM,
+      plan: 'team',
+      status: 'open',
+      paddle_transaction_id: 'txn_old',
+      checkout_url: 'https://pay.example/?_ptxn=txn_old',
+      created_at: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+    }])
+    const { res } = await checkout('starter')
+    expect(res.status).toBe(200)
+    expect(cancelTx).toHaveBeenCalledTimes(1)
+    expect(cancelTx).toHaveBeenCalledWith('txn_old')
+    // The old transaction is canceled before the new one is created.
+    expect(cancelTx.mock.invocationCallOrder[0]!).toBeLessThan(createTx.mock.invocationCallOrder[0]!)
+  })
+
+  it('a Paddle cancel failure is logged and does not block the new checkout', async () => {
+    fake.seed('billing_checkout_sessions', [{
+      organization_id: ORG_ID,
+      price_id: PRICE_TEAM,
+      plan: 'team',
+      status: 'open',
+      paddle_transaction_id: 'txn_old',
+      checkout_url: 'https://pay.example/?_ptxn=txn_old',
+      created_at: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+    }])
+    cancelTx.mockRejectedValueOnce(new TypeError('fetch failed'))
+    const { res } = await checkout('starter')
+    expect(res.status).toBe(200)
+    expect(createTx).toHaveBeenCalledTimes(1)
+    const logged = vi.mocked(console.error).mock.calls.map((a) => String(a[0]))
+    expect(logged.some((l) => l.startsWith('ERROR[PADDLE_API_FAILED]') && l.includes('transaction.cancel'))).toBe(true)
+  })
+
+  it('a stale session that never got a Paddle transaction expires without a Paddle call', async () => {
+    fake.seed('billing_checkout_sessions', [{
+      organization_id: ORG_ID,
+      price_id: PRICE_STARTER,
+      plan: 'starter',
+      status: 'creating',
+      paddle_transaction_id: null,
+      created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    }])
+    const { res } = await checkout('starter')
+    expect(res.status).toBe(200)
+    expect(cancelTx).not.toHaveBeenCalled()
+    expect(sessions().filter((s) => s['status'] === 'expired')).toHaveLength(1)
+  })
+
+  it('sessions of other orgs and finished sessions are never canceled', async () => {
+    fake.seed('billing_checkout_sessions', [
+      {
+        organization_id: '9d1f0e5c-0000-4000-8000-000000000999',
+        price_id: PRICE_TEAM,
+        plan: 'team',
+        status: 'open',
+        paddle_transaction_id: 'txn_other_org',
+        created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      },
+      {
+        organization_id: ORG_ID,
+        price_id: PRICE_TEAM,
+        plan: 'team',
+        status: 'completed',
+        paddle_transaction_id: 'txn_paid_long_ago',
+        created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      },
+    ])
+    const { res } = await checkout('starter')
+    expect(res.status).toBe(200)
+    expect(cancelTx).not.toHaveBeenCalled()
   })
 
   it('a checkout that was just paid blocks a new one until the subscription lands', async () => {

@@ -15,10 +15,17 @@
  *     a different price, or one that was just completed, is refused.
  *   - paddle_transaction_id maps a webhook transaction back to the org that
  *     started it, which the webhook uses when custom_data is missing.
+ *   - A session that outlives the window is expired AND its Paddle
+ *     transaction is canceled. Marking the row alone left the old link
+ *     payable: tab A's checkout, expired when tab B started a new one, could
+ *     still be paid after tab B's, and each payment became a subscription.
+ *     If the cancel fails, the webhook's duplicate-subscription alert
+ *     (lib/billing-plan-anomalies.ts) is the backstop.
  */
 
 import { supabaseAdmin } from './db.js'
 import { ApiError } from './errors.js'
+import { cancelPaddleTransaction, classifyPaddleFailure, PaddleApiError } from './paddle.js'
 import { logError } from './structured-logger.js'
 
 export const CHECKOUT_REUSE_WINDOW_MS = 30 * 60 * 1000
@@ -98,14 +105,42 @@ async function findRecentSession(orgId: string, cutoffIso: string): Promise<Rece
   return (data as RecentCheckoutSession | null) ?? null
 }
 
+/**
+ * Cancel the Paddle transaction behind an expired session. Never throws: the
+ * new checkout must not be blocked by an old one, and a failure is logged
+ * with the transaction id so it can be canceled by hand.
+ */
+async function cancelAbandonedTransaction(orgId: string, transactionId: string): Promise<void> {
+  try {
+    await cancelPaddleTransaction(transactionId)
+  } catch (err) {
+    logError('PADDLE_API_FAILED', {
+      orgId,
+      stage: 'transaction.cancel',
+      kind: classifyPaddleFailure(err),
+      paddleTransactionId: transactionId,
+      paddleStatus: err instanceof PaddleApiError ? err.status : null,
+      paddleCode: err instanceof PaddleApiError ? err.code : null,
+    }, err)
+  }
+}
+
 async function expireStaleSessions(orgId: string, cutoffIso: string): Promise<void> {
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from(TABLE)
     .update({ status: 'expired' })
     .eq('organization_id', orgId)
     .in('status', ['creating', 'open'])
     .lte('created_at', cutoffIso)
+    .select('paddle_transaction_id')
   if (error) throw internal(orgId, 'checkout_session.expire', error.message)
+
+  // Only the rows THIS update moved to expired: a concurrent request that
+  // expired them first owns their cancel.
+  const transactionIds = ((data ?? []) as Array<{ paddle_transaction_id: string | null }>)
+    .map((row) => row.paddle_transaction_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  await Promise.all(transactionIds.map((id) => cancelAbandonedTransaction(orgId, id)))
 }
 
 /**
