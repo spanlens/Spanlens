@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `log_body="full" | "meta" | "none"` on `observe()` and every `observe_*()` helper. `"meta"` and `"none"` keep the span's input and output (and those of spans opened under it) out of the ingest calls; only metadata such as model, tokens, and latency is sent. The provider helpers also forward the value to the proxy as `x-spanlens-log-body`. An unknown value raises `ValueError` before your callable runs.
+- `input=` on `observe()` and the `observe_*()` helpers records the prompt on the span when it is created.
+- `SpanlensClient.flush(timeout=5.0)` waits for pending ingest calls without closing the client, and `close()` now takes the same `timeout`.
+- `SpanlensClient(max_pending=...)` caps queued plus in-flight ingest calls (default 10,000). Calls beyond it are dropped and counted in `client.dropped_count` instead of growing memory while Spanlens is unreachable.
+- `SpanlensTransportError` (exported from `spanlens`) is what `on_error` receives for HTTP failures. It carries `code`, `status`, and `endpoint`; `code` is the server's error code when available, `RATE_LIMITED` for HTTP 429, and `QUEUE_FULL` for local drops.
+
+### Changed
+
+- `observe_ollama()` defaults to `log_body="meta"`, so local prompts and responses stay on your machine as the docs describe. Pass `log_body="full"` to record them.
+- `SPANLENS_BASE_URL` is now honoured everywhere, as the 0.8.1 notes said. It holds the origin of a self-hosted server: `create_openai()`, `create_async_openai()`, `create_anthropic()`, `create_async_anthropic()`, `create_gemini()`, and `configure_gemini()` append their proxy path to it, and `SpanlensClient` sends ingest calls there. An explicit `base_url=` still wins.
+- `spanlens init --server-url` now tells you to add `SPANLENS_BASE_URL` to your deployment environment next to `SPANLENS_API_KEY`.
+
+### Fixed
+
+- `observe()` now records the callable's return value as the span output, and the provider helpers record the provider response (streams and iterators are skipped). Previously no output was sent at all. When the callable already ended the span with token counts, the returned value is attached with a follow-up update, so the streaming pattern in the docs works.
+- Ingest calls are retried on network errors, timeouts, and 5xx responses, up to three attempts with 200 ms and 400 ms backoff plus jitter. 4xx responses (including 429) are not retried. `on_error` fires once per failed call; with `silent=False` it used to fire twice.
+- The background workers are daemon threads, and the drain at interpreter exit stops after 5 seconds, so an unreachable Spanlens server can no longer hold up process shutdown.
+- A sampled-out trace that ends with `status="error"` no longer blocks `trace.end()` (for up to 30 seconds) while its buffered calls are replayed. The replay runs in the background and `flush()` / `close()` wait for it.
+- `SpanlensCallbackHandler` for LangChain / LangGraph gives every root run its own trace and ends it with that run's status. Sharing one handler across parallel invocations used to merge them into one trace, hide the error of one run behind a sibling that completed, and leave a trace running forever. The handler is now safe across threads and asyncio tasks.
+- `spanlens init` no longer removes a provider import that the file still needs. When the class is also used in an annotation, an `isinstance` check, a type alias, or a string, the original import stays and the Spanlens import is added next to it. Every patched file is compiled before it is written.
+- `mypy --strict` passes for the package, independent of which optional extras are installed.
+
 ## 0.8.1
 
 ### Changed
