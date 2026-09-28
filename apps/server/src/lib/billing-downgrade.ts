@@ -11,8 +11,10 @@
 //   t = 7d →  Cron calls `apply_past_due_downgrade`, which in ONE transaction
 //             re-checks the subscription is still past due in the same cycle,
 //             recomputes organizations.plan from the org's live subscriptions
-//             (free if none), writes audit_logs, closes the cycle
-//             (past_due_since = NULL) and queues the downgrade email.
+//             that still look real (free if none; stale rows are ignored and
+//             logged, see lib/billing-plan-anomalies.ts), writes audit_logs,
+//             closes the cycle (past_due_since = NULL) and queues the
+//             downgrade email.
 //             Recovery clears past_due_since in the webhook, so a later
 //             failure opens a new cycle and starts over.
 //
@@ -30,6 +32,7 @@
 
 import { supabaseAdmin } from './db.js'
 import { drainDowngradeNotifications } from './billing-downgrade-outbox.js'
+import { parsePlanResolution, reportPlanResolution } from './billing-plan-anomalies.js'
 import { logError } from './structured-logger.js'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -175,5 +178,15 @@ async function applyDowngrade(row: PastDueRow): Promise<'downgraded' | 'stale'> 
     p_past_due_since: row.past_due_since,
   })
   if (error) throw new Error(`downgrade failed: ${error.message}`)
-  return (data as { outcome?: string } | null)?.outcome === 'downgraded' ? 'downgraded' : 'stale'
+  if ((data as { outcome?: string } | null)?.outcome !== 'downgraded') return 'stale'
+
+  reportPlanResolution({
+    ...parsePlanResolution(data, 'to_plan'),
+    trigger: 'past_due_downgrade',
+    orgId: row.organization_id,
+    paddleSubscriptionId: row.paddle_subscription_id,
+    entitlementRemoved: true,
+    context: { subscriptionId: row.id, pastDueSince: row.past_due_since },
+  })
+  return 'downgraded'
 }

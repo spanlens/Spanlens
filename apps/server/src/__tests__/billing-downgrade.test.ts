@@ -369,3 +369,63 @@ describe('runDowngradeCheck — outbox skip rules', () => {
     expect(sendEmailMock).toHaveBeenCalledOnce()
   })
 })
+
+// A delinquent subscription whose org keeps a paid plan through another live
+// subscription is correct when the sibling is real, and unpaid access when it
+// is stale. The SQL ignores stale rows; the cron must say when either happens.
+describe('runDowngradeCheck — plan anomalies are logged', () => {
+  function warnAnomalies(): Array<Record<string, unknown>> {
+    return vi.mocked(console.warn).mock.calls
+      .map((args) => String(args[0]))
+      .filter((line) => line.startsWith('WARN[BILLING_ANOMALY]'))
+      .map((line) => JSON.parse(line.slice(line.indexOf('{'))) as Record<string, unknown>)
+  }
+
+  test('downgrade that keeps a sibling plan → WARN plan_kept_by_sibling', async () => {
+    setup([sub({ past_due_since: daysAgo(8) })])
+    fake.onRpc('apply_past_due_downgrade', () => ({
+      data: {
+        outcome: 'downgraded', organization_id: 'org_1', from_plan: 'team', to_plan: 'team',
+        email_queued: false, plan_source: 'sub_paddle_sibling', ignored_live_subscriptions: [],
+      },
+      error: null,
+    }))
+    const result = await runDowngradeCheck()
+    expect(result.downgraded).toBe(1)
+    expect(warnAnomalies()).toEqual([
+      expect.objectContaining({
+        reason: 'plan_kept_by_sibling',
+        trigger: 'past_due_downgrade',
+        orgId: 'org_1',
+        paddleSubscriptionId: 'sub_paddle_1',
+        orgPlan: 'team',
+        planSource: 'sub_paddle_sibling',
+      }),
+    ])
+  })
+
+  test('stale live rows ignored by the downgrade → WARN stale_live_subscription_ignored', async () => {
+    setup([sub({ past_due_since: daysAgo(8) })])
+    fake.onRpc('apply_past_due_downgrade', () => ({
+      data: {
+        outcome: 'downgraded', organization_id: 'org_1', from_plan: 'team', to_plan: 'free',
+        email_queued: true, plan_source: null, ignored_live_subscriptions: ['sub_paddle_lost_cancel'],
+      },
+      error: null,
+    }))
+    await runDowngradeCheck()
+    expect(warnAnomalies()).toEqual([
+      expect.objectContaining({
+        reason: 'stale_live_subscription_ignored',
+        orgId: 'org_1',
+        ignoredLiveSubscriptions: ['sub_paddle_lost_cancel'],
+      }),
+    ])
+  })
+
+  test('a plain downgrade to free logs no anomaly', async () => {
+    setup([sub({ past_due_since: daysAgo(8) })])
+    await runDowngradeCheck()
+    expect(warnAnomalies()).toEqual([])
+  })
+})

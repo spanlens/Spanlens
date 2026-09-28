@@ -199,6 +199,7 @@ vi.mock('../lib/paddle.js', async () => {
 // ---- Test setup / teardown ----------------------------------------------
 
 let consoleError: ReturnType<typeof vi.spyOn>
+let consoleWarn: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   process.env['PADDLE_NOTIFICATION_SECRET'] = SECRET
@@ -213,7 +214,7 @@ beforeEach(() => {
   checkoutUpdateError = null
   paddleApiResult = paddleSubDetail
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -251,6 +252,30 @@ function errorMessage(body: Record<string, unknown>): string {
 
 function loggedCodes(): string[] {
   return consoleError.mock.calls.map((args) => String(args[0]))
+}
+
+/** Structured BILLING_ANOMALY payloads logged at the given level. */
+function anomalies(level: 'ERROR' | 'WARN'): Array<Record<string, unknown>> {
+  const spy = level === 'ERROR' ? consoleError : consoleWarn
+  return spy.mock.calls
+    .map((args) => String(args[0]))
+    .filter((line) => line.startsWith(`${level}[BILLING_ANOMALY]`))
+    .map((line) => JSON.parse(line.slice(line.indexOf('{'))) as Record<string, unknown>)
+}
+
+function eventResult(overrides: Record<string, unknown> = {}): DbResult {
+  return {
+    data: {
+      applied: true,
+      created: false,
+      org_plan: 'starter',
+      plan_source: SUB_ID,
+      other_live_subscriptions: [],
+      ignored_live_subscriptions: [],
+      ...overrides,
+    },
+    error: null,
+  }
 }
 
 // =========================================================================
@@ -647,6 +672,111 @@ describe('paddleWebhook — adjustment.created', () => {
     const { res, body } = await postWebhook(event('adjustment.created', adjPayload()))
     expect(res.status).toBe(400)
     expect(errorMessage(body)).toBe('organization not found')
+  })
+})
+
+// =========================================================================
+// Plan anomalies — surfaced, never silent (review of the C4.2 fix)
+// =========================================================================
+//
+// The recompute keeps an org on another live subscription's plan instead of
+// forcing 'free'. That is right for a real sibling and wrong for a stale row
+// (lost cancel webhook, sandbox leftover), and a second subscription created
+// for an org that already pays means the customer is billed twice. The SQL
+// reports all three; the handler must turn them into log lines ops can find.
+
+describe('paddleWebhook — plan anomalies are logged', () => {
+  it('a NEW subscription for an org that already pays for one → ERROR duplicate_live_subscription, still 200', async () => {
+    rpcResults['apply_paddle_subscription_event'] = eventResult({
+      created: true,
+      org_plan: 'team',
+      plan_source: 'sub_other_live',
+      other_live_subscriptions: ['sub_other_live'],
+    })
+    const { res } = await postWebhook(event('subscription.created', subPayload(), 'evt_dup_1'))
+    expect(res.status).toBe(200)
+    expect(anomalies('ERROR')).toEqual([
+      expect.objectContaining({
+        reason: 'duplicate_live_subscription',
+        orgId: ORG_ID,
+        paddleSubscriptionId: SUB_ID,
+        otherLiveSubscriptions: ['sub_other_live'],
+        eventId: 'evt_dup_1',
+      }),
+    ])
+  })
+
+  it('an update of an existing subscription that has a live sibling is not a duplicate alert', async () => {
+    rpcResults['apply_paddle_subscription_event'] = eventResult({
+      created: false,
+      other_live_subscriptions: ['sub_other_live'],
+    })
+    const { res } = await postWebhook(event('subscription.updated', subPayload()))
+    expect(res.status).toBe(200)
+    expect(anomalies('ERROR')).toEqual([])
+  })
+
+  it('a cancel that leaves the org on a sibling plan → WARN plan_kept_by_sibling', async () => {
+    rpcResults['apply_paddle_subscription_event'] = eventResult({
+      org_plan: 'team',
+      plan_source: 'sub_other_live',
+      other_live_subscriptions: ['sub_other_live'],
+    })
+    const { res } = await postWebhook(event('subscription.canceled', subPayload({ status: 'canceled' })))
+    expect(res.status).toBe(200)
+    expect(anomalies('WARN')).toEqual([
+      expect.objectContaining({
+        reason: 'plan_kept_by_sibling',
+        trigger: 'subscription_event',
+        orgId: ORG_ID,
+        paddleSubscriptionId: SUB_ID,
+        orgPlan: 'team',
+        planSource: 'sub_other_live',
+      }),
+    ])
+  })
+
+  it('a cancel that lands on free logs nothing', async () => {
+    rpcResults['apply_paddle_subscription_event'] = eventResult({ org_plan: 'free', plan_source: null })
+    await postWebhook(event('subscription.canceled', subPayload({ status: 'canceled' })))
+    expect(anomalies('WARN')).toEqual([])
+    expect(anomalies('ERROR')).toEqual([])
+  })
+
+  it('live rows the recompute ignored as stale → WARN stale_live_subscription_ignored', async () => {
+    rpcResults['apply_paddle_subscription_event'] = eventResult({
+      org_plan: 'free',
+      plan_source: null,
+      ignored_live_subscriptions: ['sub_lost_cancel', 'sub_sandbox'],
+    })
+    await postWebhook(event('subscription.canceled', subPayload({ status: 'canceled' })))
+    expect(anomalies('WARN')).toEqual([
+      expect.objectContaining({
+        reason: 'stale_live_subscription_ignored',
+        orgId: ORG_ID,
+        ignoredLiveSubscriptions: ['sub_lost_cancel', 'sub_sandbox'],
+      }),
+    ])
+  })
+
+  it('an approved refund that leaves the org on a sibling plan → WARN plan_kept_by_sibling', async () => {
+    subLookup = { data: { organization_id: ORG_ID }, error: null }
+    rpcResults['apply_paddle_refund'] = {
+      data: { org_plan: 'team', plan_source: 'sub_other_live', ignored_live_subscriptions: [] },
+      error: null,
+    }
+    const { res } = await postWebhook(event('adjustment.created', adjPayload()))
+    expect(res.status).toBe(200)
+    expect(anomalies('WARN')).toEqual([
+      expect.objectContaining({ reason: 'plan_kept_by_sibling', trigger: 'refund', orgPlan: 'team' }),
+    ])
+  })
+
+  it('an ordinary first subscription logs no anomaly', async () => {
+    rpcResults['apply_paddle_subscription_event'] = eventResult({ created: true })
+    await postWebhook(event('subscription.created', subPayload()))
+    expect(anomalies('ERROR')).toEqual([])
+    expect(anomalies('WARN')).toEqual([])
   })
 })
 

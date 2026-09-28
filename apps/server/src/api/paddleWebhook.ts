@@ -14,6 +14,11 @@ import {
   findOrgIdByCheckoutTransaction,
   markCheckoutSessionCompleted,
 } from '../lib/billing-checkout-sessions.js'
+import {
+  parsePlanResolution,
+  parseStringList,
+  reportPlanResolution,
+} from '../lib/billing-plan-anomalies.js'
 
 /**
  * Paddle webhook receiver. Paddle POSTs subscription lifecycle events here.
@@ -36,6 +41,11 @@ import {
  * transaction, so they land together or not at all. Any `{ error }` becomes a
  * 5xx, which Paddle retries; the guard re-applies an event whose occurred_at
  * equals the stored one, so a retry after a failure is applied, not skipped.
+ *
+ * The recompute only trusts live rows that still look real (migration
+ * 20260929110400) and reports what it decided. A new subscription for an org
+ * that already pays, a plan kept by a sibling, and ignored stale rows are
+ * logged as BILLING_ANOMALY (lib/billing-plan-anomalies.ts).
  */
 
 export const paddleWebhookRouter = new Hono()
@@ -251,14 +261,26 @@ async function applySubscriptionEvent(
     )
   }
 
-  const applied = (data as { applied?: boolean } | null)?.applied !== false
+  const result = (data ?? {}) as { applied?: boolean; created?: boolean; other_live_subscriptions?: unknown }
+  const applied = result.applied !== false
   if (!applied) {
     console.warn(
       '[paddle-webhook] skipping out-of-order event',
       event.event_id, event.event_type, 'occurred_at', event.occurred_at,
     )
+    return false
   }
-  return applied
+
+  reportPlanResolution({
+    ...parsePlanResolution(data, 'org_plan'),
+    trigger: 'subscription_event',
+    orgId: organizationId,
+    paddleSubscriptionId: sub.id,
+    entitlementRemoved: sub.status === 'canceled',
+    ...(result.created === true ? { duplicateOf: parseStringList(result.other_live_subscriptions) } : {}),
+    context: { eventId: event.event_id, eventType: event.event_type },
+  })
+  return true
 }
 
 /**
@@ -418,9 +440,17 @@ async function handleAdjustment(c: Context, event: PaddleEvent): Promise<Respons
     )
   }
 
-  const orgPlan = (data as { org_plan?: string } | null)?.org_plan ?? null
-  console.warn('[paddle-webhook] refund approved, org plan recomputed', organizationId, adj.id, orgPlan)
-  return c.json({ success: true, event_type: event.event_type, org_plan: orgPlan })
+  const resolution = parsePlanResolution(data, 'org_plan')
+  reportPlanResolution({
+    ...resolution,
+    trigger: 'refund',
+    orgId: organizationId,
+    paddleSubscriptionId: adj.subscription_id ?? null,
+    entitlementRemoved: true,
+    context: { eventId: event.event_id, adjustmentId: adj.id },
+  })
+  console.warn('[paddle-webhook] refund approved, org plan recomputed', organizationId, adj.id, resolution.orgPlan)
+  return c.json({ success: true, event_type: event.event_type, org_plan: resolution.orgPlan })
 }
 
 paddleWebhookRouter.post('/paddle', async (c) => {

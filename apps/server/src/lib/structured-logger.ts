@@ -48,6 +48,9 @@ export type LogCode =
   // Paddle billing
   | 'PADDLE_WEBHOOK_FAILED'
   | 'PADDLE_API_FAILED'
+  // billing state that is consistent but needs a human: duplicate paid
+  // subscriptions, a plan kept by a sibling, stale live rows (`reason` on context)
+  | 'BILLING_ANOMALY'
   // cron jobs (job_name on context distinguishes)
   | 'CRON_JOB_FAILED'
   | 'CRON_PARTIAL_FAILURE'
