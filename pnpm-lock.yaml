@@ -23,6 +23,9 @@ importers:
       lefthook:
         specifier: ^2.1.9
         version: 2.1.9
+      pg:
+        specifier: ^8.23.0
+        version: 8.23.0
       prettier:
         specifier: ^3.3.3
         version: 3.8.3
