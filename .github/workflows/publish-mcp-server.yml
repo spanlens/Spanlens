@@ -53,6 +53,15 @@ jobs:
           # via --userconfig. The setup-node action plants NPM_CONFIG_USERCONFIG
           # pointing at its own .npmrc, which would shadow the file we wrote
           # if we relied on the default lookup (CLAUDE.md CI gotcha #1).
+          # Re-runs are safe: if this version is already on npm (for example the
+          # registry step below failed and the job is run again), skip the
+          # publish instead of failing on "cannot publish over the previously
+          # published version".
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if npm view "@spanlens/mcp-server@$PKG_VERSION" version >/dev/null 2>&1; then
+            echo "::notice::@spanlens/mcp-server@$PKG_VERSION is already on npm, skipping npm publish"
+            exit 0
+          fi
           printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > .npmrc
           unset NPM_CONFIG_USERCONFIG
           npm publish --provenance --access public --userconfig "$PWD/.npmrc"
@@ -103,18 +112,32 @@ jobs:
 
       - name: Publish to MCP Registry
         working-directory: packages/mcp-server
-        # The npm tarball needs a moment to propagate before the registry's
-        # verifier can fetch the `mcpName` from package.json metadata. A
-        # short retry loop covers the rare slow propagation; the typical
-        # delay is sub-second.
+        # The registry's verifier reads the package from npm, and npm now
+        # holds a new version in a "being processed" state for several minutes
+        # after `npm publish` returns (0.3.0 took longer than the old 75 second
+        # retry window, 2026-09-28). Wait until npm serves this exact version,
+        # then publish with a few retries for the registry itself.
         run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          for i in $(seq 1 30); do
+            if npm view "@spanlens/mcp-server@$PKG_VERSION" version >/dev/null 2>&1; then
+              echo "::notice::npm serves @spanlens/mcp-server@$PKG_VERSION (check $i)"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "::error::@spanlens/mcp-server@$PKG_VERSION did not appear on npm within 15 minutes"
+              exit 1
+            fi
+            echo "Waiting for npm to serve $PKG_VERSION ($i/30)"
+            sleep 30
+          done
           for attempt in 1 2 3 4 5; do
             if ./mcp-publisher publish; then
               echo "::notice::MCP Registry publish succeeded on attempt $attempt"
               exit 0
             fi
-            echo "::warning::publish attempt $attempt failed — sleeping then retrying"
-            sleep 15
+            echo "::warning::publish attempt $attempt failed, retrying in 30s"
+            sleep 30
           done
           echo "::error::MCP Registry publish failed after 5 attempts"
           exit 1
