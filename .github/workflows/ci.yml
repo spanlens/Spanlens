@@ -239,8 +239,10 @@ jobs:
   # workflow, so the openai 3 / anthropic 1 harness break (they moved to
   # httpx2) surfaced at release time on 2026-09-28. Two interpreters cover
   # both provider majors: pip resolves openai 2.x / anthropic 0.x on 3.9 (the
-  # oldest supported Python) and openai 3.x / anthropic 1.x on 3.12. The 3.9
-  # run also exercises the no-tomllib code paths.
+  # oldest supported Python) and openai 3.x / anthropic 1.x on 3.12. 3.9 has
+  # no tomllib, but pytest installs tomli there, so plain runs take the tomli
+  # path. The text fallback used when neither is available is covered by the
+  # tests that set framework_detect.tomllib to None, on both interpreters.
   python-sdk:
     name: Python SDK (${{ matrix.python-version }})
     runs-on: ubuntu-latest
