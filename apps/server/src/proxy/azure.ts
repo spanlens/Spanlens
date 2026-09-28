@@ -102,8 +102,8 @@ azureProxy.all('/*', async (c) => {
     // keeps Azure spend separable from direct OpenAI spend.
     return runLineBufferedStreamPump({
       c, upstreamRes, requestStartMs, provider: 'azure',
-      onComplete: (lines, truncated) =>
-        logOpenAIStream(lines, { ...logBase, model }, { truncated }),
+      onComplete: (lines, truncated, end) =>
+        logOpenAIStream(lines, { ...logBase, model, errorMessage: end.errorMessage }, { truncated }),
     })
   }
 

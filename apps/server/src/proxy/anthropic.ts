@@ -131,8 +131,8 @@ anthropicProxy.all('/*', async (c) => {
     if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runLineBufferedStreamPump({
       c, upstreamRes, requestStartMs, provider: 'anthropic',
-      onComplete: (lines, truncated) =>
-        logAnthropicStream(lines, { ...logBase, model }, { truncated }),
+      onComplete: (lines, truncated, end) =>
+        logAnthropicStream(lines, { ...logBase, model, errorMessage: end.errorMessage }, { truncated }),
     })
   }
 

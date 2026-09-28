@@ -141,8 +141,8 @@ openaiProxy.all('/*', async (c) => {
     if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runLineBufferedStreamPump({
       c, upstreamRes, requestStartMs, provider: 'openai',
-      onComplete: (lines, truncated) =>
-        logOpenAIStream(lines, { ...logBase, model }, { truncated }),
+      onComplete: (lines, truncated, end) =>
+        logOpenAIStream(lines, { ...logBase, model, errorMessage: end.errorMessage }, { truncated }),
     })
   }
 

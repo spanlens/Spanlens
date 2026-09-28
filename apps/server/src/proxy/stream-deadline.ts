@@ -75,7 +75,9 @@ export type ReadOutcome<T> =
  *   • `done`: stream ended cleanly; proxy exits the loop normally.
  *   • `timeout`: deadline reached; proxy cancels the reader and logs `truncated`.
  *   • `error`: read threw (network reset, malformed stream); proxy logs the
- *     error and exits — same code path as timeout but the cause differs.
+ *     error and exits. Like a timeout, the row is marked truncated, with an
+ *     "interrupted" error message instead of the deadline one (StreamEnd in
+ *     shared/stream-pump.ts).
  *
  * The timeout timer is always cleared before this function returns, so leaked
  * timers can't keep the function instance alive after the response finishes

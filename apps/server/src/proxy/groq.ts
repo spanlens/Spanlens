@@ -90,8 +90,8 @@ groqProxy.all('/*', async (c) => {
   if (parsed.isStreaming && upstreamRes.body) {
     return runLineBufferedStreamPump({
       c, upstreamRes, requestStartMs, provider: 'groq',
-      onComplete: (lines, truncated) =>
-        logOpenAIStream(lines, { ...logBase, model }, { truncated }),
+      onComplete: (lines, truncated, end) =>
+        logOpenAIStream(lines, { ...logBase, model, errorMessage: end.errorMessage }, { truncated }),
     })
   }
 

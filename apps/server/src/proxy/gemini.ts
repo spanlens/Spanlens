@@ -148,7 +148,7 @@ geminiProxy.all('/*', async (c) => {
     if (cache.state.mode === 'bypass') c.header(PROXY_CACHE_HEADER, 'bypass')
     return runChunkAccumulatedStreamPump({
       c, upstreamRes, requestStartMs, provider: 'gemini',
-      onComplete: async (buffer, truncated) => {
+      onComplete: async (buffer, truncated, end) => {
         const text = extractGeminiStreamText(buffer.split('\n'))
 
         // Best-effort: recover usage + model from the LAST chunk that carries
@@ -229,6 +229,7 @@ geminiProxy.all('/*', async (c) => {
           serviceTier: serviceTier ?? null,
           costUsd: cost?.totalCost ?? null,
           responseBody,
+          errorMessage: end.errorMessage,
           truncated,
         })
       },

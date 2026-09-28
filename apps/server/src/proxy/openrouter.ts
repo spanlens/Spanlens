@@ -108,8 +108,8 @@ openrouterProxy.all('/*', async (c) => {
   if (parsed.isStreaming && upstreamRes.body) {
     return runLineBufferedStreamPump({
       c, upstreamRes, requestStartMs, provider: 'openrouter',
-      onComplete: (lines, truncated) =>
-        logOpenRouterStream(lines, { ...logBase, model }, { truncated }),
+      onComplete: (lines, truncated, end) =>
+        logOpenRouterStream(lines, { ...logBase, model, errorMessage: end.errorMessage }, { truncated }),
     })
   }
 
