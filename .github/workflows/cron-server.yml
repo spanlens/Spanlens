@@ -24,6 +24,13 @@ name: Cron — server sub-daily
 #     in the queue past their 7-day expiry and are gone for good. Highest
 #     leverage of the lot.
 #
+#   /cron/retry-webhooks            every 5 min  (added 2026-09-29)
+#     Outbound webhook retries. Every emitter only records the first
+#     attempt; retries and the dead-letter marking after the last one
+#     happen here. Silent = a failed delivery is never retried and the
+#     webhook DLQ alert never fires. Overlapping runs are safe: the handler
+#     claims rows atomically (claim_webhook_deliveries).
+#
 #   /cron/execute-pending-deletions every 6h
 #     Processes GDPR "right to be forgotten" requests sitting in
 #     `pending_deletions`. Silent = compliance violation. Legal /
@@ -116,7 +123,7 @@ on:
     # same order as the `if:` checks below for grepability. Each entry
     # fires only the matching job (the `if:` predicates downstream
     # compare github.event.schedule to the cron string).
-    - cron: '*/5 * * * *'      # every 5 min — replay-fallback, run-background-migrations, keep-warm
+    - cron: '*/5 * * * *'      # every 5 min — replay-fallback, retry-webhooks, run-background-migrations, keep-warm
     - cron: '0 */6 * * *'      # every 6h on the hour — execute-pending-deletions
     - cron: '31 * * * *'       # hourly :31 — self-monitor
     - cron: '17 * * * *'       # hourly :17 — detect-orphan-spans
@@ -173,6 +180,26 @@ jobs:
           STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$BASE_URL/cron/keep-warm")
+          echo "Status: $STATUS"
+          cat /tmp/body
+          if [ "$STATUS" -ge 400 ]; then exit 1; fi
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+  # Its own job, not a step in every-5min: a failed retry run must not skip
+  # the log-replay and migration steps that share that schedule.
+  every-5min-retry-webhooks:
+    name: Every 5 min (retry-webhooks)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: POST /cron/retry-webhooks
+        run: |
+          BASE_URL='https://spanlens-server.vercel.app'
+          STATUS=$(curl -sS -o /tmp/body -w '%{http_code}' \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$BASE_URL/cron/retry-webhooks")
           echo "Status: $STATUS"
           cat /tmp/body
           if [ "$STATUS" -ge 400 ]; then exit 1; fi

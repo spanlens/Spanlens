@@ -43,6 +43,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/cron/retry-webhooks",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/cron/check-past-due-downgrades",
       "schedule": "0 3 * * *"
     },
