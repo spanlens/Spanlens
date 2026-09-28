@@ -40,6 +40,16 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-09-28',
+    slug: 'first-customer-cost-walkthrough',
+    title: 'A walkthrough for your first customer cost breakdown',
+    tags: ['docs', 'improvement'],
+    body: [
+      'A new [customer cost walkthrough](/docs/customer-cost-walkthrough) takes you from project setup to three tagged OpenAI requests, then shows you how to verify the logs and compare two example customers in Users. The downloadable Node.js example needs no packages, includes a dry run that sends no requests, and uses metadata-only logging. Real runs make three billable provider calls. You can reach the guide from the docs sidebar, the quick-start, and the empty Requests page.',
+      'The homepage, FAQ, and [benchmarks](/benchmarks) now describe asynchronous request logging, the scope of the measured CPU work, and the available CSV, JSON, and JSONL request exports more clearly. The benchmark figures measure local header transformation and response construction, rather than total request latency.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
     slug: 'model-price-refresh-2026-09',
     title: 'Three models were costed too high, and sixteen more now have prices',
     tags: ['fix'],

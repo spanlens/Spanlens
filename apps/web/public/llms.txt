@@ -42,7 +42,7 @@ from spanlens.integrations.openai import create_openai
 client = create_openai()
 ```
 
-Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys (your OpenAI/Anthropic key) are stored AES-256-GCM encrypted server-side and never logged. p99 ingestion overhead is under 3ms. Ingestion happens async, and if Spanlens ever fails, the original request still completes.
+Or swap `baseURL` to the proxy and add a Spanlens API key (`sl_live_*`) in the Authorization header. Provider keys are stored AES-256-GCM encrypted server-side. Streaming responses are supported, and request logs are saved asynchronously. See https://www.spanlens.io/benchmarks for measured header-transform CPU work and the measurement method.
 
 ## Plans
 
@@ -82,7 +82,7 @@ Each row links to a full feature-by-feature comparison.
 - Landing: https://www.spanlens.io
 - Pricing: https://www.spanlens.io/pricing
 - Pricing (machine-readable): https://www.spanlens.io/pricing.md
-- Benchmarks (proxy overhead ~0.015 ms p99): https://www.spanlens.io/benchmarks
+- Benchmarks (header-transform CPU measurement): https://www.spanlens.io/benchmarks
 - Docs: https://www.spanlens.io/docs
 - Alternatives hub: https://www.spanlens.io/alternatives
 - Comparison index: https://www.spanlens.io/compare

@@ -34,7 +34,7 @@ npx @spanlens/cli init
 
 - License: MIT. Entire repository, no enterprise-gated `ee/` folder.
 - Self-host: one Docker command, same code as the hosted product, no request cap.
-- Overhead: ingestion is async and off the critical path. Synchronous per-request proxy overhead is about 0.015 ms p99 (reproducible benchmark: https://www.spanlens.io/benchmarks).
+- Request logs are saved asynchronously. The published benchmark measures local header-transform and response-construction CPU work; authentication, database lookups, and network time are excluded. Methodology: https://www.spanlens.io/benchmarks.
 - Providers: OpenAI, Anthropic, Gemini. OpenTelemetry (OTLP/HTTP) ingest for everything else.
 - Frameworks: LangChain, LangGraph, LlamaIndex, CrewAI, Vercel AI SDK, OpenAI Assistants, Bedrock.
 - Pricing (machine-readable): https://www.spanlens.io/pricing.md

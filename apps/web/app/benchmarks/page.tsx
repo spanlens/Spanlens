@@ -9,7 +9,7 @@ export const metadata = {
   openGraph: openGraphFor('/benchmarks'),
   title: 'Proxy Overhead Benchmark · Spanlens',
   description:
-    'How much latency does the Spanlens proxy add? A reproducible benchmark of per-request overhead, with the method and a command to run it yourself.',
+    'A reproducible local benchmark of proxy header-transform and response-construction CPU work, with the method and a command to run it yourself.',
 }
 
 const MEASURED_DATE = '2026-07-14'
@@ -38,15 +38,14 @@ export default function BenchmarksPage() {
         </p>
 
         <p>
-          A proxy only earns its place if it stays out of the way. This page reports how
-          much latency the Spanlens proxy adds to a request, explains exactly how that
-          number is produced, and gives you the command to reproduce it. We would rather
-          publish a benchmark you can run than a marketing figure you have to trust.
+          Measure the CPU work involved in transforming proxy headers and reconstructing
+          a response. This page explains the measurement method and provides a command
+          to reproduce it locally.
         </p>
 
         <h2 id="result">The result</h2>
         <p>
-          Synchronous proxy overhead per request, measured over 100,000 warm iterations
+          Header-transform and response-construction CPU time, measured over 100,000 warm iterations
           using the same header-transform functions that run in production:
         </p>
         <table>
@@ -68,24 +67,20 @@ export default function BenchmarksPage() {
           </tbody>
         </table>
         <p>
-          The proxy&apos;s own synchronous work is on the order of <strong>microseconds</strong>,
-          not milliseconds. The rest of a request&apos;s time is the upstream provider
-          answering your call, which Spanlens does not change.
+          These results describe the measured CPU operations on a warmed local process.
+          Authentication, database lookups, network routing, and deployment conditions
+          also contribute to latency on a real request.
         </p>
 
-        <h2 id="why">Why it is this small</h2>
+        <h2 id="why">Asynchronous request logging</h2>
         <p>
-          The expensive part of observability, writing the request, computing cost, masking
-          PII, and inserting the log row, does <strong>not</strong> happen while your caller
-          waits. Spanlens streams the provider response straight back to the client and
-          dispatches logging as a fire-and-forget task that runs after the response has
-          already been returned. Logging is off the response critical path by design, so it
-          cannot slow the caller down. If the logging pipeline is briefly unavailable, work
-          is captured in a fallback queue and replayed later rather than blocking the
-          request.
+          Spanlens supports streaming responses and saves request logs asynchronously.
+          This reduces the time spent waiting for log storage during request handling.
+          See the <Link href="/docs/production/reliability">reliability guide</Link> for how
+          request forwarding and background logging work.
         </p>
         <p>
-          What remains on the caller&apos;s path is the synchronous work measured above:
+          The benchmark exercises these synchronous operations:
           stripping hop-by-hop and Spanlens-internal headers, attaching the upstream
           credential, and reconstructing the response. That is the number in the table.
         </p>
@@ -103,8 +98,7 @@ export default function BenchmarksPage() {
           </li>
           <li>
             <strong>The provider-key lookup</strong> (a database round-trip) is excluded
-            from this CPU figure. In production it runs concurrently with request parsing
-            and is reported live as part of the request&apos;s <code>proxy_overhead_ms</code>.
+            from this CPU figure.
           </li>
           <li>
             <strong>Asynchronous logging</strong> is excluded because it runs after the

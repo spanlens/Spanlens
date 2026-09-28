@@ -162,11 +162,11 @@ const PLANS: LandingPlan[] = [
 const FAQS: [string, string][] = [
   [
     'How does instrumentation work?',
-    'Swap the provider SDK for our drop-in. Same surface, same types. We record the full request and response on the wire, with no extra round-trip and no sampling by default.',
+    'Change your provider baseURL or use our drop-in SDK to capture request logs, cost, and latency. Streaming responses are supported, and request logs are saved asynchronously.',
   ],
   [
     'What about latency overhead?',
-    'p99 overhead is under 3ms. Ingestion happens async in a worker. If we ever fail, your request completes anyway. Spanlens never sits on the critical path.',
+    'Request logs are saved asynchronously, reducing the time spent waiting for log storage during request handling. See our benchmarks for measured CPU work and the measurement method.',
   ],
   [
     'How do you handle PII?',
@@ -182,7 +182,7 @@ const FAQS: [string, string][] = [
   ],
   [
     'Can I export my data?',
-    'Anytime. JSON, CSV, Parquet. Or pipe the raw stream to S3, BigQuery, or your warehouse via our sink connectors.',
+    'Export request data in CSV, JSON, or JSONL for analysis and reporting.',
   ],
   [
     'Can Spanlens tell me if a prompt actually got better?',

@@ -70,7 +70,7 @@ const faqs = [
   },
   {
     q: 'How much overhead does agent tracing add?',
-    a: 'Effectively none on the caller path. Logging happens asynchronously in a worker after the LLM response has already been streamed to the client, so tracing never sits on the critical path. The proxy itself adds only microseconds of synchronous overhead, which we publish as a reproducible benchmark at /benchmarks. Span emission is fire-and-forget with a fallback queue if the ingest endpoint is briefly unreachable.',
+    a: 'Request logs are saved asynchronously, and the SDK sends spans in batches. See /benchmarks for a reproducible measurement of proxy header-transform CPU work and its methodology.',
   },
 ]
 
