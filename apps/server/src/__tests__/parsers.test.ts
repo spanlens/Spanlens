@@ -173,7 +173,29 @@ describe('Gemini parser', () => {
       completionTokens: 10,
       totalTokens: 15,
       model: 'gemini-1.5-pro',
+      cacheReadTokens: 0,
     })
+  })
+
+  it('reports cachedContentTokenCount as cacheReadTokens, a subset of promptTokens', () => {
+    // Gemini 2.5+ caches implicitly, and promptTokenCount INCLUDES the cached
+    // portion (same convention as OpenAI prompt_tokens). The cached subset
+    // has to surface separately or calculateCost bills it at the full rate.
+    const body = {
+      modelVersion: 'gemini-2.5-flash',
+      usageMetadata: {
+        promptTokenCount: 1000,
+        cachedContentTokenCount: 900,
+        candidatesTokenCount: 60,
+        thoughtsTokenCount: 40,
+        totalTokenCount: 1100,
+      },
+    }
+    const parsed = parseGeminiResponse(body)
+    expect(parsed?.promptTokens).toBe(1000)
+    expect(parsed?.cacheReadTokens).toBe(900)
+    // Reasoning tokens stay folded into completion tokens (gotcha #1).
+    expect(parsed?.completionTokens).toBe(100)
   })
 
   it('extracts serviceTier from usageMetadata (lowercase + SCREAMING_SNAKE)', () => {
