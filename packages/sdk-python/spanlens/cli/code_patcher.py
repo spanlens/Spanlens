@@ -19,16 +19,23 @@ Supported rewrites::
 
 Scope (MVP, matching the Node CLI): top-level ``from X import Name`` /
 ``import X`` plus their call sites. Dynamic imports and re-exports are not
-rewritten. The patch is always *additive-safe*. A patched file still imports
-and runs even in the rare shapes we leave for the user to finish by hand.
+rewritten.
+
+The patch is *additive-safe*. A provider import is only replaced when nothing
+else in the file refers to a name it binds; if the class also appears in an
+annotation, an ``isinstance`` check, a type alias, a string (forward
+reference, ``__all__``), or anywhere else, the original import stays and the
+Spanlens import is added next to it. Every patched file is compiled before it
+is written, and a file whose patch would not compile is left untouched.
 """
 
 from __future__ import annotations
 
 import ast
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 # api_key / base_url are supplied by the Spanlens factory from the environment,
 # so we strip them from the original constructor call.
@@ -190,6 +197,9 @@ def _patch_constructor(src: str, spec: ProviderSpec) -> Tuple[Optional[str], Lis
     edits: List[Tuple[int, int, str]] = []
     used_factories: List[str] = []
     call_count = 0
+    # ``ast.Name`` nodes that disappear with the rewrite (the ``OpenAI`` in
+    # ``OpenAI(...)``). Any other reference keeps the provider import alive.
+    rewritten_names: Set[int] = set()
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -198,6 +208,7 @@ def _patch_constructor(src: str, spec: ProviderSpec) -> Tuple[Optional[str], Lis
         class_name: Optional[str] = None
         if isinstance(func, ast.Name) and func.id in named_bindings:
             class_name = named_bindings[func.id]
+            rewritten_names.add(id(func))
         elif (
             isinstance(func, ast.Attribute)
             and isinstance(func.value, ast.Name)
@@ -223,11 +234,16 @@ def _patch_constructor(src: str, spec: ProviderSpec) -> Tuple[Optional[str], Lis
     import_line = f"from {spec.spanlens_module} import {', '.join(used_factories)}"
 
     # Prefer replacing a named import that imports ONLY provider classes,
-    # that yields the clean `from openai import OpenAI` → spanlens swap.
+    # that yields the clean `from openai import OpenAI` → spanlens swap. Only
+    # safe when no name it binds is used anywhere but the rewritten calls.
     replaced_import = False
     for node in named_import_nodes:
         only_provider = all(a.name in spec.classes for a in node.names)
-        if only_provider and not replaced_import:
+        still_used = any(
+            _is_referenced(tree, alias.asname or alias.name, rewritten_names)
+            for alias in node.names
+        )
+        if only_provider and not still_used and not replaced_import:
             start, end = _node_span(line_starts, node)
             edits.append((start, end, import_line))
             replaced_import = True
@@ -250,6 +266,31 @@ def _patch_constructor(src: str, spec: ProviderSpec) -> Tuple[Optional[str], Lis
         f"{call_count} × constructor → {', '.join(sorted(used_factories))}(...)"
     )
     return _apply_edits(src, edits), changes
+
+
+def _is_referenced(tree: ast.AST, name: str, ignored: Set[int]) -> bool:
+    """Whether ``name`` is used anywhere except the ``ast.Name`` nodes in
+    ``ignored``. Strings count too (forward-reference annotations,
+    ``__all__``); a false positive only means we keep an import we could
+    have dropped, which is always safe."""
+    word = re.compile(rf"\b{re.escape(name)}\b")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == name and id(node) not in ignored:
+            return True
+        if isinstance(node, (ast.Global, ast.Nonlocal)) and name in node.names:
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if word.search(node.value):
+                return True
+    return False
+
+
+def _compiles(src: str) -> bool:
+    try:
+        compile(src, "<spanlens-patch>", "exec", dont_inherit=True)
+    except (SyntaxError, ValueError):
+        return False
+    return True
 
 
 # ── gemini (configure-call style) ────────────────────────────────────
@@ -304,12 +345,18 @@ def _patch_gemini(src: str) -> Tuple[Optional[str], List[str]]:
 
 
 def _patch_source(src: str, provider: str) -> Tuple[Optional[str], List[str]]:
+    """Patched source plus human-readable changes, or ``(None, [])`` when
+    there is nothing to patch or the result would not compile."""
     if provider == "gemini":
-        return _patch_gemini(src)
-    spec = CONSTRUCTOR_SPECS.get(provider)
-    if spec is None:
+        new_src, changes = _patch_gemini(src)
+    else:
+        spec = CONSTRUCTOR_SPECS.get(provider)
+        if spec is None:
+            return None, []
+        new_src, changes = _patch_constructor(src, spec)
+    if new_src is None or not _compiles(new_src):
         return None, []
-    return _patch_constructor(src, spec)
+    return new_src, changes
 
 
 # ── filesystem scanning ──────────────────────────────────────────────
