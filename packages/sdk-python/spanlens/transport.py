@@ -12,6 +12,9 @@ Mirrors the TypeScript SDK's ``transport.ts`` behaviour:
   where retrying only makes things worse).
 * Optional ``on_error`` hook lets advanced users surface failures. It fires
   exactly once per failed call, after the last attempt.
+* A body that plain ``json.dumps`` can't encode (non-string dict keys, NaN,
+  a circular reference) is rewritten value by value rather than dropped, so
+  one odd span output never costs the status and timing sent with it.
 
 Implementation notes:
     The TypeScript SDK relies on JavaScript's micro-task queue + ``await`` to
@@ -34,6 +37,7 @@ from __future__ import annotations
 import atexit
 import json
 import logging
+import math
 import random
 import threading
 import time
@@ -258,10 +262,11 @@ class Transport:
         self._await_predecessor(after)
         endpoint = f"{method} {path}"
         try:
-            payload = json.dumps(body, default=_json_default)
-        except (TypeError, ValueError) as err:
-            # Deterministic (e.g. a circular reference in metadata): retrying
-            # can never help, so fail fast like the 4xx path.
+            payload = _encode_body(body)
+        except Exception as err:
+            # Deterministic, so retrying can never help: fail fast like the
+            # 4xx path. ``_encode_body`` rewrites every value it can, so this
+            # is a last-resort guard rather than an expected outcome.
             return self._fail(err, endpoint)
 
         outcome = self._send_with_retry(method, f"{self._base_url}{path}", payload, endpoint)
@@ -412,6 +417,86 @@ def _actionable_hint(status: int, code: str) -> Optional[str]:
     if status == 429:
         return f"Monthly quota or rate limit reached. See {_PRICING_URL}"
     return None
+
+
+_CIRCULAR_MARKER = "[Circular]"
+# Nesting depth past which the rewrite pass stringifies instead of recursing.
+_MAX_SAFE_DEPTH = 64
+
+
+def _encode_body(body: Any) -> str:
+    """Encode an ingest body as strict JSON, degrading values instead of
+    dropping the call.
+
+    Span input, output, and metadata are arbitrary user values, and a few of
+    them defeat ``json.dumps``: dict keys that are not strings (a tuple, a
+    pandas ``Timestamp`` or MultiIndex key from ``DataFrame.to_dict()``), a
+    circular reference, or NaN / Infinity, which ``json.dumps`` would emit as
+    bare literals the server rejects with a 400. Failing the whole call would
+    also throw away the status, end time, and token counts that travel in
+    the same body, leaving the span ``running`` forever. So when the plain
+    encode fails, only the offending values are rewritten: keys become
+    strings, non-finite floats become ``null``, a cycle becomes
+    ``"[Circular]"``.
+    """
+    try:
+        return json.dumps(body, default=_json_default, allow_nan=False)
+    except Exception:
+        logger.debug("spanlens ingest body needed rewriting to encode", exc_info=True)
+    return json.dumps(_json_safe(body, frozenset(), 0), allow_nan=False)
+
+
+def _json_safe(value: Any, ancestors: frozenset[int], depth: int) -> Any:
+    """Copy ``value`` into something ``json.dumps(allow_nan=False)`` accepts.
+
+    ``ancestors`` holds the ids of the containers on the current path, so a
+    value that is merely shared between two branches is kept, while one that
+    contains itself is cut.
+    """
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if id(value) in ancestors:
+        return _CIRCULAR_MARKER
+    if depth >= _MAX_SAFE_DEPTH:
+        return _safe_str(value)
+    inner = ancestors | {id(value)}
+    if isinstance(value, dict):
+        return {_json_safe_key(k): _json_safe(v, inner, depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_safe(item, inner, depth + 1) for item in value]
+    try:
+        converted = _json_default(value)
+    except Exception:
+        return _safe_str(value)
+    return _json_safe(converted, inner, depth + 1)
+
+
+def _json_safe_key(key: Any) -> Any:
+    """A dict key ``json.dumps`` accepts. str, int, bool, and None pass
+    through (json already knows how to write them); anything else becomes a
+    string, using ``isoformat()`` for dates and timestamps."""
+    if key is None or isinstance(key, (str, bool, int)):
+        return key
+    if isinstance(key, float) and math.isfinite(key):
+        return key
+    iso = getattr(key, "isoformat", None)
+    if callable(iso):
+        try:
+            return str(iso())
+        except Exception:
+            pass
+    return _safe_str(key)
+
+
+def _safe_str(value: Any) -> str:
+    """``str(value)`` that cannot raise, even for a hostile ``__str__`` or a
+    structure too deep to print."""
+    try:
+        return str(value)
+    except Exception:
+        return f"<unserializable {type(value).__name__}>"
 
 
 def _json_default(obj: Any) -> Any:

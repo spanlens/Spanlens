@@ -11,9 +11,11 @@ are patched out so the suite stays fast.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import Future
+from datetime import datetime
 from typing import Any, Callable
 
 import httpx
@@ -324,3 +326,90 @@ def test_post_after_close_is_dropped_without_raising() -> None:
     future: Future[Any] = transport.post(PATH, {})
     assert future.done()
     assert future.result() is None
+
+
+# ── Body serialization ───────────────────────────────────────────────────
+
+
+def _strict_json(content: bytes) -> Any:
+    """Parse like the server does: bare NaN / Infinity literals are invalid."""
+
+    def reject(token: str) -> Any:
+        raise ValueError(f"non-standard JSON constant {token}")
+
+    return json.loads(content.decode(), parse_constant=reject)
+
+
+class _FrameLike:
+    """Stands in for a pandas DataFrame: ``to_dict()`` hands back tuple
+    column keys (a MultiIndex) and datetime row keys."""
+
+    def to_dict(self) -> dict[Any, Any]:
+        return {("price", "usd"): {datetime(2026, 9, 1): 1.5}}
+
+
+def _circular() -> dict[str, Any]:
+    node: dict[str, Any] = {"k": 1}
+    node["self"] = node
+    return node
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ({(1, 2): "x"}, {"(1, 2)": "x"}),
+        ({"score": float("nan")}, {"score": None}),
+        ([float("inf"), float("-inf"), (1.0, float("nan"))], [None, None, [1.0, None]]),
+        (_circular(), {"k": 1, "self": "[Circular]"}),
+        (_FrameLike(), {"('price', 'usd')": {"2026-09-01T00:00:00": 1.5}}),
+    ],
+    ids=["tuple-key", "nan", "infinity", "circular", "to-dict-tuple-keys"],
+)
+def test_unencodable_values_are_rewritten_instead_of_dropping_the_call(
+    value: Any, expected: Any
+) -> None:
+    route = respx.patch(f"{BASE_URL}/ingest/spans/s1").mock(return_value=httpx.Response(200))
+    errors, hook = _collect_errors()
+    transport = _transport(silent=False, on_error=hook)
+
+    body = {"status": "completed", "ended_at": "2026-09-28T00:00:00+00:00", "output": value}
+    transport.patch("/ingest/spans/s1", body).result(timeout=5)
+    transport.close()
+
+    assert route.call_count == 1
+    sent = _strict_json(route.calls[0].request.content)
+    assert sent["status"] == "completed"
+    assert sent["ended_at"] == "2026-09-28T00:00:00+00:00"
+    assert sent["output"] == expected
+    assert errors == []
+
+
+@respx.mock
+def test_shared_references_are_not_mistaken_for_cycles() -> None:
+    route = respx.post(f"{BASE_URL}{PATH}").mock(return_value=httpx.Response(200))
+    transport = _transport()
+    shared = [1, 2]
+
+    # The tuple key forces the rewrite path; the shared list is not a cycle.
+    transport.post(PATH, {"a": shared, "b": shared, (0,): "x"}).result(timeout=5)
+    transport.close()
+
+    assert _strict_json(route.calls[0].request.content) == {"a": [1, 2], "b": [1, 2], "(0,)": "x"}
+
+
+@respx.mock
+def test_value_whose_str_raises_does_not_drop_the_call() -> None:
+    class Hostile:
+        def __str__(self) -> str:
+            raise RuntimeError("no str for you")
+
+    route = respx.post(f"{BASE_URL}{PATH}").mock(return_value=httpx.Response(200))
+    transport = _transport()
+
+    transport.post(PATH, {"name": "t", "metadata": {"obj": Hostile()}}).result(timeout=5)
+    transport.close()
+
+    sent = _strict_json(route.calls[0].request.content)
+    assert sent["name"] == "t"
+    assert isinstance(sent["metadata"]["obj"], str)

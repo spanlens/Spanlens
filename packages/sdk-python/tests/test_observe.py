@@ -483,3 +483,109 @@ def test_observe_rejects_unknown_log_body_before_running_fn():
             observe_openai(trace, "x", lambda _h: calls.append(1), log_body="off")  # type: ignore[arg-type]
 
     assert calls == []
+
+
+# ── Output that json.dumps can't encode must not lose the span ──
+
+
+def _strict_bodies(method: str, fragment: str) -> list[dict]:
+    """Like ``_bodies`` but parses the way the server does, so a bare
+    ``NaN`` / ``Infinity`` literal fails the test instead of passing."""
+    import json
+
+    def reject(token: str):  # noqa: ANN202 - test helper
+        raise ValueError(f"non-standard JSON constant {token}")
+
+    out: list[dict] = []
+    for route in respx.routes:
+        for call in route.calls:
+            if call.request.method == method and fragment in str(call.request.url):
+                out.append(json.loads(call.request.content.decode(), parse_constant=reject))
+    return out
+
+
+class _TupleKeyedFrame:
+    """A pandas-like object whose ``to_dict()`` has MultiIndex (tuple) keys."""
+
+    def to_dict(self) -> dict:
+        return {("a", "b"): 1}
+
+
+def _self_referencing() -> dict:
+    node: dict = {"k": 1}
+    node["self"] = node
+    return node
+
+
+_UNENCODABLE_OUTPUTS = [
+    pytest.param(lambda: {(1, 2): "x"}, id="tuple-key"),
+    pytest.param(lambda: {"score": float("nan")}, id="nan"),
+    pytest.param(_self_referencing, id="circular"),
+    pytest.param(_TupleKeyedFrame, id="to-dict-tuple-keys"),
+]
+
+
+@respx.mock
+@pytest.mark.parametrize("make_output", _UNENCODABLE_OUTPUTS)
+def test_observe_unencodable_output_still_ends_the_span(make_output):  # noqa: ANN001
+    _mock_ingest_routes()
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", lambda _span: make_output())
+
+    patches = _strict_bodies("PATCH", "/ingest/spans/")
+    assert len(patches) == 1
+    assert patches[0]["status"] == "completed"
+    assert "ended_at" in patches[0]
+    assert "output" in patches[0]
+
+
+@respx.mock
+async def test_observe_async_unencodable_output_still_ends_the_span():
+    _mock_ingest_routes()
+
+    async def op(_span):  # noqa: ANN001 - test fixture
+        return {"score": float("nan"), (1, 2): "x"}
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            await observe(trace, "async_step", op)
+
+    patches = _strict_bodies("PATCH", "/ingest/spans/")
+    assert [p["status"] for p in patches] == ["completed"]
+    assert patches[0]["output"] == {"score": None, "(1, 2)": "x"}
+
+
+@respx.mock
+def test_observe_openai_unencodable_response_keeps_status_and_tokens():
+    _mock_ingest_routes()
+    response = {
+        "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+        "logprob": float("-inf"),
+    }
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe_openai(trace, "call", lambda _h: response)
+
+    patches = _strict_bodies("PATCH", "/ingest/spans/")
+    assert len(patches) == 1
+    assert patches[0]["status"] == "completed"
+    assert patches[0]["total_tokens"] == 3
+    assert patches[0]["output"]["logprob"] is None
+
+
+@respx.mock
+def test_observe_unencodable_input_still_creates_the_span():
+    _mock_ingest_routes()
+
+    with _client() as client:
+        with client.start_trace("t1") as trace:
+            observe(trace, "step", lambda _span: "ok", input={(1, 2): float("nan")})
+
+    posts = [b for b in _strict_bodies("POST", "/spans") if "span_type" in b]
+    assert len(posts) == 1
+    assert posts[0]["name"] == "step"
+    assert posts[0]["input"] == {"(1, 2)": None}
+    assert _strict_bodies("PATCH", "/ingest/spans/")[0]["status"] == "completed"

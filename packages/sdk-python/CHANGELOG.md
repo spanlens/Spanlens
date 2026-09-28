@@ -24,6 +24,7 @@
 - A sampled-out trace that ends with `status="error"` no longer blocks `trace.end()` (for up to 30 seconds) while its buffered calls are replayed. The replay runs in the background and `flush()` / `close()` wait for it.
 - `SpanlensCallbackHandler` for LangChain / LangGraph gives every root run its own trace and ends it with that run's status. Sharing one handler across parallel invocations used to merge them into one trace, hide the error of one run behind a sibling that completed, and leave a trace running forever. The handler is now safe across threads and asyncio tasks.
 - `spanlens init` no longer removes a provider import that the file still needs. When the class is also used in an annotation, an `isinstance` check, a type alias, or a string, the original import stays and the Spanlens import is added next to it. Every patched file is compiled before it is written.
+- An ingest body that `json.dumps` can't encode no longer loses the whole call. Dict keys that aren't strings (a tuple, or the MultiIndex and `Timestamp` keys `DataFrame.to_dict()` returns) are written as strings, NaN and Infinity become `null` instead of bare literals the server rejects, and a circular reference is cut at `"[Circular]"`. Before, one such value in a span's output, input, or metadata lost the whole request (the SDK dropped it or the server rejected it), so the span never got its status, end time, or token counts.
 - `mypy --strict` passes for the package, independent of which optional extras are installed.
 
 ## 0.8.1
