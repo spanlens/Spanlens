@@ -100,7 +100,7 @@ describe('api/index.ts handler errors', () => {
   test('a failure before the body pump starts still cancels the body it was handed', async () => {
     // An export's body holds a database cursor until it is read or cancelled.
     // If the bridge throws before pumping it, the body must be cancelled, or
-    // that cursor keeps one of the pool's two connections.
+    // that cursor keeps the instance's export connection.
     const cancelled = vi.fn()
     const body = new ReadableStream<Uint8Array>({
       pull() {

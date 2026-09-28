@@ -321,9 +321,12 @@ export async function selectRequests<T>(opts: {
  * Consumer rules:
  *   - Iterate with `for await (const row of streamRequests(...))`.
  *   - Do NOT collect into an array (defeats the purpose).
- *   - Finish or abandon the iterator promptly — the cursor holds one pooled
- *     connection for the life of the iteration. `pgStream` releases it in a
- *     `finally`, so an early `break` or throw still returns the client.
+ *   - Finish or abandon the iterator promptly — the cursor holds a connection
+ *     from the cursor pool (PG_STREAM_POOL_MAX, default 1) for the life of the
+ *     iteration. `pgStream` rolls back and releases it in a `finally`, so an
+ *     early `break` or throw still returns the client.
+ *   - The first `next()` rejects with PgStreamBusyError (lib/pg-stream-busy.ts)
+ *     when every cursor slot is taken; answer it as retryable, not as a 500.
  */
 export async function* streamRequests<T>(opts: {
   scope: RequestsScope

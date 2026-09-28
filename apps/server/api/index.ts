@@ -142,9 +142,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       res.destroy(err instanceof Error ? err : new Error(String(err)))
     }
     // A body we never finished pumping may still hold resources until it is
-    // read or cancelled; an export's holds a database cursor, and the pool
-    // has two connections. Cancelling an errored or already-released body is
-    // a harmless rejection.
+    // read or cancelled; an export's holds a database cursor, which occupies
+    // the instance's only export connection by default. Cancelling an errored
+    // or already-released body is a harmless rejection.
     await webRes?.body?.cancel().catch(() => {})
   }
 }

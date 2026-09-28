@@ -16,11 +16,13 @@
  * the chunk being assembled plus whatever the cursor has already fetched
  * (one batch).
  *
- * The flip side is that a slow download now holds its pooled connection for as
- * long as it takes, instead of releasing it early and paying in memory. That
- * is why `cancel` and the idle watchdog below release the source eagerly: the
- * pool has two connections (lib/postgres.ts), so an abandoned cursor is half
- * of an instance's database capacity.
+ * The flip side is that a slow download now holds its connection for as long
+ * as it takes, instead of releasing it early and paying in memory. pgStream
+ * (lib/postgres.ts) accounts for that: the cursor has its own small pool, so
+ * it cannot starve request logging, and its own time budget, so the session
+ * statement_timeout does not end a slow download partway. `cancel` and the
+ * idle watchdog below still release the source eagerly, because an abandoned
+ * cursor keeps a backend busy and blocks every other export on the instance.
  */
 
 /** Queue bound in encoded bytes. Past this, `pull()` stops being called. */

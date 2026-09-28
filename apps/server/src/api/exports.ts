@@ -5,6 +5,7 @@ import { detectAnomalies } from '../lib/anomaly.js'
 import { requestsScope, selectRequests, streamRequests } from '../lib/requests-query.js'
 import { encodeRowStream, type RowStreamOptions } from '../lib/export-stream.js'
 import { parseRequestFilters } from '../lib/request-filters.js'
+import { isPgStreamBusyError } from '../lib/pg-stream-busy.js'
 import { ApiError } from '../lib/errors.js'
 
 export const exportsRouter = new Hono<JwtContext>()
@@ -34,6 +35,14 @@ const MAX_EXPORT_ROWS = 10_000
  * email" path (P3.11 follow-up, when first user hits the cap).
  */
 const MAX_EXPORT_ROWS_STREAM = 1_000_000
+
+/**
+ * Retry-After for a streamed export refused because every cursor slot on the
+ * instance is busy (lib/postgres.ts, PG_STREAM_POOL_MAX). Short on purpose:
+ * the retry may land on another instance, and the dashboard's Retry button is
+ * the usual caller.
+ */
+const EXPORT_BUSY_RETRY_AFTER_SECONDS = 10
 
 /**
  * Column order is the CSV header order, and the header is a contract: scripts
@@ -223,7 +232,9 @@ async function primeRows<Row>(rows: AsyncIterable<Row>): Promise<AsyncIterableIt
 //   - csv / jsonl: streamed with backpressure. The cursor is read only as fast
 //                  as the client downloads (lib/export-stream.ts), so memory is
 //                  one queue of encoded output plus one cursor batch.
-//                  Row cap: 1M (MAX_EXPORT_ROWS_STREAM).
+//                  Row cap: 1M (MAX_EXPORT_ROWS_STREAM). One streamed export
+//                  per instance at a time by default; another gets a 429 with
+//                  Retry-After instead of waiting for a connection.
 //   - json:        materialised wrapper object. Row cap: 10k (MAX_EXPORT_ROWS).
 //                  Use jsonl for larger JSON exports.
 exportsRouter.get('/requests', async (c) => {
@@ -290,6 +301,10 @@ exportsRouter.get('/requests', async (c) => {
   // high-water mark, so backpressure runs from the Node socket (api/index.ts
   // stops calling read()) through the stream to the cursor, and cancelling
   // the body releases the cursor's connection (lib/export-stream.ts).
+  //
+  // Because the cursor now lives as long as the download, it runs on its own
+  // pool with its own time budget (pgStream in lib/postgres.ts): about five
+  // minutes end to end, and never on a connection request logging needs.
   const rawRowsIter = streamRequests<ExportRow>({
     scope,
     select: EXPORT_COLUMNS.join(', '),
@@ -306,6 +321,15 @@ exportsRouter.get('/requests', async (c) => {
   try {
     rowsIter = await primeRows(withIsoCreatedAt(rawRowsIter))
   } catch (err) {
+    if (isPgStreamBusyError(err)) {
+      // Refused before a connection was taken, so nothing needs releasing.
+      c.header('Retry-After', String(EXPORT_BUSY_RETRY_AFTER_SECONDS))
+      throw new ApiError(
+        'RATE_LIMIT',
+        'Another export is still running. Try again in a few seconds.',
+        { source: 'export_concurrency' },
+      )
+    }
     console.error('[exports:requests] stream open failed:', err instanceof Error ? err.message : err)
     throw new ApiError('INTERNAL_ERROR', 'Failed to export requests')
   }

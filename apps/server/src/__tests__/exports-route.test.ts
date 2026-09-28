@@ -40,6 +40,7 @@ vi.mock('../middleware/authJwt.js', () => ({
 
 import { exportsRouter } from '../api/exports.js'
 import { serializeErrorEnvelope } from '../lib/errors.js'
+import { PgStreamBusyError } from '../lib/pg-stream-busy.js'
 
 const app = new Hono()
 app.route('/api/v1/exports', exportsRouter)
@@ -226,6 +227,22 @@ describe('streamed export failure handling', () => {
     const res = await app.request('/api/v1/exports/requests?format=csv')
     expect(res.status).toBe(200)
     expect(await res.text()).toBe(`${LEGACY_HEADER},user_id,session_id,prompt_version_id\n`)
+  })
+
+  test('every cursor slot taken is a 429 with Retry-After, not a 500', async () => {
+    // pgStream refuses a new cursor at once when its pool is full rather than
+    // queueing for a connection. The route turns that into a retryable answer
+    // before any status line is committed.
+    mocks.streamRequests.mockImplementation(async function* () {
+      throw new PgStreamBusyError(1)
+    })
+    const res = await app.request('/api/v1/exports/requests?format=csv')
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe('10')
+    const body = (await res.json()) as { error: { code: string; message: string; details?: unknown } }
+    expect(body.error.code).toBe('RATE_LIMIT')
+    expect(body.error.details).toEqual({ source: 'export_concurrency' })
+    expect(body.error.message).not.toMatch(/—/)
   })
 
   test('cancelling the body right away still releases the cursor the route opened', async () => {
