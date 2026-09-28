@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  EMPTY_REPLAY_USAGE,
   REPLAY_RUN_SUPPORTED_PROVIDERS,
   buildReplayProxyPath,
   buildReplayUpstream,
   isOpenAiCompatReplayProvider,
   parseReplayUsage,
+  replayCostUsd,
+  replayTimeoutMs,
 } from '../lib/replay-providers.js'
 
 // 2026-07-13 audit: POST /:id/replay/run rejected everything but
@@ -108,7 +111,7 @@ describe('parseReplayUsage', () => {
   it('parses the OpenAI usage shape for openai and every compat provider', () => {
     const body = { usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }
     for (const provider of ['openai', 'mistral', 'openrouter', 'groq', 'deepseek', 'xai', 'cohere']) {
-      expect(parseReplayUsage(provider, body), provider).toEqual({
+      expect(parseReplayUsage(provider, body), provider).toMatchObject({
         promptTokens: 10,
         completionTokens: 5,
         totalTokens: 15,
@@ -116,11 +119,50 @@ describe('parseReplayUsage', () => {
     }
   })
 
+  it('keeps the OpenAI cached subset and the served tier (XVERIFY C11.1)', () => {
+    const usage = parseReplayUsage('openai', {
+      model: 'gpt-4o-mini-2024-07-18',
+      service_tier: 'flex',
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 5,
+        total_tokens: 105,
+        prompt_tokens_details: { cached_tokens: 80 },
+      },
+    })
+    expect(usage).toMatchObject({
+      promptTokens: 100,
+      cacheReadTokens: 80,
+      serviceTier: 'flex',
+      model: 'gpt-4o-mini-2024-07-18',
+      reportedCostUsd: null,
+    })
+  })
+
   it('parses anthropic input/output tokens and derives the total', () => {
-    expect(parseReplayUsage('anthropic', { usage: { input_tokens: 7, output_tokens: 3 } })).toEqual({
+    expect(parseReplayUsage('anthropic', { usage: { input_tokens: 7, output_tokens: 3 } })).toMatchObject({
       promptTokens: 7,
       completionTokens: 3,
       totalTokens: 10,
+    })
+  })
+
+  it('counts anthropic cache reads and writes into promptTokens, like the proxy', () => {
+    // input_tokens EXCLUDES the cached portions on Anthropic, so reading it
+    // alone dropped 100k of the 100,050 input tokens from the replay row.
+    const usage = parseReplayUsage('anthropic', {
+      usage: {
+        input_tokens: 50,
+        cache_read_input_tokens: 90_000,
+        cache_creation_input_tokens: 10_000,
+        output_tokens: 500,
+      },
+    })
+    expect(usage).toMatchObject({
+      promptTokens: 100_050,
+      cacheReadTokens: 90_000,
+      cacheWriteTokens: 10_000,
+      totalTokens: 100_550,
     })
   })
 
@@ -128,24 +170,68 @@ describe('parseReplayUsage', () => {
     const body = {
       usageMetadata: {
         promptTokenCount: 20,
+        cachedContentTokenCount: 15,
         candidatesTokenCount: 8,
         thoughtsTokenCount: 12,
         totalTokenCount: 40,
       },
     }
-    expect(parseReplayUsage('gemini', body)).toEqual({
+    expect(parseReplayUsage('gemini', body)).toMatchObject({
       promptTokens: 20,
       completionTokens: 20,
       totalTokens: 40,
+      cacheReadTokens: 15,
     })
   })
 
-  it('returns zeros when usage is absent or the provider is unknown', () => {
-    expect(parseReplayUsage('openai', {})).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 0 })
-    expect(parseReplayUsage('someday-provider', { usage: { prompt_tokens: 9 } })).toEqual({
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
+  it('carries OpenRouter usage.cost as the reported cost', () => {
+    const body = { usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.0042 } }
+    expect(parseReplayUsage('openrouter', body)?.reportedCostUsd).toBe(0.0042)
+    // Only OpenRouter reports billed USD; the same field elsewhere is ignored.
+    expect(parseReplayUsage('openai', body)?.reportedCostUsd).toBeNull()
+  })
+
+  it('returns null (usage unknown) when usage is absent, unreadable, or the provider is unknown', () => {
+    expect(parseReplayUsage('openai', {})).toBeNull()
+    expect(parseReplayUsage('openai', { usage: { some_future_field: 1 } })).toBeNull()
+    expect(parseReplayUsage('someday-provider', { usage: { prompt_tokens: 9 } })).toBeNull()
+  })
+})
+
+describe('replayCostUsd', () => {
+  it('prefers the provider-reported cost over the local price table', () => {
+    expect(replayCostUsd('openrouter', 'openai/gpt-4o', { ...EMPTY_REPLAY_USAGE, promptTokens: 1_000_000, reportedCostUsd: 0.5 }))
+      .toBe(0.5)
+  })
+
+  it('falls back to the vendor-stripped id for OpenRouter models missing from its own rows', () => {
+    // No openrouter rows are loaded in tests; the stripped id resolves
+    // against FALLBACK_PRICES exactly as proxy/openrouter.ts does.
+    const cost = replayCostUsd('openrouter', 'openai/gpt-4o-mini', {
+      ...EMPTY_REPLAY_USAGE,
+      promptTokens: 1_000_000,
     })
+    expect(cost).toBeCloseTo(0.15, 9)
+  })
+
+  it('returns null for an unpriced model', () => {
+    expect(replayCostUsd('openai', 'no-such-model-anywhere', EMPTY_REPLAY_USAGE)).toBeNull()
+  })
+})
+
+describe('replayTimeoutMs', () => {
+  const saved = process.env['UPSTREAM_TIMEOUT_MS']
+  afterEach(() => {
+    if (saved === undefined) delete process.env['UPSTREAM_TIMEOUT_MS']
+    else process.env['UPSTREAM_TIMEOUT_MS'] = saved
+  })
+
+  it('uses the proxy UPSTREAM_TIMEOUT_MS setting, defaulting to 35s', () => {
+    delete process.env['UPSTREAM_TIMEOUT_MS']
+    expect(replayTimeoutMs()).toBe(35_000)
+    process.env['UPSTREAM_TIMEOUT_MS'] = '12000'
+    expect(replayTimeoutMs()).toBe(12_000)
+    process.env['UPSTREAM_TIMEOUT_MS'] = 'not-a-number'
+    expect(replayTimeoutMs()).toBe(35_000)
   })
 })

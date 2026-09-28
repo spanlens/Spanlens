@@ -23,6 +23,11 @@
  * module load) so tests and runtime env changes behave predictably.
  */
 
+import { calculateCost, type Provider } from './cost.js'
+import { parseOpenAIResponse, type ParsedUsage, type ServiceTier } from '../parsers/openai.js'
+import { parseAnthropicResponse } from '../parsers/anthropic.js'
+import { parseGeminiResponse } from '../parsers/gemini.js'
+
 /** Providers whose chat-completions surface is OpenAI-compatible. */
 const OPENAI_COMPAT_UPSTREAMS: Record<string, { envVar: string; defaultBase: string }> = {
   openai: { envVar: 'OPENAI_API_BASE', defaultBase: 'https://api.openai.com' },
@@ -126,42 +131,158 @@ export function buildReplayUpstream(
   return null
 }
 
+/**
+ * Token usage of a replay response, normalized by the SAME parsers the proxy
+ * uses (parsers/openai.ts, anthropic.ts, gemini.ts), so a replayed call is
+ * priced exactly like the original: cached input at the cache rates, the
+ * served service tier, Anthropic cache tokens counted into promptTokens, and
+ * Gemini reasoning tokens folded into completionTokens.
+ */
 export interface ReplayUsage {
+  /** Gross input tokens, cached portions included. */
   promptTokens: number
   completionTokens: number
   totalTokens: number
+  /** Subset of promptTokens served from a prompt cache. */
+  cacheReadTokens: number
+  /** Subset of promptTokens that created a cache entry (Anthropic). */
+  cacheWriteTokens: number
+  serviceTier: ServiceTier | undefined
+  /** Model the provider reports serving (often a dated variant); '' if absent. */
+  model: string
+  /** Billed USD the provider reported itself (OpenRouter `usage.cost`). */
+  reportedCostUsd: number | null
+}
+
+function toReplayUsage(parsed: ParsedUsage, reportedCostUsd: number | null): ReplayUsage {
+  return {
+    promptTokens: parsed.promptTokens,
+    completionTokens: parsed.completionTokens,
+    totalTokens: parsed.totalTokens,
+    cacheReadTokens: parsed.cacheReadTokens ?? 0,
+    cacheWriteTokens: parsed.cacheWriteTokens ?? 0,
+    serviceTier: parsed.serviceTier,
+    model: parsed.model,
+    reportedCostUsd,
+  }
+}
+
+/** OpenRouter's own `usage.cost` (USD), the same field proxy/openrouter.ts prefers. */
+function openRouterReportedCost(resBody: Record<string, unknown>): number | null {
+  const usage = resBody['usage']
+  if (typeof usage !== 'object' || usage === null) return null
+  const cost = (usage as Record<string, unknown>)['cost']
+  return typeof cost === 'number' && Number.isFinite(cost) ? cost : null
 }
 
 /**
- * Extract token usage from a non-streaming replay response.
- * OpenAI-compatible providers all report the OpenAI `usage` object.
+ * Extract token usage from a non-streaming replay response. Returns null when
+ * the provider reported no usage we can read, which the caller records as an
+ * unknown cost rather than a $0 one.
  */
-export function parseReplayUsage(provider: string, resBody: Record<string, unknown>): ReplayUsage {
+export function parseReplayUsage(provider: string, resBody: Record<string, unknown>): ReplayUsage | null {
   if (provider === 'anthropic') {
-    const u = resBody['usage'] as Record<string, number> | undefined
-    const promptTokens = u?.['input_tokens'] ?? 0
-    const completionTokens = u?.['output_tokens'] ?? 0
-    return { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens }
+    const parsed = parseAnthropicResponse(resBody)
+    return parsed ? toReplayUsage(parsed, null) : null
   }
   if (provider === 'gemini') {
-    const u = resBody['usageMetadata'] as Record<string, number> | undefined
-    const promptTokens = u?.['promptTokenCount'] ?? 0
-    // Gemini 2.5+/3 thinking models report reasoning tokens in
-    // thoughtsTokenCount, which Google bills at the OUTPUT rate and which
-    // candidatesTokenCount excludes — fold them into completion tokens so cost
-    // isn't under-reported (see parsers/gemini.ts). totalTokenCount already
-    // includes thoughts, so prompt + completion stays consistent with total.
-    const completionTokens = (u?.['candidatesTokenCount'] ?? 0) + (u?.['thoughtsTokenCount'] ?? 0)
-    const totalTokens = u?.['totalTokenCount'] ?? promptTokens + completionTokens
-    return { promptTokens, completionTokens, totalTokens }
+    const parsed = parseGeminiResponse(resBody)
+    return parsed ? toReplayUsage(parsed, null) : null
   }
   if (isOpenAiCompatReplayProvider(provider)) {
-    const u = resBody['usage'] as Record<string, number> | undefined
-    return {
-      promptTokens: u?.['prompt_tokens'] ?? 0,
-      completionTokens: u?.['completion_tokens'] ?? 0,
-      totalTokens: u?.['total_tokens'] ?? 0,
-    }
+    // Replay always calls /v1/chat/completions, so the Chat Completions schema.
+    const parsed = parseOpenAIResponse(resBody, 'chat')
+    if (!parsed) return null
+    return toReplayUsage(parsed, provider === 'openrouter' ? openRouterReportedCost(resBody) : null)
   }
-  return { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+  return null
+}
+
+/** Zero usage, for pricing a failed attempt the way the proxy does. */
+export const EMPTY_REPLAY_USAGE: ReplayUsage = {
+  promptTokens: 0,
+  completionTokens: 0,
+  totalTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  serviceTier: undefined,
+  model: '',
+  reportedCostUsd: null,
+}
+
+/** Drop a vendor prefix (`anthropic/claude-...` to `claude-...`). */
+function stripVendorPrefix(modelId: string): string {
+  const idx = modelId.indexOf('/')
+  return idx === -1 ? modelId : modelId.slice(idx + 1)
+}
+
+/**
+ * Cost of a replayed call, in the same preference order the proxy uses
+ * (proxy/openrouter.ts and proxy/stream-logger.ts for OpenRouter):
+ *   1. the provider's own billed amount (OpenRouter `usage.cost`),
+ *   2. the local price table for the full model id,
+ *   3. OpenRouter only: the vendor-stripped id,
+ *   4. null (unpriced model).
+ */
+export function replayCostUsd(provider: string, model: string, usage: ReplayUsage): number | null {
+  if (usage.reportedCostUsd !== null) return usage.reportedCostUsd
+  const tokens = {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
+    serviceTier: usage.serviceTier,
+  }
+  const direct = calculateCost(provider as Provider, model, tokens)
+  if (direct || provider !== 'openrouter') return direct?.totalCost ?? null
+  return calculateCost('openrouter', stripVendorPrefix(model), tokens)?.totalCost ?? null
+}
+
+/**
+ * Whole-call deadline for a replay, in ms. Same env var and default as the
+ * proxy's UPSTREAM_TIMEOUT_MS (proxy/shared/upstream-fetch.ts). Replay is
+ * non-streaming, so the provider only answers once generation is done and one
+ * budget for headers plus body matches what the proxy allows. Read per call so
+ * a config change needs no module reload.
+ */
+export function replayTimeoutMs(): number {
+  const parsed = parseInt(process.env['UPSTREAM_TIMEOUT_MS'] ?? '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 35_000
+}
+
+export type ReplayFetchOutcome =
+  | { kind: 'response'; status: number; ok: boolean; bodyText: string; latencyMs: number }
+  | { kind: 'timeout'; latencyMs: number; timeoutMs: number }
+  | { kind: 'network'; latencyMs: number; message: string }
+
+/**
+ * POST the replay body with one deadline covering both the response headers
+ * and the body read. Aborting the fetch signal also errors a body that is
+ * still streaming, so a provider that sends headers and then stalls cannot
+ * hold the request open. Never throws: the caller logs every outcome.
+ */
+export async function fetchReplayUpstream(
+  upstream: ReplayUpstream,
+  body: string,
+  timeoutMs: number,
+): Promise<ReplayFetchOutcome> {
+  const startMs = Date.now()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(upstream.url, {
+      method: 'POST',
+      headers: upstream.headers,
+      body,
+      signal: controller.signal,
+    })
+    const bodyText = await res.text()
+    return { kind: 'response', status: res.status, ok: res.ok, bodyText, latencyMs: Date.now() - startMs }
+  } catch (err) {
+    const latencyMs = Date.now() - startMs
+    if (controller.signal.aborted) return { kind: 'timeout', latencyMs, timeoutMs }
+    return { kind: 'network', latencyMs, message: err instanceof Error ? err.message : String(err) }
+  } finally {
+    clearTimeout(timer)
+  }
 }

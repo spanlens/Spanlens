@@ -1,3 +1,4 @@
+import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import type { ApiKeyContext } from './authApiKey.js'
 import { checkMonthlyQuota } from '../lib/quota.js'
@@ -23,6 +24,17 @@ export const enforceQuota = createMiddleware<ApiKeyContext>(async (c, next) => {
   const organizationId = c.get('organizationId')
   if (!organizationId) return next() // auth middleware will have already rejected
 
+  await assertWithinMonthlyQuota(c, organizationId)
+  return next()
+})
+
+/**
+ * The same monthly-quota decision as `enforceQuota`, callable from a route
+ * that authenticates differently (for example the dashboard's request replay,
+ * which runs under a JWT and reads the org from `orgId`). Throws the same
+ * RATE_LIMIT ApiError and sets the same X-RateLimit-* headers.
+ */
+export async function assertWithinMonthlyQuota(c: Context, organizationId: string): Promise<void> {
   const check = await checkMonthlyQuota(organizationId)
 
   // Re-derive the decision from the raw numbers so we have the block reason
@@ -64,6 +76,4 @@ export const enforceQuota = createMiddleware<ApiKeyContext>(async (c, next) => {
     c.header('X-RateLimit-Plan', check.plan)
     if (decision.overageActive) c.header('X-Overage-Active', 'true')
   }
-
-  return next()
-})
+}
