@@ -7,7 +7,7 @@ export const metadata = {
   openGraph: openGraphFor('/docs/features/export'),
   title: 'Data Export · Spanlens Docs',
   description:
-    'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON. Streamed exports handle millions of rows.',
+    'Download request logs, traces, anomalies, and security flags as CSV, JSONL, or JSON. Streamed exports go up to a million rows.',
 }
 
 export default function ExportDocs() {
@@ -16,10 +16,11 @@ export default function ExportDocs() {
       <DocsJsonLd meta={metadata} />
       <h1>Data Export</h1>
       <p className="lead">
-        Download request logs, traces, anomaly snapshots, and security flags as CSV, JSONL, or JSON
-        in one shot. CSV and JSONL stream out of a server-side database cursor, so a million-row
-        export runs in ~30&nbsp;MB of memory and finishes inside the function-execution window.
-        Connect to Pandas, BigQuery, Redash, Metabase, or your own pipeline.
+        Download request logs, traces, anomaly results, and security flags as CSV, JSONL, or JSON.
+        The request export streams CSV and JSONL out of a database cursor and reads that cursor only
+        as fast as your client downloads, so the server holds a small, fixed buffer no matter how many
+        rows you ask for. Load the files into Pandas, BigQuery, Redash, Metabase, or your own
+        pipeline.
       </p>
 
       <h2>Endpoints</h2>
@@ -33,28 +34,75 @@ export default function ExportDocs() {
         <tbody>
           <tr>
             <td><code>GET /api/v1/exports/requests</code></td>
-            <td>Request logs, provider, model, tokens, cost, latency, etc.</td>
+            <td>
+              Request logs: provider, model, tokens, cost, latency, status, and the user, session,
+              and prompt version each request was tagged with.
+            </td>
           </tr>
           <tr>
             <td><code>GET /api/v1/exports/traces</code></td>
-            <td>Traces, span count, total cost, duration, etc.</td>
+            <td>Traces with span count, total cost, total tokens, and duration.</td>
           </tr>
           <tr>
             <td><code>GET /api/v1/exports/anomalies</code></td>
-            <td>Anomaly snapshots, daily history of buckets that exceeded 3σ</td>
+            <td>
+              The current anomaly check: one row for each provider, model, and metric (latency, cost,
+              or error rate) whose last hour sits more than 3σ away from the previous 7 days.
+            </td>
           </tr>
           <tr>
             <td><code>GET /api/v1/exports/security</code></td>
-            <td>Security flags, PII detections and prompt injection hits</td>
+            <td>Requests flagged for PII or prompt injection, newest first.</td>
           </tr>
         </tbody>
       </table>
       <p>
-        All endpoints require <strong>JWT authentication</strong> (<code>authJwt</code> middleware).
-        Include <code>Authorization: Bearer &lt;supabase_access_token&gt;</code> in the request header.
+        All endpoints require a signed-in dashboard session. Send{' '}
+        <code>Authorization: Bearer &lt;supabase_access_token&gt;</code> with each request. Spanlens
+        API keys (<code>sl_live_...</code>) are not accepted on these endpoints.
       </p>
 
-      <h2>Common query parameters</h2>
+      <h2>Parameters by endpoint</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Accepted parameters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/exports/requests</code></td>
+            <td>
+              <code>format</code>, <code>from</code>, <code>to</code>, <code>limit</code>, and every
+              filter in <a href="#request-filters">Filters for requests</a>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>/exports/traces</code></td>
+            <td>
+              <code>format</code> (<code>csv</code> or <code>json</code>), <code>status</code>{' '}
+              (<code>running</code>, <code>completed</code>, or <code>error</code>),{' '}
+              <code>from</code>, <code>to</code>, <code>limit</code> (up to 10,000).
+            </td>
+          </tr>
+          <tr>
+            <td><code>/exports/anomalies</code></td>
+            <td>
+              <code>format</code> (<code>csv</code> or <code>json</code>) and <code>projectId</code>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>/exports/security</code></td>
+            <td>
+              <code>format</code> (<code>csv</code> or <code>json</code>). It returns the latest
+              10,000 flagged requests inside your retention window.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Request export parameters</h2>
       <table>
         <thead>
           <tr>
@@ -68,33 +116,110 @@ export default function ExportDocs() {
             <td><code>format</code></td>
             <td><code>csv</code></td>
             <td>
-              <code>csv</code> · <code>jsonl</code> · <code>json</code>. CSV and JSONL stream; JSON
-              materialises a wrapper object. See <a href="#formats">Formats</a> below.
+              <code>csv</code>, <code>jsonl</code>, or <code>json</code>. CSV and JSONL stream; JSON
+              is built in full before it is sent. See <a href="#formats">Formats</a> below.
             </td>
           </tr>
           <tr>
             <td><code>from</code></td>
-            <td>,</td>
+            <td>None</td>
             <td>
-              ISO 8601 start time (e.g. <code>2026-05-01T00:00:00Z</code>). Defaults to 30 days
-              ago if omitted.
+              ISO 8601 start time, for example <code>2026-05-01T00:00:00Z</code>. Without it, the
+              export starts at the oldest row your plan&apos;s retention window keeps (Free 14 days,
+              Pro 90 days, Team 365 days).
             </td>
           </tr>
           <tr>
             <td><code>to</code></td>
-            <td>,</td>
-            <td>ISO 8601 end time. Defaults to now if omitted.</td>
+            <td>None</td>
+            <td>ISO 8601 end time, inclusive. Without it, the export runs up to the newest row.</td>
           </tr>
           <tr>
             <td><code>limit</code></td>
-            <td>format-dependent</td>
+            <td>The format&apos;s cap</td>
             <td>
-              CSV / JSONL: 1 to <strong>1,000,000</strong>. JSON: 1 to 10,000.
-              <code>/exports/requests</code> only, other endpoints stay at 10,000.
+              CSV and JSONL: 1 to <strong>1,000,000</strong>. JSON: 1 to 10,000. Values outside the
+              range are clamped to it.
             </td>
           </tr>
         </tbody>
       </table>
+
+      <h2 id="request-filters">Filters for requests</h2>
+      <p>
+        <code>GET /api/v1/exports/requests</code> takes the same filters as{' '}
+        <code>GET /api/v1/requests</code>, so you can take a filtered list query, change the path,
+        and export exactly those rows.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>projectId</code></td>
+            <td>Only requests from one project (UUID).</td>
+          </tr>
+          <tr>
+            <td><code>provider</code></td>
+            <td>
+              Provider id, for example <code>openai</code>, <code>anthropic</code>, or{' '}
+              <code>gemini</code>. Exact match.
+            </td>
+          </tr>
+          <tr>
+            <td><code>model</code></td>
+            <td>
+              Case-insensitive substring of the stored model name (e.g. <code>mini</code>).{' '}
+              <code>%</code> and <code>_</code> match themselves, not any character.
+            </td>
+          </tr>
+          <tr>
+            <td><code>providerKeyId</code></td>
+            <td>Only requests that used one provider key (UUID).</td>
+          </tr>
+          <tr>
+            <td><code>promptVersionId</code></td>
+            <td>Only requests linked to one prompt version (UUID).</td>
+          </tr>
+          <tr>
+            <td><code>userId</code></td>
+            <td>
+              Only requests tagged with this end-user id (the <code>x-spanlens-user</code> header, or{' '}
+              <code>withUser()</code> in the SDK). Exact match.
+            </td>
+          </tr>
+          <tr>
+            <td><code>sessionId</code></td>
+            <td>
+              Only requests tagged with this session id (<code>x-spanlens-session</code>, or{' '}
+              <code>withSession()</code>). Exact match.
+            </td>
+          </tr>
+          <tr>
+            <td><code>status</code></td>
+            <td>
+              <code>ok</code> or <code>success</code> (below 400), <code>4xx</code>,{' '}
+              <code>5xx</code>, <code>error</code> (400 and above), or <code>all</code>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>truncated</code></td>
+            <td>
+              <code>true</code> for streams that were cut off at the stream deadline,{' '}
+              <code>false</code> for streams that finished, or <code>all</code>.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        A malformed UUID or date, or a <code>status</code> or <code>truncated</code> value not listed
+        above, returns <code>400</code> with a <code>VALIDATION_FAILED</code> error before any data
+        is sent.
+      </p>
 
       <h2 id="formats">Formats, when to pick each</h2>
       <table>
@@ -133,46 +258,32 @@ export default function ExportDocs() {
           </tr>
         </tbody>
       </table>
-      <p>
-        Streamed responses set <code>Cache-Control: no-store</code> so intermediaries don&apos;t
-        buffer the full body. One cursor batch (500 rows) is the only data held in memory at any
-        point, so heap usage stays flat regardless of <code>limit</code>.
-      </p>
 
-      <h2>Additional parameters for requests</h2>
-      <p>
-        Extra filters available only on <code>GET /api/v1/exports/requests</code>.
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Parameter</th>
-            <th>Description</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>projectId</code></td>
-            <td>Export only requests belonging to a specific project.</td>
-          </tr>
-          <tr>
-            <td><code>provider</code></td>
-            <td>One of <code>openai</code> / <code>anthropic</code> / <code>gemini</code> / <code>azure</code>.</td>
-          </tr>
-          <tr>
-            <td><code>model</code></td>
-            <td>Partial match, case-insensitive (e.g. <code>mini</code>).</td>
-          </tr>
-          <tr>
-            <td><code>providerKeyId</code></td>
-            <td>Only requests that used a specific provider key.</td>
-          </tr>
-          <tr>
-            <td><code>status</code></td>
-            <td><code>ok</code> (2xx) / <code>4xx</code> / <code>5xx</code>.</td>
-          </tr>
-        </tbody>
-      </table>
+      <h2>How streamed exports behave</h2>
+      <ul>
+        <li>
+          <strong>They go at your pace.</strong> The server fetches rows from the database only as
+          fast as your client reads the response. If your client pauses, the server pauses with it
+          and holds at most about 1&nbsp;MiB of encoded rows plus one database batch, so its memory
+          use does not grow with <code>limit</code>.
+        </li>
+        <li>
+          <strong>Early failures are ordinary errors.</strong> The server waits for the first row
+          before it answers, so a query that cannot start returns a JSON error with a 5xx status
+          instead of an empty or broken file.
+        </li>
+        <li>
+          <strong>Late failures abort the download.</strong> Once rows are flowing, the status line
+          has already said <code>200</code>. If the export fails after that, the server closes the
+          connection without ending the file properly. curl exits with a non-zero status, and
+          fetch, Pandas, and browsers report the download as failed instead of keeping a truncated
+          file that looks complete.
+        </li>
+        <li>
+          <strong>No caching.</strong> Streamed responses are sent with{' '}
+          <code>Cache-Control: no-store</code>.
+        </li>
+      </ul>
 
       <h2>File names</h2>
       <p>
@@ -206,6 +317,10 @@ export default function ExportDocs() {
       </table>
 
       <h2>CSV columns, requests</h2>
+      <p>
+        Columns always come in this order. New columns are only ever added at the end, so scripts
+        that read columns by position keep working.
+      </p>
       <table>
         <thead>
           <tr>
@@ -224,7 +339,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>provider</code></td>
-            <td>openai / anthropic / gemini / azure</td>
+            <td>Provider id, for example <code>openai</code> or <code>anthropic</code></td>
           </tr>
           <tr>
             <td><code>model</code></td>
@@ -266,6 +381,23 @@ export default function ExportDocs() {
             <td><code>created_at</code></td>
             <td>When the request arrived at the proxy (ISO 8601 UTC)</td>
           </tr>
+          <tr>
+            <td><code>user_id</code></td>
+            <td>
+              End-user id sent with the request. Empty when none was sent, or when the request used{' '}
+              <code>x-spanlens-log-body: none</code>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>session_id</code></td>
+            <td>
+              Session id sent with the request. Empty in the same cases as <code>user_id</code>.
+            </td>
+          </tr>
+          <tr>
+            <td><code>prompt_version_id</code></td>
+            <td>Prompt version the request was linked to. Empty when it was not linked to one.</td>
+          </tr>
         </tbody>
       </table>
 
@@ -292,7 +424,7 @@ export default function ExportDocs() {
           </tr>
           <tr>
             <td><code>status</code></td>
-            <td><code>ok</code> / <code>error</code></td>
+            <td><code>running</code>, <code>completed</code>, or <code>error</code></td>
           </tr>
           <tr>
             <td><code>error_message</code></td>
@@ -333,30 +465,39 @@ export default function ExportDocs() {
 
       <h3>CSV download</h3>
       <CodeBlock language="bash">{`# Request logs, specific date range, GPT-4o only, CSV
-curl "https://api.spanlens.io/api/v1/exports/requests?from=2026-05-01T00:00:00Z&to=2026-05-15T23:59:59Z&provider=openai&model=gpt-4o&format=csv" \\
+curl --fail "https://api.spanlens.io/api/v1/exports/requests?from=2026-05-01T00:00:00Z&to=2026-05-15T23:59:59Z&provider=openai&model=gpt-4o&format=csv" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-requests.csv
 
+# One customer's requests, errors only
+curl --fail "https://api.spanlens.io/api/v1/exports/requests?userId=customer-a&status=error&format=csv" \\
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
+  -o customer-a-errors.csv
+
 # Traces, last 7 days, JSON
-curl "https://api.spanlens.io/api/v1/exports/traces?from=2026-05-08T00:00:00Z&format=json" \\
+curl --fail "https://api.spanlens.io/api/v1/exports/traces?from=2026-05-08T00:00:00Z&format=json" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-traces.json
 
-# Anomaly history, defaults (30 days, CSV)
-curl "https://api.spanlens.io/api/v1/exports/anomalies" \\
+# Current anomaly check, CSV
+curl --fail "https://api.spanlens.io/api/v1/exports/anomalies" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-anomalies.csv
 
-# Security flags, from a specific date
-curl "https://api.spanlens.io/api/v1/exports/security?from=2026-05-01T00:00:00Z" \\
+# Flagged requests, CSV
+curl --fail "https://api.spanlens.io/api/v1/exports/security" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
   -o spanlens-security.csv`}</CodeBlock>
+      <p>
+        <code>--fail</code> makes curl exit non-zero on a 4xx or 5xx status. A download that breaks
+        off partway through already exits non-zero without it.
+      </p>
 
       <h3>JSONL download (large exports)</h3>
       <CodeBlock language="bash">{`# One million rows, streamed. Pipe straight into jq for filtering.
-curl "https://api.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-01-01T00:00:00Z&limit=1000000" \\
+curl --fail "https://api.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-01-01T00:00:00Z&limit=1000000" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \\
-  | jq -c 'select(.cost_usd != null and (.cost_usd | tonumber) > 0.01)' \\
+  | jq -c 'select(.cost_usd != null and .cost_usd > 0.01)' \\
   > expensive-requests.jsonl
 
 # Each line is a self-contained JSON object:
@@ -364,7 +505,7 @@ curl "https://api.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-01-
 # {"id":"req_yyy","provider":"anthropic","model":"claude-sonnet-4-5",...}`}</CodeBlock>
 
       <h3>JSON download (small, wrapped)</h3>
-      <CodeBlock language="bash">{`curl "https://api.spanlens.io/api/v1/exports/requests?format=json&limit=1000" \\
+      <CodeBlock language="bash">{`curl --fail "https://api.spanlens.io/api/v1/exports/requests?format=json&limit=1000" \\
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
 
 # Response shape (buffered, capped at 10,000 rows):
@@ -385,7 +526,10 @@ curl "https://api.spanlens.io/api/v1/exports/requests?format=jsonl&from=2026-01-
 #       "status_code": 200,
 #       "error_message": null,
 #       "trace_id": null,
-#       "created_at": "2026-05-15T09:00:00.000Z"
+#       "created_at": "2026-05-15T09:00:00.000Z",
+#       "user_id": "customer-a",
+#       "session_id": null,
+#       "prompt_version_id": null
 #     },
 #     ...
 #   ]
@@ -414,8 +558,17 @@ print(totals)`}</CodeBlock>
       <p>
         Download the <code>.csv</code> file with curl, then import it into Excel via{' '}
         <strong>Data → From Text/CSV</strong>. The <code>created_at</code> column is an ISO 8601
-        string, convert it with <code>DATEVALUE</code> + <code>TIMEVALUE</code> or Power Query&apos;s
+        string. Convert it with <code>DATEVALUE</code> + <code>TIMEVALUE</code> or Power Query&apos;s
         date/time type conversion before using it in pivot tables.
+      </p>
+
+      <h2>Exporting from the dashboard</h2>
+      <p>
+        The Export button on the Requests, Traces, Anomalies, and Security pages calls these
+        endpoints and saves the result as CSV or JSON. The browser puts the whole file together in
+        memory before it saves it, so for very large exports use curl or a script instead. The button
+        shows how much has arrived while a large file downloads. If a download fails partway through,
+        the dashboard shows the error and saves nothing, and Retry runs the same export again.
       </p>
 
       <h2>Limitations</h2>
@@ -424,9 +577,26 @@ print(totals)`}</CodeBlock>
           <strong>Row caps.</strong> <code>/exports/requests</code> goes up to 1,000,000 rows on the
           streamed formats (<code>csv</code>, <code>jsonl</code>) and 10,000 on <code>json</code>.
           The other endpoints (<code>/traces</code>, <code>/security</code>, <code>/anomalies</code>)
-          stay at 10,000. For datasets above the cap, paginate by splitting the time range with{' '}
-          <code>from</code> / <code>to</code>, or contact support, multi-GB exports with completion
-          emails / S3 pre-signed URLs are on the roadmap.
+          stay at 10,000. An export that reaches its cap simply ends there, so if the row count
+          equals the cap, split the time range with <code>from</code> and <code>to</code> and export
+          each part. Multi-GB exports with completion emails or S3 pre-signed URLs are on the
+          roadmap; contact support if you need one sooner.
+        </li>
+        <li>
+          <strong>Five minutes per export.</strong> On the hosted service each export runs inside a
+          single request, and the whole download has to finish within that time: the database
+          query behind a streamed export is stopped after 290 seconds, counting the time spent
+          waiting for your client to read, and the request itself ends at 300. Over a slow
+          connection a million-row CSV may not finish in time, so export smaller date ranges
+          instead.
+        </li>
+        <li>
+          <strong>One streamed export at a time per server.</strong> A streamed export keeps a
+          database connection open for as long as it downloads. If another one is already running
+          on the server that picks up your request, you get <code>429</code> with a{' '}
+          <code>Retry-After</code> header and an error whose <code>details.source</code> is{' '}
+          <code>export_concurrency</code>. Wait a few seconds and send it again. In a script, run
+          exports one after another rather than in parallel.
         </li>
         <li>
           <strong>request_body / response_body are not included.</strong> Body content is excluded
@@ -439,8 +609,8 @@ print(totals)`}</CodeBlock>
           requests or async logging delays may mean the most recent rows are not yet present.
         </li>
         <li>
-          <strong>Rate limit.</strong> Export endpoints are capped at 10 requests per minute. Space
-          out calls in bulk batch pipelines.
+          <strong>Rate limit.</strong> Export calls count toward the dashboard API limit of 120
+          requests per minute per access token. Space out calls in bulk batch pipelines.
         </li>
         <li>
           <strong>Plan retention applies.</strong> The window of accessible rows is bounded by your

@@ -98,7 +98,7 @@ const ERROR_CATALOG_ROWS: CatalogRow[] = [
     code: 'RATE_LIMIT',
     status: 429,
     description:
-      'Per-key rate limit exceeded. The Retry-After header and X-RateLimit-* headers carry the remaining quota and reset time. Back off and retry. When details.source is "customer_limit" this is a limit you configured (see the proxy docs), not a Spanlens plan limit.',
+      'Per-key rate limit exceeded. The Retry-After header and X-RateLimit-* headers carry the remaining quota and reset time. Back off and retry. When details.source is "customer_limit" this is a limit you configured (see the proxy docs), not a Spanlens plan limit. When it is "export_concurrency", another streamed export is already using the export connection on that server, so wait for the Retry-After delay and send the export again.',
   },
   {
     code: 'PAYMENT_REQUIRED',

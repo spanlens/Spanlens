@@ -7,9 +7,9 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 //   1. `buildCsvStream` / `buildJsonlStream` — pure stream encoders. Fed by a
 //      controllable async iterable so we can verify byte-level output for
 //      header rows, escaping, line endings, and graceful close.
-//   2. Memory boundedness — a 100k-row generator that fails the test if more
-//      than a small constant number of rows are simultaneously alive. Proves
-//      the streams don't materialise the entire result set.
+//   2. Backpressure — with a consumer that reads slowly or not at all, the
+//      source may run ahead by at most one queue (high-water mark) of encoded
+//      rows, and cancelling or abandoning the stream releases the source.
 //
 // The streamRequests() helper itself is exercised against a mocked `pgStream`
 // async generator, so we cover the SQL assembly + delegation + early-exit
@@ -17,6 +17,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { buildCsvStream, buildJsonlStream, withIsoCreatedAt } from '../api/exports.js'
+import {
+  EXPORT_STREAM_CHUNK_CHARS,
+  EXPORT_STREAM_HIGH_WATER_MARK_BYTES,
+} from '../lib/export-stream.js'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -197,52 +201,174 @@ describe('buildJsonlStream', () => {
   })
 })
 
-// ── Memory boundedness ───────────────────────────────────────────────────────
+// ── Memory boundedness (backpressure) ────────────────────────────────────────
+//
+// What has to stay bounded is the encoded output waiting in the stream's queue,
+// not the number of rows the generator holds between yields. The first version
+// of these tests counted the latter and stayed at 1 while the encoder drained
+// the whole cursor into the queue ahead of a slow client: 1M rows measured
+// +253MB heap / +614MB RSS with nobody reading (XVERIFY-2026-09-28 C10.1). So
+// every test below measures the queue: rows the source has produced minus
+// bytes the consumer has taken.
 
-describe('streaming-encoder memory bound', () => {
-  /**
-   * Generator that produces N rows but tracks how many are alive at once.
-   * If the encoder buffers the entire result set, `peakAlive` will equal N.
-   * For a true streaming pipeline `peakAlive` stays near 1 because each row
-   * is consumed before the next is requested.
-   */
-  function trackedRows(total: number, tracker: { peakAlive: number; alive: number }): AsyncGenerator<Record<string, unknown>> {
-    async function* gen() {
+/**
+ * Every row encodes to roughly ROW_BYTES in both formats (CSV `i,payload`,
+ * JSONL `{"i":…,"payload":"…"}`), and never contains a newline, so the
+ * consumer can count rows by counting line feeds.
+ */
+const ROW_PAYLOAD = 'x'.repeat(1_000)
+const ROW_BYTES = 1_000
+
+interface SourceProbe {
+  pulled: number
+  released: boolean
+}
+
+/**
+ * Stand-in for the cursor-backed generator: counts what the encoder has
+ * pulled and flips `released` in `finally`, the way `pgStream` releases its
+ * pooled client. Every `batch` rows it waits a macrotask, the way the cursor
+ * waits on a round trip for its next batch.
+ */
+function probedRows(total: number, probe: SourceProbe, batch = 500): AsyncGenerator<Record<string, unknown>> {
+  async function* gen() {
+    try {
       for (let i = 0; i < total; i++) {
-        tracker.alive++
-        if (tracker.alive > tracker.peakAlive) tracker.peakAlive = tracker.alive
-        yield { i, payload: 'x'.repeat(64) }
-        tracker.alive--
+        if (i > 0 && i % batch === 0) await new Promise<void>((r) => setImmediate(r))
+        probe.pulled++
+        yield { i, payload: ROW_PAYLOAD }
       }
+    } finally {
+      probe.released = true
     }
-    return gen()
   }
+  return gen()
+}
 
-  test('CSV encoder keeps at most one row alive at a time', async () => {
-    const tracker = { peakAlive: 0, alive: 0 }
-    const stream = buildCsvStream(['i', 'payload'], trackedRows(10_000, tracker))
-    // Consume without buffering output (count bytes only).
-    const reader = stream.getReader()
-    let bytes = 0
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      bytes += value.byteLength
-    }
-    expect(bytes).toBeGreaterThan(0)
-    // Tight bound — async generator semantics keep this at 1.
-    expect(tracker.peakAlive).toBeLessThanOrEqual(2)
+function newProbe(): SourceProbe {
+  return { pulled: 0, released: false }
+}
+
+function countLines(chunk: Uint8Array): number {
+  let n = 0
+  for (const byte of chunk) if (byte === 0x0a) n++
+  return n
+}
+
+/** Waits until the source stops advancing (the encoder has stopped pulling). */
+async function settle(probe: SourceProbe): Promise<void> {
+  let last = -1
+  for (let i = 0; i < 100 && probe.pulled !== last; i++) {
+    last = probe.pulled
+    await new Promise((r) => setTimeout(r, 10))
+  }
+}
+
+const tick = () => new Promise<void>((r) => setImmediate(r))
+
+/**
+ * Rows that may sit between the source and the consumer: a full queue, the
+ * chunk being assembled, and one row of slack on each side.
+ */
+const MAX_QUEUED_ROWS =
+  Math.ceil((EXPORT_STREAM_HIGH_WATER_MARK_BYTES + EXPORT_STREAM_CHUNK_CHARS) / ROW_BYTES) + 2
+
+const encoders = [
+  ['CSV', (rows: AsyncIterable<Record<string, unknown>>) => buildCsvStream(['i', 'payload'], rows), 1],
+  ['JSONL', (rows: AsyncIterable<Record<string, unknown>>) => buildJsonlStream(rows), 0],
+] as const
+
+describe.each(encoders)('%s encoder backpressure', (_name, build, headerLines) => {
+  test('stops pulling rows once the queue is full and nobody reads', async () => {
+    const probe = newProbe()
+    // ~20MB of rows; the old start()-loop encoder queued all of it.
+    const stream = build(probedRows(20_000, probe))
+    await settle(probe)
+
+    expect(probe.pulled).toBeLessThanOrEqual(MAX_QUEUED_ROWS)
+    await stream.cancel()
   })
 
-  test('JSONL encoder keeps at most one row alive at a time', async () => {
-    const tracker = { peakAlive: 0, alive: 0 }
-    const stream = buildJsonlStream(trackedRows(10_000, tracker))
-    const reader = stream.getReader()
+  test('a slow consumer never lets the queue grow past the high-water mark', async () => {
+    const probe = newProbe()
+    const reader = build(probedRows(5_000, probe)).getReader()
+    let consumedRows = -headerLines
+    let maxQueuedRows = 0
     for (;;) {
-      const { done } = await reader.read()
+      // Yield to the producer between reads so it runs as far ahead as the
+      // stream lets it: that distance is the queue.
+      await tick()
+      await tick()
+      maxQueuedRows = Math.max(maxQueuedRows, probe.pulled - Math.max(0, consumedRows))
+      const { done, value } = await reader.read()
       if (done) break
+      consumedRows += countLines(value)
     }
-    expect(tracker.peakAlive).toBeLessThanOrEqual(2)
+    expect(probe.pulled).toBe(5_000)
+    expect(consumedRows).toBe(5_000)
+    expect(maxQueuedRows).toBeLessThanOrEqual(MAX_QUEUED_ROWS)
+  })
+
+  test('cancel releases the source right away and stops pulling', async () => {
+    const probe = newProbe()
+    // A round trip per row keeps the source mid-flight when cancel lands,
+    // which is where a slow client usually leaves a real cursor.
+    const reader = build(probedRows(20_000, probe, 1)).getReader()
+    await reader.read()
+    // Let the source get into a round trip.
+    await new Promise((r) => setTimeout(r, 5))
+    expect(probe.pulled).toBeLessThan(20_000)
+    await reader.cancel()
+    // The cursor's connection must be back in the pool by the time cancel()
+    // settles, not whenever the next enqueue happens to throw.
+    expect(probe.released).toBe(true)
+    const pulledAtCancel = probe.pulled
+    await settle(probe)
+    expect(probe.pulled).toBe(pulledAtCancel)
+  })
+
+  test('a stream nobody reads or cancels releases its source after the idle timeout', async () => {
+    // The response a middleware drops after the route returned it: the body
+    // pump never starts, so neither read() nor cancel() ever comes.
+    const probe = newProbe()
+    const rows = probedRows(20_000, probe)
+    const options = { idleTimeoutMs: 250 }
+    const stream =
+      _name === 'CSV'
+        ? buildCsvStream(['i', 'payload'], rows, options)
+        : buildJsonlStream(rows, options)
+    await settle(probe)
+    expect(probe.released).toBe(false)
+
+    await new Promise((r) => setTimeout(r, 400))
+    expect(probe.released).toBe(true)
+    // Whatever was queued is discarded: a late reader sees the failure
+    // rather than a file that silently stops.
+    const reader = stream.getReader()
+    await expect(
+      (async () => {
+        for (;;) if ((await reader.read()).done) return
+      })(),
+    ).rejects.toThrow(/not read for 250ms/)
+  })
+})
+
+describe('buildJsonlStream encoder failure', () => {
+  test('an encoder throw errors the stream and still releases the source', async () => {
+    // JSON.stringify throws on BigInt. The source is suspended at its yield,
+    // cursor open, when that happens, so the encoder has to return() it.
+    const probe = { released: false }
+    async function* rows(): AsyncGenerator<Record<string, unknown>> {
+      try {
+        yield { i: 1 }
+        yield { i: BigInt(2) }
+        yield { i: 3 }
+      } finally {
+        probe.released = true
+      }
+    }
+    await expect(readToString(buildJsonlStream(rows()))).rejects.toThrow(/BigInt/)
+    expect(probe.released).toBe(true)
   })
 })
 

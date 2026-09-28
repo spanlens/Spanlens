@@ -526,6 +526,7 @@ describe('[#20] literal substring search, never ILIKE', () => {
   const FILES = [
     '../api/requests.ts',
     '../api/exports.ts',
+    '../lib/request-filters.ts',
     '../lib/stats-queries.ts',
   ] as const
 
@@ -538,10 +539,13 @@ describe('[#20] literal substring search, never ILIKE', () => {
   it('the requests-table filters use position(lower(…) in lower(…))', async () => {
     const requests = await readSource('../api/requests.ts')
     const exportsSrc = await readSource('../api/exports.ts')
+    const filters = await readSource('../lib/request-filters.ts')
     const stats = await readSource('../lib/stats-queries.ts')
 
-    expect(requests).toContain('position(lower({model}) in lower(model)) > 0')
-    expect(exportsSrc).toContain('position(lower({model}) in lower(model)) > 0')
+    // The list and the export share one filter parser; both must go through it.
+    expect(filters).toContain('position(lower({model}) in lower(model)) > 0')
+    expect(requests).toContain('parseRequestFilters(')
+    expect(exportsSrc).toContain('parseRequestFilters(')
     expect(stats).toContain('position(lower({search}) in lower(user_id)) > 0')
     expect(stats).toContain('position(lower({search}) in lower(session_id)) > 0')
   })
