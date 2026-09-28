@@ -24,9 +24,24 @@
  *      `service_role`, and every server call fails with "permission denied".
  *      Production grants the full set, so this only ever bites locally.
  *
+ *      Fixing that has to reproduce production, not just "grant enough".
+ *      Production is the hosted creation-time grants MINUS whatever the
+ *      migrations then revoke. This script used to stop at the first half
+ *      (GRANT ALL on every table and function to anon and authenticated),
+ *      which quietly undid every REVOKE in the migrations: locally the anon
+ *      key could call ensure_requests_partitions() and write any table,
+ *      while production could not, so local testing could neither reproduce
+ *      nor rule out a permissions bug. It now applies the hosted grants and
+ *      then calls public.enforce_client_privileges(), the same function the
+ *      migrations use to take them back (20260929100000).
+ *
  * Usage:
- *   pnpm db:local           start (if needed), apply migrations, fix grants
+ *   pnpm db:local           start (if needed), then align grants with production
  *   pnpm db:local --reset   also run `supabase db reset --no-seed` first
+ *
+ * On a stack that was already running, this does not apply new migrations.
+ * If the privilege function is missing the script stops and says so, rather
+ * than leaving the database with the hosted grants and none of the revokes.
  *
  * The integration suite needs this to have run. See
  * apps/server/vitest.integration.config.ts.
@@ -42,11 +57,22 @@ const PARKED = join(process.env['TEMP'] ?? '/tmp', 'spanlens-broken-migration.sq
 const DB_CONTAINER = 'supabase_db_spanlens'
 const LOCAL_DB = 'postgresql://postgres:postgres@127.0.0.1:5432/postgres'
 
+/** Defined by 20260929100000_revoke_client_direct_writes.sql. */
+const PRIVILEGE_MODEL_FN = 'public.enforce_client_privileges()'
+
 /**
- * Mirrors what the hosted platform grants. Without this, `service_role`
- * inherits only TRUNCATE/REFERENCES/TRIGGER on anything a migration created,
- * which reads as a baffling permissions error rather than an environment
- * difference.
+ * Two steps, in the order production went through them, run as one
+ * transaction so a failure leaves the grants exactly as they were.
+ *
+ * Step 1 is what the hosted platform grants when a migration creates an
+ * object. Without it, `service_role` inherits only TRUNCATE/REFERENCES/TRIGGER
+ * on anything a migration created, which reads as a baffling permissions
+ * error rather than an environment difference.
+ *
+ * Step 2 is what the migrations then take back: no client-role writes, no
+ * client access to the requests tables, no client-callable functions except
+ * is_org_member(). Skipping it is how local permissions drifted from
+ * production before.
  */
 const GRANTS = `
 GRANT ALL ON ALL TABLES    IN SCHEMA public TO anon, authenticated, service_role;
@@ -54,10 +80,46 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES    TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
+
+DO $$ BEGIN PERFORM ${PRIVILEGE_MODEL_FN}; END $$;
 `
 
 function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { stdio: 'inherit', shell: true, ...opts })
+}
+
+/**
+ * psql inside the DB container, without a shell in between. The SQL goes in
+ * on stdin, so its quotes, parentheses and `$` never meet a shell's parser.
+ */
+function psql(args, opts = {}) {
+  return execFileSync(
+    'docker',
+    ['exec', '-i', DB_CONTAINER, 'psql', LOCAL_DB, '-v', 'ON_ERROR_STOP=1', ...args],
+    opts,
+  )
+}
+
+function privilegeModelInstalled() {
+  const out = psql(['-Atc', `SELECT to_regprocedure('${PRIVILEGE_MODEL_FN}') IS NOT NULL`], {
+    encoding: 'utf8',
+  })
+  return out.trim() === 't'
+}
+
+function alignGrants() {
+  if (!privilegeModelInstalled()) {
+    throw new Error(
+      `${PRIVILEGE_MODEL_FN} is missing, so this database is behind supabase/migrations. ` +
+        'Apply the pending migrations (npx supabase migration up) or rerun with --reset, then run this again. ' +
+        'Grants were left untouched.',
+    )
+  }
+  psql(['--single-transaction', '-q', '-f', '-'], {
+    input: GRANTS,
+    stdio: ['pipe', 'inherit', 'inherit'],
+  })
 }
 
 function dbIsRunning() {
@@ -107,8 +169,8 @@ try {
     run('npx', ['supabase', 'db', 'reset', '--no-seed'])
   }
 
-  console.log('[local-db] aligning grants with the hosted platform...')
-  run('docker', ['exec', '-i', DB_CONTAINER, 'psql', `"${LOCAL_DB}"`, '-v', 'ON_ERROR_STOP=1', '-c', `"${GRANTS.replace(/\n/g, ' ')}"`])
+  console.log('[local-db] aligning grants with production (hosted grants, then revokes)...')
+  alignGrants()
 
   console.log('\n[local-db] ready.')
   console.log('[local-db] integration tests:')
