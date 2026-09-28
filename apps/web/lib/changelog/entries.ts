@@ -40,6 +40,91 @@ export type ChangelogTag =
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-09-28',
+    slug: 'roles-apply-on-the-next-write',
+    title: 'Roles are checked on every write, and direct database writes are closed',
+    tags: ['fix', 'reliability'],
+    body: [
+      'Demoting or removing a workspace member now takes effect on their very next change. The API kept each member\'s role in a short cache, so for up to a minute afterwards a former admin could still make changes, including giving themselves the admin role back. Every write now checks the member\'s current role. Pages that only read data can take up to a minute to catch up.',
+      'We also tightened how the database itself is protected. The dashboard and API have always gone through our server, but the database also accepted some writes straight from a signed-in session, which skipped the checks the API applies. A viewer could create an API key that way, and a workspace owner could edit their own plan. Those direct writes are now refused for every table, and request logs are sealed at the database level, including the monthly partitions that store them.',
+      'If you self-host Spanlens and your Supabase project has the GraphQL extension (pg_graphql) enabled, anyone with the public anon key could read, change and delete request logs from every workspace through those partitions. Update your images and apply the new files in `supabase/migrations/`, from 20260929100000 onward, as described in [upgrading](/docs/self-host#upgrading). The GraphQL extension is not installed on the hosted service\'s database, so this path was not open there when we checked.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
+    slug: 'prompts-stay-out-of-spans',
+    title: 'Metadata-only logging now keeps prompts out of traces too',
+    tags: ['fix'],
+    body: [
+      'Setting `x-spanlens-log-body` to `meta` or `none` kept request and response bodies out of your Requests log, but not out of your traces. When a streamed OpenAI-compatible, OpenRouter or Anthropic call was linked to a span, the proxy still copied the prompt and the response onto that span, ignoring the header and your workspace\'s body sampling rate. The SDK\'s `observe` helpers did the same with the provider response. Spans the proxy fills in now follow exactly the same rule as the request row. Span bodies copied by the proxy or sent through the SDK ingest API have API key patterns masked, and a body over 64 KB is replaced by a short preview.',
+      'In the SDKs, `logBody: \'meta\'` or `\'none\'` (`log_body` in Python) now leaves the prompt and response off the span, and `observeOllama()` defaults to `meta`, which is what the docs always promised for local models. The SDK helpers cannot see a header you set on the provider client, so pass `logBody` to them as well. Spans recorded before this change keep what was stored. See [logging controls](/docs/sdk#with-log-body).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
+    slug: 'cost-accuracy-streaming-gemini-responses',
+    title: 'Cost fixes for streamed calls, Gemini caching and the Responses API',
+    tags: ['fix'],
+    body: [
+      'Streamed calls to Groq, DeepSeek, Mistral, xAI and Cohere were priced against the OpenAI price table. Some models, such as the `grok-4.20` family, Groq\'s safety classifiers and Mistral\'s Voxtral models, logged a blank cost whenever they were streamed. They now use their own provider\'s prices, the same as non-streamed calls.',
+      'Gemini\'s cached input was costed at the full input rate, so workloads that benefit from Gemini\'s implicit caching read higher than what Google charges. Cached tokens are now recorded and priced at the cache rate, and they count toward the prompt caching card on Savings. OpenAI Responses API calls (`/v1/responses`) logged zero input and output tokens and a $0 cost, or a blank cost when streamed. Their usage, including cached input, is now read for both regular and streamed responses.',
+      'Models with no price on file now show as unpriced and sort after priced models on the dashboard, instead of appearing at the top as $0. Replaying a request from the dashboard uses the same pricing as the proxy, including OpenRouter\'s reported cost. As with earlier price fixes, this changes new requests only. [How costs are calculated](/docs/features/cost-tracking)',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
+    slug: 'failed-calls-and-accurate-exports',
+    title: 'Failed calls now show up in Requests, and exports match your filters',
+    tags: ['improvement', 'fix'],
+    body: [
+      'When a provider could not be reached or did not answer in time, the proxy returned a 502 or 504 but wrote nothing to Requests, so outages were missing from your error rate and alerts. Those attempts are now logged with their status and an unknown cost. A stream the provider drops, or one cut off at the proxy deadline, is now marked as truncated with an error message saying why, instead of looking like a complete 200. Proxy overhead is now measured from the moment a request reaches Spanlens, so it includes authentication, rate limiting and the quota check, and latency stays the provider\'s own time. [Data model](/docs/concepts/data-model)',
+      'Exports from the Requests page now apply every filter in the table, including user, session, prompt version and truncated, and the files gain `user_id`, `session_id` and `prompt_version_id` columns. The server now streams large CSV and JSONL exports instead of building them up in memory, and a download that fails part way reports an error instead of leaving a cut-off file. The stats at the top of the page follow the table filters, and Today starts at your local midnight. [Exporting requests](/docs/features/export)',
+      'Settings now shows the retention your plan actually has: 14 days on Free, 90 on Pro, and 365 on Team and Enterprise.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
+    slug: 'new-workspaces-and-seat-limits',
+    title: 'New workspaces load right away, and invitations respect seat limits',
+    tags: ['fix', 'improvement'],
+    body: [
+      'Right after creating a workspace, the dashboard could show \'Failed to load dashboard data\' and an empty sidebar for up to a minute, because the API was still holding the answer it had given before the workspace existed. New workspaces are now visible to the API as soon as they are created.',
+      'Seat limits from the pricing page are now applied. Free includes 1 seat, Pro 3, Team 10, and Enterprise has no limit. Members and pending invitations both take a seat, and when every seat is taken a new invitation is refused with a prompt to upgrade. Existing members are never removed, even if a workspace is already over its limit. Self-hosted instances have no seat limit. [Seats](/docs/features/members-invitations#seats)',
+      'Two admins demoting or removing each other at the same moment can no longer leave a workspace with no admin at all.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
+    slug: 'webhook-retries-running',
+    title: 'Webhook retries now run, with a delivery ID for de-duplication',
+    tags: ['fix', 'reliability'],
+    body: [
+      'Failed webhook deliveries were never retried, although the docs described retries. The retry job is now scheduled every 5 minutes. Each event gets up to 5 attempts, the original and 4 retries spaced at least 1, 2, 4 and 8 minutes apart, and after the fifth failure it is marked as dead-lettered.',
+      'Every delivery now carries an `X-Spanlens-Delivery-Id` header that stays the same across retries, so your endpoint can drop duplicates. Redirects are checked before they are followed, and each connection is checked against the address it actually reaches. [Retries and duplicates](/docs/features/webhooks#retries)',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
+    slug: 'billing-events-applied-reliably',
+    title: 'Billing events apply reliably, and overage covers the whole period',
+    tags: ['fix', 'reliability'],
+    body: [
+      'If our database write failed while applying a payment event, we still told Paddle the event had been handled, so it was never resent. A payment could fail to unlock your plan, or a cancellation or refund could leave a paid plan in place. Failures are now reported back so Paddle retries, events for the same workspace are applied one at a time, an older event that arrives late no longer overwrites a newer one, a canceled old subscription no longer downgrades a workspace that has another active one, and billing events resolve the right workspace when one person pays for several.',
+      'Overage for requests in the last day or two of a billing period was never charged. It is now charged in the first daily billing run after the period closes, usually within a day, as the [pricing page](/pricing) describes, and a charge whose outcome is unclear is flagged for review instead of being retried automatically.',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
+    slug: 'sdk-0-18-cli-0-3-4-mcp-0-3-python-0-9',
+    title: 'SDK 0.18.0, CLI 0.3.4, MCP server 0.3.0 and Python SDK 0.9.0',
+    tags: ['improvement', 'fix'],
+    body: [
+      '`@spanlens/sdk` 0.18.0 takes tracing off your request path. The `observe` helpers return as soon as your callback finishes and send the span in the background, so a slow or unreachable Spanlens server no longer adds ingest round trips to your response time, and `client.flush()` now waits for every span you ended. A LangChain handler shared across concurrent requests keeps each run in its own trace, the Vercel AI tracker counts tokens across every step, and the Gemini helpers now return `customHeaders`, the only header option the Google SDK sends. The Python SDK 0.9.0 gets the same LangChain fix and retries failed ingest calls. `observe()` now records its return value as the span output, which it did not send before, and `log_body="meta"` or `"none"` keeps it off the span. If you opted out of body logging with a header on your provider client, pass `log_body` to the `observe_*()` helpers as well.',
+      '`@spanlens/cli` 0.3.4 keeps the imports your code still uses when it switches a client over, no longer copies provider keys from your client options or headers into the Spanlens client, flags options it cannot read for a manual edit, and undoes its changes if the result no longer type-checks. The MCP server 0.3.0 shows real error messages instead of `[object Object]`, times out stalled requests, and groups usage by provider when asked.',
+      'Two self-hosting gaps are closed. Both SDKs now read `SPANLENS_BASE_URL`, so `spanlens init --server-url` sends your requests to your own server instead of the hosted one, and `supabase/init.sql` installs cleanly on a fresh project instead of stopping part way. See the [SDK docs](/docs/sdk) and [self-hosting](/docs/self-host).',
+    ].join('\n\n'),
+  },
+  {
+    date: '2026-09-28',
     slug: 'first-customer-cost-walkthrough',
     title: 'A walkthrough for your first customer cost breakdown',
     tags: ['docs', 'improvement'],
