@@ -1,29 +1,54 @@
 /**
  * Vercel AI SDK integration for Spanlens tracing.
  *
- * Records LLM spans from `generateText`, `streamText`, `generateObject`, and
- * `streamObject` via their `onFinish` / `onStepFinish` callbacks.
- * No direct import from 'ai' — works as a duck-typed integration.
+ * Records one LLM span per `generateText`, `streamText`, `generateObject`, or
+ * `streamObject` call. No direct import from 'ai' — works as a duck-typed
+ * integration.
  *
- * @example Basic usage with generateText
+ * How the span is closed depends on the call:
+ *   - `streamText` / `streamObject` call `onFinish` / `onError`, so pass
+ *     `tracker.onFinish` and `tracker.onError` in the options.
+ *   - `generateText` / `generateObject` (AI SDK 4.x and 5.x) have no
+ *     `onFinish`; await the call and pass the result to `tracker.end()`.
+ *
+ * Token totals: AI SDK 5.x and later hand `onFinish` the LAST step's `usage`
+ * plus the run's sum in `totalUsage`. The tracker prefers `totalUsage`, then
+ * the sum of every step seen by `onStepFinish`, then `usage` (which already is
+ * the combined total in AI SDK 4.x).
+ *
+ * @example streamText
  *   import { SpanlensClient } from '@spanlens/sdk'
  *   import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
  *
  *   const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
  *   const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
  *
- *   const result = await generateText({
+ *   const result = streamText({
  *     model: openai('gpt-4o'),
  *     messages: [...],
  *     onStepFinish: tracker.onStepFinish,
  *     onFinish: tracker.onFinish,
- *     onError: tracker.onError, // ends the span on failure (streamText/streamObject)
+ *     onError: tracker.onError, // ends the span on failure
  *   })
+ *
+ * @example generateText
+ *   const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
+ *   try {
+ *     const result = await generateText({
+ *       model: openai('gpt-4o'),
+ *       messages: [...],
+ *       onStepFinish: tracker.onStepFinish,
+ *     })
+ *     await tracker.end(result)
+ *   } catch (err) {
+ *     await tracker.onError(err)
+ *     throw err
+ *   }
  *
  * @example Attach to an existing trace
  *   const trace = client.startTrace({ name: 'my_workflow' })
  *   const tracker = createSpanlensTracker({ client, trace, modelName: 'gpt-4o' })
- *   await generateText({ ..., onFinish: tracker.onFinish })
+ *   await tracker.end(await generateText({ ... }))
  *   await trace.end()
  */
 
@@ -36,7 +61,7 @@ export interface SpanlensVercelAIOptions {
   /**
    * Optional trace to attach LLM spans to.
    * When provided, `trace.end()` is NOT called — the caller manages the lifecycle.
-   * When omitted, a new trace is created and closed on `onFinish`.
+   * When omitted, a new trace is created and closed when the span closes.
    */
   trace?: TraceHandle
   /** Name for auto-created traces. Default: 'ai.generate'. */
@@ -50,7 +75,7 @@ export interface SpanlensVercelAIOptions {
 }
 
 /**
- * Token usage shape from Vercel AI SDK `onFinish` / `onStepFinish` events.
+ * Token usage shape from Vercel AI SDK events and results.
  * AI SDK 4.x uses promptTokens/completionTokens; AI SDK 5.x uses inputTokens/outputTokens.
  * Both are accepted.
  */
@@ -76,11 +101,19 @@ export interface VercelAIStepFinishEvent {
   }
 }
 
-/** Shape of the `onFinish` event from `generateText` / `streamText`. */
+/**
+ * Shape of the `onFinish` event of `streamText` / `streamObject`, and of the
+ * awaited result of `generateText` / `generateObject` (pass it to `end()`).
+ */
 export interface VercelAIFinishEvent {
+  /** AI SDK 4.x: combined usage. AI SDK 5.x and later: the last step only. */
   usage?: VercelAIUsage
+  /** AI SDK 5.x and later: usage summed over every step. */
+  totalUsage?: VercelAIUsage
   finishReason?: string
   text?: string
+  /** Structured output of `generateObject` / `streamObject`. Recorded as JSON text. */
+  object?: unknown
   response?: {
     id?: string
     modelId?: string
@@ -89,24 +122,68 @@ export interface VercelAIFinishEvent {
 }
 
 export interface SpanlensVercelAITracker {
-  /** Pass to `onStepFinish` — records intermediate steps for multi-tool runs. */
+  /** Pass to `onStepFinish` — counts steps and sums their usage for multi-step runs. */
   onStepFinish: (event: VercelAIStepFinishEvent) => Promise<void>
-  /** Pass to `onFinish` — closes the span with final total usage. */
+  /** Pass to `onFinish` (`streamText` / `streamObject`) — closes the span with the run's total usage. */
   onFinish: (event: VercelAIFinishEvent) => Promise<void>
   /**
-   * Pass to `onError` (streamText/streamObject) — closes the span/trace with
-   * `status: 'error'` when the underlying call fails. Without this the span
-   * stays 'running' forever in the dashboard because `onFinish` never fires.
+   * Close the span from an awaited `generateText` / `generateObject` result.
+   * Those calls have no `onFinish` in AI SDK 4.x and 5.x, so without this the
+   * span would stay 'running'. Same behavior as `onFinish`.
+   */
+  end: (result: VercelAIFinishEvent) => Promise<void>
+  /**
+   * Pass to `onError` (streamText/streamObject), or call it from a `catch`
+   * around `generateText` — closes the span/trace with `status: 'error'`.
+   * Without this a failed call leaves the span 'running' forever.
    */
   onError: (event: { error?: unknown } | unknown) => Promise<void>
 }
 
+interface TokenCounts {
+  readonly promptTokens: number
+  readonly completionTokens: number
+  readonly totalTokens: number
+}
+
+function toTokenCounts(usage: VercelAIUsage | undefined): TokenCounts | null {
+  if (!usage) return null
+  const promptTokens = usage.promptTokens ?? usage.inputTokens ?? 0
+  const completionTokens = usage.completionTokens ?? usage.outputTokens ?? 0
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
+  }
+}
+
+function addTokenCounts(a: TokenCounts | null, b: TokenCounts): TokenCounts {
+  if (!a) return b
+  return {
+    promptTokens: a.promptTokens + b.promptTokens,
+    completionTokens: a.completionTokens + b.completionTokens,
+    totalTokens: a.totalTokens + b.totalTokens,
+  }
+}
+
+/** Text output, or the structured object serialized as JSON. */
+function outputOf(event: VercelAIFinishEvent): string | undefined {
+  if (event.text !== undefined) return event.text
+  if (event.object === undefined) return undefined
+  try {
+    return JSON.stringify(event.object)
+  } catch {
+    return String(event.object)
+  }
+}
+
 /**
- * Creates a tracker object whose `onStepFinish` and `onFinish` methods can be
- * spread directly into `generateText` / `streamText` options.
+ * Creates a tracker whose `onStepFinish`, `onFinish`, and `onError` methods
+ * can be passed directly as AI SDK callbacks, plus `end()` for awaited calls.
  *
  * A new LLM span is started immediately (so latency is measured from the
- * moment the AI call begins). The span is closed when `onFinish` fires.
+ * moment the AI call begins). The span is closed by `onFinish` / `end()` or
+ * `onError`, whichever comes first.
  */
 export function createSpanlensTracker(
   options: SpanlensVercelAIOptions,
@@ -121,44 +198,47 @@ export function createSpanlensTracker(
   })
 
   let stepCount = 0
+  let stepTokens: TokenCounts | null = null
   let settled = false
 
+  async function finish(event: VercelAIFinishEvent): Promise<void> {
+    if (settled) return
+    settled = true
+    const { finishReason, response } = event
+    const resolvedModel =
+      response?.modelId ?? response?.model ?? modelName ?? 'unknown'
+    const isError = finishReason === 'error'
+    const tokens = toTokenCounts(event.totalUsage) ?? stepTokens ?? toTokenCounts(event.usage)
+    const output = outputOf(event)
+
+    await span.end({
+      status: isError ? 'error' : 'completed',
+      ...(output !== undefined ? { output } : {}),
+      ...(tokens ?? {}),
+      metadata: {
+        model: resolvedModel,
+        ...(finishReason ? { finishReason } : {}),
+        ...(stepCount > 1 ? { steps: stepCount } : {}),
+      },
+    })
+
+    if (isLocalTrace) {
+      await trace.end({ status: isError ? 'error' : 'completed' })
+    }
+  }
+
   return {
-    async onStepFinish(_event: VercelAIStepFinishEvent): Promise<void> {
+    async onStepFinish(event: VercelAIStepFinishEvent): Promise<void> {
       stepCount++
       // Step-level detail is recorded as metadata on the final span.
       // Individual steps are not broken out into child spans to keep the
       // trace tree simple for the common case.
+      const tokens = toTokenCounts(event?.usage)
+      if (tokens) stepTokens = addTokenCounts(stepTokens, tokens)
     },
 
-    async onFinish(event: VercelAIFinishEvent): Promise<void> {
-      if (settled) return
-      settled = true
-      const { usage, finishReason, text, response } = event
-      const resolvedModel =
-        response?.modelId ?? response?.model ?? modelName ?? 'unknown'
-      const isError = finishReason === 'error'
-
-      const promptTokens = usage?.promptTokens ?? usage?.inputTokens ?? 0
-      const completionTokens = usage?.completionTokens ?? usage?.outputTokens ?? 0
-      const totalTokens =
-        usage?.totalTokens ?? promptTokens + completionTokens
-
-      await span.end({
-        status: isError ? 'error' : 'completed',
-        ...(text !== undefined ? { output: text } : {}),
-        ...(usage ? { promptTokens, completionTokens, totalTokens } : {}),
-        metadata: {
-          model: resolvedModel,
-          ...(finishReason ? { finishReason } : {}),
-          ...(stepCount > 1 ? { steps: stepCount } : {}),
-        },
-      })
-
-      if (isLocalTrace) {
-        await trace.end({ status: isError ? 'error' : 'completed' })
-      }
-    },
+    onFinish: finish,
+    end: finish,
 
     async onError(event: { error?: unknown } | unknown): Promise<void> {
       // The underlying call errored — end the span/trace so it does not stay
