@@ -3,10 +3,28 @@ import type { TraceHandle } from './trace.js'
 import type { LogBodyMode, SpanOptions } from './types.js'
 import { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parsers.js'
 
+/** Options for `observe()`: the span to open plus how to finish it. */
+export type ObserveOptions = SpanOptions & {
+  /**
+   * Wait for the span's end PATCH to be delivered before `observe()` resolves.
+   * Default `false`: the result is returned as soon as the callback settles
+   * and the PATCH is sent in the background (`client.flush()` drains it).
+   * Turn this on only where you need delivery confirmed inline, since every
+   * ingest round trip (and, on failure, its retries) is then added to the
+   * caller's latency.
+   */
+  awaitIngest?: boolean
+}
+
 /**
  * Wrap an async function in a span — ensures `span.end()` is called
  * even when the function throws. The span status is set to 'error'
  * and `error_message` is captured from the thrown error.
+ *
+ * `observe()` never waits on Spanlens: `ended_at` is stamped when the
+ * callback settles and the end PATCH is queued in the background. Call
+ * `await client.flush()` before a short-lived process exits, or pass
+ * `awaitIngest: true` to wait inline.
  *
  * @example
  * const result = await observe(trace, { name: 'call_openai', spanType: 'llm' }, async (span) => {
@@ -22,29 +40,47 @@ import { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parse
  */
 export async function observe<T>(
   parent: TraceHandle | SpanHandle,
-  options: SpanOptions,
+  options: ObserveOptions,
   fn: (span: SpanHandle) => Promise<T>,
 ): Promise<T> {
-  const span =
-    'span' in parent && typeof parent.span === 'function'
-      ? parent.span(options)
-      : (parent as SpanHandle).child(options)
+  const { awaitIngest = false, ...spanOptions } = options
+  const span = openSpan(parent, spanOptions)
 
+  let result: T
   try {
-    const result = await fn(span)
-    // Auto-capture return value as output unless it's a genuine stream (not
-    // serialisable). If the user already called span.end() manually inside fn
-    // (e.g. streaming), SpanHandle.end() will send a supplementary output-only PATCH.
-    const isStream = isStreamLike(result)
-    await span.end({ status: 'completed', output: isStream ? undefined : result })
-    return result
+    result = await fn(span)
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     // Do not let a failing span.end() mask the user's original error — swallow
     // the end() rejection so `throw err` always runs and propagates unchanged.
-    await span.end({ status: 'error', errorMessage }).catch(() => {})
+    await finishSpan(span.end({ status: 'error', errorMessage }), awaitIngest).catch(() => {})
     throw err
   }
+
+  // Auto-capture return value as output unless it's a genuine stream (not
+  // serialisable). If the user already called span.end() manually inside fn
+  // (e.g. streaming), SpanHandle.end() will send a supplementary output-only PATCH.
+  const output = isStreamLike(result) ? undefined : result
+  await finishSpan(span.end({ status: 'completed', output }), awaitIngest)
+  return result
+}
+
+function openSpan(parent: TraceHandle | SpanHandle, options: SpanOptions): SpanHandle {
+  return 'span' in parent && typeof parent.span === 'function'
+    ? parent.span(options)
+    : (parent as SpanHandle).child(options)
+}
+
+/**
+ * Either wait for a scheduled span end (`awaitIngest`) or let it run in the
+ * background. The background branch attaches a handler so a delivery failure
+ * under `silent: false` can never become an unhandled rejection; the
+ * transport has already reported it through `onError`.
+ */
+function finishSpan(ended: Promise<void>, awaitIngest: boolean): Promise<void> {
+  if (awaitIngest) return ended
+  ended.catch(() => {})
+  return Promise.resolve()
 }
 
 /**
@@ -121,9 +157,17 @@ export type ProviderObserveOptions = Omit<SpanOptions, 'spanType'> & {
   /** Tag the logged request with a Spanlens prompt version (name@version, name@latest, or UUID). */
   promptVersion?: string
   /**
-   * Control how much of this call is persisted by Spanlens.
-   * Defaults to whatever the server has for `full` (the prompts and responses are saved).
-   * Override to `'meta'` or `'none'` for stricter data minimization — see LogBodyMode docs.
+   * Control how much of this call is persisted by Spanlens, on both paths:
+   *
+   * - the proxied request row, through the `x-spanlens-log-body` header the
+   *   callback receives (only set when you pass this option);
+   * - the span itself: with `'meta'` or `'none'` the SDK sends no span
+   *   `input` and no span `output` to ingest, only tokens, model, status,
+   *   and timing.
+   *
+   * Default: `'full'` (the response is captured as span output), except
+   * `observeOllama()` which defaults to `'meta'` so a local model's prompts and
+   * responses stay on your machine. See LogBodyMode docs.
    */
   logBody?: LogBodyMode
   /**
@@ -143,17 +187,20 @@ export type ProviderObserveOptions = Omit<SpanOptions, 'spanType'> & {
    * this option is the escape hatch for everything else.
    */
   provider?: string
+  /** Same as `ObserveOptions.awaitIngest`: wait for the end PATCH inline. Default `false`. */
+  awaitIngest?: boolean
 }
 
-function splitArgs(
-  nameOrOptions: string | ProviderObserveOptions,
-): {
+interface SplitArgs {
   spanOptions: SpanOptions
   promptVersion: string | undefined
   logBody: LogBodyMode | undefined
   cache: number | true | undefined
   providerOverride: string | undefined
-} {
+  awaitIngest: boolean
+}
+
+function splitArgs(nameOrOptions: string | ProviderObserveOptions): SplitArgs {
   if (typeof nameOrOptions === 'string') {
     return {
       spanOptions: { name: nameOrOptions, spanType: 'llm' },
@@ -161,16 +208,40 @@ function splitArgs(
       logBody: undefined,
       cache: undefined,
       providerOverride: undefined,
+      awaitIngest: false,
     }
   }
-  const { promptVersion, logBody, cache, provider: providerOverride, ...rest } = nameOrOptions
+  const {
+    promptVersion,
+    logBody,
+    cache,
+    provider: providerOverride,
+    awaitIngest = false,
+    ...rest
+  } = nameOrOptions
   return {
     spanOptions: { ...rest, spanType: 'llm' },
     promptVersion,
     logBody,
     cache,
     providerOverride,
+    awaitIngest,
   }
+}
+
+/**
+ * Whether the span may carry the prompt (`input`) and response (`output`).
+ * Only the `'full'` mode does. The default is `'full'` for hosted providers
+ * and `'meta'` for Ollama, whose whole point is keeping bodies on-machine.
+ */
+function capturesBodies(provider: Usage, logBody: LogBodyMode | undefined): boolean {
+  const effective = logBody ?? (provider === 'ollama' ? 'meta' : 'full')
+  return effective === 'full'
+}
+
+function withoutInput(options: SpanOptions): SpanOptions {
+  const { input: _dropped, ...rest } = options
+  return rest
 }
 
 async function observeProvider<T>(
@@ -179,12 +250,11 @@ async function observeProvider<T>(
   nameOrOptions: string | ProviderObserveOptions,
   fn: (headers: Record<string, string>) => Promise<T>,
 ): Promise<T> {
-  const { spanOptions, promptVersion, logBody, cache, providerOverride } = splitArgs(nameOrOptions)
+  const { spanOptions, promptVersion, logBody, cache, providerOverride, awaitIngest } =
+    splitArgs(nameOrOptions)
+  const keepBodies = capturesBodies(provider, logBody)
 
-  const span =
-    'span' in parent && typeof parent.span === 'function'
-      ? parent.span(spanOptions)
-      : (parent as SpanHandle).child(spanOptions)
+  const span = openSpan(parent, keepBodies ? spanOptions : withoutInput(spanOptions))
 
   const headers: Record<string, string> = { ...span.traceHeaders() }
   if (promptVersion) headers[PROMPT_VERSION_HEADER] = promptVersion
@@ -192,42 +262,44 @@ async function observeProvider<T>(
   const cacheValue = cacheHeaderValue(cache)
   if (cacheValue != null) headers[CACHE_HEADER] = cacheValue
 
+  let result: T
   try {
-    const result = await fn(headers)
-
-    // Auto-parse usage from the provider response shape.
-    // OpenAI-compatible providers (Ollama, Groq, DeepSeek, xAI, Cohere) expose
-    // an OpenAI-shaped `usage` field, so the OpenAI parser works as-is — only
-    // the provider tag differs.
-    const parsed =
-      OPENAI_SHAPED.has(provider)
-        ? parseOpenAIUsage(result)
-        : provider === 'anthropic'
-          ? parseAnthropicUsage(result)
-          : parseGeminiUsage(result)
-
-    // Stamp the provider tag onto the span metadata. The explicit override
-    // (e.g. observeOpenAI(..., { provider: 'vllm' })) wins over the default,
-    // which is the wrapper name (openai/anthropic/gemini/ollama).
-    const providerTag = providerOverride ?? provider
-    const metadataWithProvider = {
-      ...(parsed.metadata ?? {}),
-      provider: providerTag,
-    }
-    const enriched = { ...parsed, metadata: metadataWithProvider }
-
-    // Capture the full response as output unless it's a genuine stream (not serializable)
-    const output = isStreamLike(result) ? undefined : result
-
-    await span.end({ status: 'completed', output, ...enriched })
-    return result
+    result = await fn(headers)
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     // Do not let a failing span.end() mask the user's original error — swallow
     // the end() rejection so `throw err` always runs and propagates unchanged.
-    await span.end({ status: 'error', errorMessage }).catch(() => {})
+    await finishSpan(span.end({ status: 'error', errorMessage }), awaitIngest).catch(() => {})
     throw err
   }
+
+  // Auto-parse usage from the provider response shape.
+  // OpenAI-compatible providers (Ollama, Groq, DeepSeek, xAI, Cohere) expose
+  // an OpenAI-shaped `usage` field, so the OpenAI parser works as-is — only
+  // the provider tag differs.
+  const parsed =
+    OPENAI_SHAPED.has(provider)
+      ? parseOpenAIUsage(result)
+      : provider === 'anthropic'
+        ? parseAnthropicUsage(result)
+        : parseGeminiUsage(result)
+
+  // Stamp the provider tag onto the span metadata. The explicit override
+  // (e.g. observeOpenAI(..., { provider: 'vllm' })) wins over the default,
+  // which is the wrapper name (openai/anthropic/gemini/ollama).
+  const providerTag = providerOverride ?? provider
+  const metadataWithProvider = {
+    ...(parsed.metadata ?? {}),
+    provider: providerTag,
+  }
+  const enriched = { ...parsed, metadata: metadataWithProvider }
+
+  // Capture the full response as output only in 'full' mode, and never for a
+  // genuine stream (not serializable).
+  const output = keepBodies && !isStreamLike(result) ? result : undefined
+
+  await finishSpan(span.end({ status: 'completed', output, ...enriched }), awaitIngest)
+  return result
 }
 
 /**

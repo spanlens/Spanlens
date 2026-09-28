@@ -14,7 +14,8 @@ export {
   observeMistral,
   observeOpenRouter,
 } from './observe.js'
-export type { ProviderObserveOptions } from './observe.js'
+export type { ObserveOptions, ProviderObserveOptions } from './observe.js'
+export type { FlushOptions } from './transport.js'
 export { parseOpenAIUsage, parseAnthropicUsage, parseGeminiUsage } from './parsers.js'
 // Sprint 7 R-15 + R-20: typed exception thrown on Spanlens server errors
 // that follow the standard envelope. See transport.ts for the shape.

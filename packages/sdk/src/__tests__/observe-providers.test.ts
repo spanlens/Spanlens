@@ -6,8 +6,10 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
+    // A fresh Response per call: a shared one has its body consumed after the
+    // first read, which turns every later call into a retried "network error".
+    fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 })),
     )
     vi.stubGlobal('fetch', fetchMock)
   })
@@ -15,6 +17,30 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
+
+  /**
+   * observe helpers return before the span's end PATCH is delivered, so every
+   * body assertion flushes first, exactly as a short-lived process would.
+   */
+  async function sentBodies(
+    client: SpanlensClient,
+    method: 'POST' | 'PATCH',
+    pathPart: string,
+  ): Promise<Array<Record<string, unknown>>> {
+    await client.flush()
+    return fetchMock.mock.calls
+      .filter(
+        ([url, init]) =>
+          (init as RequestInit).method === method && String(url).includes(pathPart),
+      )
+      .map(([, init]) => JSON.parse((init as RequestInit).body as string) as Record<string, unknown>)
+  }
+
+  async function spanPatch(client: SpanlensClient): Promise<Record<string, unknown>> {
+    const [body] = await sentBodies(client, 'PATCH', '/ingest/spans/')
+    expect(body).toBeDefined()
+    return body!
+  }
 
   it('observeOpenAI injects tracing headers into callback', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
@@ -237,11 +263,7 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
     }))
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
-    )
-    expect(patchCall).toBeDefined()
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    const body = await spanPatch(client)
     expect(body.total_tokens).toBe(30)
     expect(body.prompt_tokens).toBe(10)
     expect(body.completion_tokens).toBe(20)
@@ -254,17 +276,10 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
     const trace = client.startTrace({ name: 't' })
 
     await observeOpenAI(trace, 'call', async () => ({ usage: { total_tokens: 0 } }))
-    await new Promise((r) => setTimeout(r, 10))
 
-    const postCall = fetchMock.mock.calls.find(
-      ([url, init]) =>
-        typeof url === 'string' &&
-        url.includes('/spans') &&
-        (init as RequestInit).method === 'POST',
-    )
-    expect(postCall).toBeDefined()
-    const body = JSON.parse((postCall![1] as RequestInit).body as string) as Record<string, unknown>
-    expect(body.span_type).toBe('llm')
+    const [body] = await sentBodies(client, 'POST', '/spans')
+    expect(body).toBeDefined()
+    expect(body!.span_type).toBe('llm')
     expect(body.name).toBe('call')
   })
 
@@ -277,10 +292,7 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       usage: { input_tokens: 15, output_tokens: 45 },
     }))
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
-    )
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    const body = await spanPatch(client)
     expect(body.prompt_tokens).toBe(15)
     expect(body.completion_tokens).toBe(45)
     expect(body.total_tokens).toBe(60)
@@ -303,35 +315,86 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       },
     }))
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
-    )
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    const body = await spanPatch(client)
     expect(body.total_tokens).toBe(20)
     expect(body.prompt_tokens).toBe(5)
     expect(body.completion_tokens).toBe(15)
     expect((body.metadata as Record<string, unknown>)?.model).toBe('gemini-2.0-flash')
   })
 
-  it('observeOpenAI captures full response as output in span.end', async () => {
+  // ── Body capture follows logBody (C6.2) ────────────────────────────────────
+
+  const CHAT_RESPONSE = {
+    id: 'chatcmpl-abc',
+    model: 'gpt-4o-mini',
+    choices: [{ message: { role: 'assistant', content: 'PRIVATE ANSWER' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  }
+
+  it('observeOpenAI (default logBody = full) captures the full response as span output', async () => {
     const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
     const trace = client.startTrace({ name: 't' })
 
-    const mockResponse = {
-      id: 'chatcmpl-abc',
-      model: 'gpt-4o-mini',
-      choices: [{ message: { role: 'assistant', content: 'Hello!' }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-    }
+    await observeOpenAI(trace, 'call', async () => CHAT_RESPONSE)
 
-    await observeOpenAI(trace, 'call', async () => mockResponse)
+    const body = await spanPatch(client)
+    expect(body.output).toEqual(CHAT_RESPONSE)
+  })
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
+  for (const logBody of ['meta', 'none'] as const) {
+    it(`observeOpenAI with logBody '${logBody}' sends no span input or output`, async () => {
+      const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+      const trace = client.startTrace({ name: 't' })
+
+      await observeOpenAI(
+        trace,
+        { name: 'pii-call', logBody, input: { prompt: 'PRIVATE PROMPT' } },
+        async () => CHAT_RESPONSE,
+      )
+
+      const [post] = await sentBodies(client, 'POST', '/spans')
+      const patch = await spanPatch(client)
+      expect(post).not.toHaveProperty('input')
+      expect(patch).not.toHaveProperty('output')
+      expect(JSON.stringify([post, patch])).not.toContain('PRIVATE')
+      // Metadata the dashboard needs still flows.
+      expect(patch.total_tokens).toBe(15)
+      expect((patch.metadata as Record<string, unknown>).model).toBe('gpt-4o-mini')
+    })
+  }
+
+  it('observeOllama keeps prompt and response on the machine by default', async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    let headers: Record<string, string> | null = null
+    await observeOllama(
+      trace,
+      { name: 'local', input: { prompt: 'PRIVATE PROMPT' } },
+      async (h) => {
+        headers = h
+        return { ...CHAT_RESPONSE, model: 'llama3.2' }
+      },
     )
-    expect(patchCall).toBeDefined()
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
-    expect(body.output).toEqual(mockResponse)
+
+    const [post] = await sentBodies(client, 'POST', '/spans')
+    const patch = await spanPatch(client)
+    expect(post).not.toHaveProperty('input')
+    expect(patch).not.toHaveProperty('output')
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('PRIVATE')
+    expect(patch.total_tokens).toBe(15)
+    // The header contract is unchanged: only an explicit logBody emits it.
+    expect(headers!['x-spanlens-log-body']).toBeUndefined()
+  })
+
+  it("observeOllama with logBody 'full' opts back into sending the response", async () => {
+    const client = new SpanlensClient({ apiKey: 'k', baseUrl: 'http://x' })
+    const trace = client.startTrace({ name: 't' })
+
+    await observeOllama(trace, { name: 'local', logBody: 'full' }, async () => CHAT_RESPONSE)
+
+    const patch = await spanPatch(client)
+    expect(patch.output).toEqual(CHAT_RESPONSE)
   })
 
   it('observeOpenAI omits output for stream-like responses', async () => {
@@ -342,10 +405,7 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
 
     await observeOpenAI(trace, 'stream-call', async () => streamLike as unknown as typeof streamLike)
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
-    )
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    const body = await spanPatch(client)
     expect(body.output).toBeUndefined()
   })
 
@@ -359,13 +419,9 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       }),
     ).rejects.toThrow('api failed')
 
-    const errPatch = fetchMock.mock.calls.find(([, init]) => {
-      const ri = init as RequestInit | undefined
-      if (!ri || ri.method !== 'PATCH') return false
-      const body = JSON.parse(ri.body as string) as Record<string, unknown>
-      return body.status === 'error' && body.error_message === 'api failed'
-    })
-    expect(errPatch).toBeDefined()
+    const body = await spanPatch(client)
+    expect(body.status).toBe('error')
+    expect(body.error_message).toBe('api failed')
   })
 
   // ── Provider tag (Ollama + override) ───────────────────────────────────────
@@ -379,10 +435,7 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
     }))
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
-    )
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    const body = await spanPatch(client)
     expect((body.metadata as Record<string, unknown>).provider).toBe('openai')
     // Model still flows through alongside the new provider tag.
     expect((body.metadata as Record<string, unknown>).model).toBe('gpt-4o-mini')
@@ -398,11 +451,7 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       usage: { prompt_tokens: 12, completion_tokens: 34, total_tokens: 46 },
     }))
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
-    )
-    expect(patchCall).toBeDefined()
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    const body = await spanPatch(client)
     expect(body.prompt_tokens).toBe(12)
     expect(body.completion_tokens).toBe(34)
     expect(body.total_tokens).toBe(46)
@@ -425,10 +474,7 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
       }),
     )
 
-    const patchCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit).method === 'PATCH',
-    )
-    const body = JSON.parse((patchCall![1] as RequestInit).body as string) as Record<string, unknown>
+    const body = await spanPatch(client)
     expect((body.metadata as Record<string, unknown>).provider).toBe('vllm')
   })
 
@@ -445,7 +491,7 @@ describe('observeOpenAI / observeAnthropic / observeGemini', () => {
 
     expect(receivedHeaders).not.toBeNull()
     // The inner span should be a child of `outer`
-    await new Promise((r) => setTimeout(r, 10))
+    await client.flush()
     const spanPosts = fetchMock.mock.calls.filter(
       ([url, init]) =>
         typeof url === 'string' &&
