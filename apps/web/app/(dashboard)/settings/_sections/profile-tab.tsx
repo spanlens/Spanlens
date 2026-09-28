@@ -39,9 +39,11 @@ export function ProfileTab() {
 
       <Section title="Change sign-in details" className="mb-4">
         <div className="px-6 py-4 text-[12.5px] text-text-muted leading-relaxed">
-          Email changes, password resets, and two-factor setup go through Supabase&apos;s auth flows.
-          Use the <span className="font-mono text-text">&quot;Forgot password?&quot;</span> link on the login
-          page to trigger a reset email.
+          To reset your password, use the <span className="font-mono text-text">&quot;Forgot password?&quot;</span> link
+          on the login page and we&apos;ll email you a reset link. Changing your sign-in email isn&apos;t
+          self-service yet, and two-factor authentication is not available at the moment. For an email
+          change, write to <span className="font-mono text-text">support@spanlens.io</span> from your
+          current address.
         </div>
       </Section>
     </div>

@@ -3,6 +3,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiGet } from '@/lib/api'
 import type { ApiEnvelope, StatsOverview, TimeseriesPoint, TimeseriesBreakdownPoint, SpendForecast } from './types'
+import { appendRequestsFilters, compactRequestsFilters, type RequestsTableFilters } from '@/lib/requests-filters'
 
 // Truncated to the minute — must match server-side fromIso() in lib/server/queries/stats.ts
 // so the queryKey is stable across SSR render and client hydration.
@@ -17,19 +18,28 @@ export const statsOverviewQueryKey = ['stats', 'overview'] as const
 // The server (apps/server/src/api/stats.ts) accepts either form: a custom
 // range uses the explicit bounds for both current and "previous period"
 // comparison windows, while a preset is just hours-ago → now.
+//
+// `filters` narrows the numbers to the /requests table's filters. It joins
+// the key only when something is set, so the unfiltered dashboard key still
+// matches the server prefetch in lib/server/queries/stats.ts.
 export function useStatsOverview(
-  params?: { hours?: number; compare?: boolean; from?: string; to?: string },
+  params?: { hours?: number; compare?: boolean; from?: string; to?: string; filters?: RequestsTableFilters },
   options?: { refetchInterval?: number },
 ) {
   const hours = params?.hours ?? 24
   const compare = params?.compare ?? false
   const customFrom = params?.from
   const customTo = params?.to
+  const filters = compactRequestsFilters(params?.filters)
   return useQuery({
-    queryKey: ['stats', 'overview', { hours, compare, from: customFrom ?? null, to: customTo ?? null }] as const,
+    queryKey: [
+      'stats',
+      'overview',
+      { hours, compare, from: customFrom ?? null, to: customTo ?? null, ...(filters ? { filters } : {}) },
+    ] as const,
     queryFn: async () => {
       const from = customFrom ?? fromIso(hours)
-      const qs = new URLSearchParams({ from })
+      const qs = appendRequestsFilters(new URLSearchParams({ from }), filters)
       if (customTo) qs.set('to', customTo)
       if (compare) qs.set('compare', 'true')
       const res = await apiGet<ApiEnvelope<StatsOverview>>(`/api/v1/stats/overview?${qs}`)
@@ -47,7 +57,8 @@ export interface ModelStat {
   provider: string
   model: string
   requests: number
-  totalCostUsd: number
+  /** null = no price on file for any request in the group (unknown, not $0). */
+  totalCostUsd: number | null
   avgLatencyMs: number
   errorRate: number
 }
@@ -85,26 +96,33 @@ export function useSpendForecast(projectId?: string) {
   })
 }
 
-export function statsTimeseriesQueryKey(params?: { hours?: number; from?: string; to?: string }) {
+export function statsTimeseriesQueryKey(params?: {
+  hours?: number
+  from?: string
+  to?: string
+  filters?: RequestsTableFilters
+}) {
   return params ? (['stats', 'timeseries', params] as const) : (['stats', 'timeseries'] as const)
 }
 
 export function useStatsTimeseries(
-  params?: { hours?: number; from?: string; to?: string },
+  params?: { hours?: number; from?: string; to?: string; filters?: RequestsTableFilters },
   options?: { refetchInterval?: number },
 ) {
   const hours = params?.hours ?? 24
   const customFrom = params?.from
   const customTo = params?.to
+  const filters = compactRequestsFilters(params?.filters)
   return useQuery({
     queryKey: statsTimeseriesQueryKey({
       hours,
       ...(customFrom != null ? { from: customFrom } : {}),
       ...(customTo != null ? { to: customTo } : {}),
+      ...(filters ? { filters } : {}),
     }),
     queryFn: async () => {
       const from = customFrom ?? fromIso(hours)
-      const qs = new URLSearchParams({ from })
+      const qs = appendRequestsFilters(new URLSearchParams({ from }), filters)
       if (customTo) qs.set('to', customTo)
       const res = await apiGet<ApiEnvelope<TimeseriesPoint[]>>(
         `/api/v1/stats/timeseries?${qs}`,
@@ -121,20 +139,22 @@ export function useStatsTimeseries(
 // tooltip to explain "why did errors spike at 14:00?" — kept separate from
 // the main timeseries so the table view doesn't pay for this query.
 export function useTimeseriesBreakdown(
-  params?: { hours?: number; from?: string; to?: string },
+  params?: { hours?: number; from?: string; to?: string; filters?: RequestsTableFilters },
 ) {
   const hours = params?.hours ?? 24
   const customFrom = params?.from
   const customTo = params?.to
+  const filters = compactRequestsFilters(params?.filters)
   return useQuery({
     queryKey: ['stats', 'timeseries-breakdown', {
       hours,
       ...(customFrom != null ? { from: customFrom } : {}),
       ...(customTo != null ? { to: customTo } : {}),
+      ...(filters ? { filters } : {}),
     }] as const,
     queryFn: async () => {
       const from = customFrom ?? fromIso(hours)
-      const qs = new URLSearchParams({ from })
+      const qs = appendRequestsFilters(new URLSearchParams({ from }), filters)
       if (customTo) qs.set('to', customTo)
       const res = await apiGet<ApiEnvelope<TimeseriesBreakdownPoint[]>>(
         `/api/v1/stats/timeseries-breakdown?${qs}`,

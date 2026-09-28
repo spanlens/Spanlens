@@ -9,7 +9,12 @@ import { UpsellModal } from '@/components/dashboard/upsell-modal'
 import { Topbar, TimeRangeSelector, type CustomRange } from '@/components/layout/topbar'
 import { useStatsOverview, useStatsTimeseries, useStatsModels } from '@/lib/queries/use-stats'
 import { useAnomalies } from '@/lib/queries/use-anomalies'
-import { useDashboardSummary } from '@/lib/queries/use-dashboard-summary'
+import {
+  dashboardPanelState,
+  useDashboardSummary,
+  type DashboardDatasetKey,
+  type DashboardPanelState,
+} from '@/lib/queries/use-dashboard-summary'
 import { type ModelRecommendation } from '@/lib/queries/use-recommendations'
 import { useStaleKeyCounts } from '@/lib/queries/use-stale-keys'
 import { useDismissals, useDismissCard } from '@/lib/queries/use-dismissals'
@@ -183,6 +188,12 @@ interface AttnCardProps {
   href: string
   /** Optional secondary action — e.g. "View anomaly →" next to the primary "Investigate requests →". */
   secondary?: { label: string; href: string }
+  /**
+   * False for cards that report a failed lookup rather than a finding. A
+   * dismissal is stored per user, so dismissing "check unavailable" once
+   * would hide every later outage of the same check.
+   */
+  dismissible?: boolean
   onDismiss?: () => void
 }
 
@@ -195,20 +206,22 @@ const ATTN_TONE: Record<AttnCardProps['kind'], { shell: string; title: string; c
   savings:  { shell: 'bg-good-bg border-good/25',         title: 'text-good', cta: 'text-good' },
 }
 
-function AttnCard({ kind, title, meta, hint, cta, href, secondary, onDismiss }: AttnCardProps) {
+function AttnCard({ kind, title, meta, hint, cta, href, secondary, dismissible = true, onDismiss }: AttnCardProps) {
   const tone = ATTN_TONE[kind]
   return (
     <div className={cn('flex flex-col gap-1 rounded-lg border px-[14px] py-[11px]', tone.shell)}>
       <div className="flex items-start gap-2">
         <div className={cn('flex-1 min-w-0 text-[12.5px] font-semibold leading-[1.4]', tone.title)}>{title}</div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="shrink-0 text-text-faint hover:text-text-muted transition-colors leading-none"
-          aria-label="Dismiss"
-        >
-          ✕
-        </button>
+        {dismissible && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 text-text-faint hover:text-text-muted transition-colors leading-none"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        )}
       </div>
       <div className="font-mono text-[11px] leading-[1.4] text-text-faint truncate">{meta}</div>
       <div suppressHydrationWarning className="text-[11.5px] leading-[1.4] text-text-faint">{hint}</div>
@@ -231,6 +244,46 @@ function AttnCard({ kind, title, meta, hint, cta, href, secondary, onDismiss }: 
       </div>
     </div>
   )
+}
+
+// ── Failed panel ───────────────────────────────────────────────
+
+/**
+ * Stands in for a panel whose dataset failed to load. It has to read as a
+ * failure, not as the panel's empty state: "No active alert rules" after a
+ * failed lookup is a false statement, not a neutral one.
+ */
+function PanelUnavailable({
+  message,
+  onRetry,
+  retrying,
+}: {
+  message: string
+  onRetry: () => void
+  retrying: boolean
+}) {
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-warn">Unavailable</span>
+      <p className="text-[12.5px] text-text-muted">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={retrying}
+        className="font-mono text-[11px] px-2.5 py-1 border border-border rounded text-text-muted hover:border-border-strong disabled:opacity-40 transition-colors"
+      >
+        {retrying ? 'Retrying…' : 'Retry'}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * `null` means no price is on file for any request in the group, so the cost
+ * is unknown. Showing that as $0 would claim the model was free.
+ */
+function fmtModelCost(costUsd: number | null): string {
+  return costUsd == null ? 'unpriced' : fmtCost(costUsd)
 }
 
 // ── Page ───────────────────────────────────────────────────────
@@ -296,8 +349,15 @@ export function DashboardClient() {
   // still fetch them — and would add two Supabase round-trips to this
   // endpoint's critical path.
   const summary = useDashboardSummary({ hours, auditLimit: 6 })
-  const summaryData = summary.data
-  const summaryLoading = summary.isLoading
+  const summaryData = summary.data?.data
+  // Per-panel state keeps "this lookup failed" apart from "nothing to show".
+  // Covers both a single failed dataset (`meta.degraded`) and the whole
+  // request failing with nothing cached.
+  const panelState = (key: DashboardDatasetKey): DashboardPanelState =>
+    dashboardPanelState({ data: summary.data, isError: summary.isError }, key)
+  const retrySummary = () => { void summary.refetch() }
+  const summaryRetrying = summary.isFetching
+  const securityState = panelState('securitySummary')
   const staleKeys = useStaleKeyCounts()
 
   const o = overview.data
@@ -367,6 +427,7 @@ export function DashboardClient() {
         provider: m.provider,
         model: m.model,
         requests: m.requests,
+        // null = unpriced (no price on file), kept distinct from a real $0.
         totalSpendUsd: m.totalCostUsd,
         avgLatencyMs: m.avgLatencyMs,
         errorRatePct: parseFloat((m.errorRate * 100).toFixed(2)),
@@ -427,7 +488,7 @@ export function DashboardClient() {
         m.provider,
         m.model,
         m.requests,
-        m.totalSpendUsd.toFixed(2),
+        m.totalSpendUsd == null ? '' : m.totalSpendUsd.toFixed(2),
         m.avgLatencyMs,
         m.errorRatePct,
       ]))
@@ -441,9 +502,9 @@ export function DashboardClient() {
   }
 
   // A composite dataset is null when the server's lookup for it failed and []
-  // when it succeeded with nothing to show. Both collapse to the same empty
-  // render here, which matches what these sections did before when their own
-  // query errored and `data` was undefined.
+  // when it succeeded with nothing to show. The derived lists below may
+  // collapse both to [] because each panel checks `panelState()` first and
+  // renders PanelUnavailable for a failed lookup instead of its empty state.
   const alertRows = summaryData?.alerts
 
   // ISO timestamps of alerts that fired within the current time range — for chart markers
@@ -476,6 +537,21 @@ export function DashboardClient() {
   // Build attention cards — security > anomaly > alert > savings
   const attnCards = useMemo(() => {
     const cards: AttnCardProps[] = []
+
+    // A failed security lookup must not read as "no PII found". The PII card
+    // is the only place that signal appears, so its absence says "clean".
+    if (securityState === 'unavailable') {
+      cards.push({
+        kind: 'warning',
+        cardKey: 'pii_check_unavailable',
+        title: 'PII check unavailable',
+        meta: 'security summary did not load',
+        hint: 'PII matches in this window could not be checked. Open the security page or try again shortly.',
+        cta: 'Open security →',
+        href: '/security',
+        dismissible: false,
+      })
+    }
 
     const piiHits = (summaryData?.securitySummary ?? [])
       .filter((r) => r.type === 'pii')
@@ -576,7 +652,7 @@ export function DashboardClient() {
     }
 
     return cards
-  }, [anomalies.data, firingAlerts, summaryData?.recommendations, summaryData?.securitySummary, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
+  }, [anomalies.data, firingAlerts, summaryData?.recommendations, summaryData?.securitySummary, securityState, staleKeys.revoke, staleKeys.sampleName, timeRange, customRange, mountNow, hours])
 
   // Every KPI is its own card on the canvas, so the tiles share one surface
   // class instead of the per-cell border matrix the joined grid needed.
@@ -885,8 +961,17 @@ export function DashboardClient() {
         )}
 
         {/* Spend forecast, always monthly, independent of time range selector */}
-        {!mounted || summaryLoading ? (
+        {!mounted || panelState('spendForecast') === 'loading' ? (
           <Skeleton className="h-[320px] w-full rounded-card" />
+        ) : panelState('spendForecast') === 'unavailable' ? (
+          <Card className="px-5 py-[18px]">
+            <h2 className="text-[13.5px] font-semibold leading-[1.4] text-text mb-[14px]">Spend forecast</h2>
+            <PanelUnavailable
+              message="The month-end forecast did not load."
+              onRetry={retrySummary}
+              retrying={summaryRetrying}
+            />
+          </Card>
         ) : summaryData?.spendForecast ? (
           <SpendForecastCard data={summaryData.spendForecast} />
         ) : null}
@@ -908,7 +993,7 @@ export function DashboardClient() {
                 .slice(0, 5)
               const topMax = active[0]?.stats?.totalCostUsd ?? 0
 
-              if (!mounted || summaryLoading) {
+              if (!mounted || panelState('prompts') === 'loading') {
                 return (
                   <div className="space-y-2.5">
                     {Array.from({ length: 3 }).map((_, i) => (
@@ -922,6 +1007,16 @@ export function DashboardClient() {
                       </div>
                     ))}
                   </div>
+                )
+              }
+
+              if (panelState('prompts') === 'unavailable') {
+                return (
+                  <PanelUnavailable
+                    message="Prompt spend did not load."
+                    onRetry={retrySummary}
+                    retrying={summaryRetrying}
+                  />
                 )
               }
 
@@ -1002,7 +1097,15 @@ export function DashboardClient() {
                         {m.model}
                       </span>
                       <span className="text-[12px] text-text-muted text-right">{m.requests.toLocaleString()}</span>
-                      <span className="text-[12px] text-text font-medium text-right">{fmtCost(m.totalCostUsd)}</span>
+                      <span
+                        className={cn(
+                          'text-[12px] text-right',
+                          m.totalCostUsd == null ? 'text-text-faint' : 'text-text font-medium',
+                        )}
+                        title={m.totalCostUsd == null ? 'No price is on file for this model, so its cost is unknown.' : undefined}
+                      >
+                        {fmtModelCost(m.totalCostUsd)}
+                      </span>
                       <span className={cn('text-[12px] text-right', m.errorRate > 0.05 ? 'text-bad' : 'text-text-muted')}>
                         {m.avgLatencyMs}ms
                       </span>
@@ -1029,7 +1132,7 @@ export function DashboardClient() {
                   mounted && firingAlerts.length > 0 ? 'text-accent' : 'text-text-faint',
                 )}
               >
-                {!mounted
+                {!mounted || panelState('alerts') !== 'ready'
                   ? '→'
                   : firingAlerts.length > 0
                     ? `${firingAlerts.length} firing →`
@@ -1038,6 +1141,16 @@ export function DashboardClient() {
             </div>
             {!mounted ? (
               <p className="text-[13px] text-text-faint">&nbsp;</p>
+            ) : panelState('alerts') === 'loading' ? (
+              <div className="flex flex-col gap-2">
+                {[1, 2].map((i) => <Skeleton key={i} className="h-[46px] w-full" />)}
+              </div>
+            ) : panelState('alerts') === 'unavailable' ? (
+              <PanelUnavailable
+                message="Alert rules did not load."
+                onRetry={retrySummary}
+                retrying={summaryRetrying}
+              />
             ) : activeAlertRules.length === 0 ? (
               <p className="text-[13px] text-text-faint">No active alert rules.</p>
             ) : (
@@ -1084,6 +1197,16 @@ export function DashboardClient() {
             </div>
             {!mounted ? (
               <p className="text-[13px] text-text-faint">&nbsp;</p>
+            ) : panelState('recommendations') === 'loading' ? (
+              <div className="flex flex-col gap-2">
+                {[1, 2].map((i) => <Skeleton key={i} className="h-[46px] w-full" />)}
+              </div>
+            ) : panelState('recommendations') === 'unavailable' ? (
+              <PanelUnavailable
+                message="Savings recommendations did not load."
+                onRetry={retrySummary}
+                retrying={summaryRetrying}
+              />
             ) : (summaryData?.recommendations ?? []).length === 0 ? (
               <p className="text-[13px] text-text-faint">No recommendations yet.</p>
             ) : (
@@ -1123,9 +1246,17 @@ export function DashboardClient() {
               Audit log →
             </Link>
           </div>
-          {!mounted || summaryLoading ? (
+          {!mounted || panelState('auditLogs') === 'loading' ? (
             <div className="space-y-2 py-2">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
+            </div>
+          ) : panelState('auditLogs') === 'unavailable' ? (
+            <div className="py-2">
+              <PanelUnavailable
+                message="Recent activity did not load."
+                onRetry={retrySummary}
+                retrying={summaryRetrying}
+              />
             </div>
           ) : (summaryData?.auditLogs ?? []).length === 0 ? (
             <div className="py-4 text-[12.5px] text-text-faint">

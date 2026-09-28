@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 
 import { apiPost } from '@/lib/api'
 import {
@@ -9,6 +9,7 @@ import {
 } from '@/lib/queries/use-pending-invitations'
 import { writeWorkspaceCookie } from '@/lib/workspace-cookie'
 import { applyBootstrapResult, type BootstrapResponse } from '@/lib/onboarding-bootstrap'
+import { hasWelcomeStash } from '@/lib/welcome-stash'
 import { TrackOnce } from '@/components/track-once'
 import { cn } from '@/lib/utils'
 import {
@@ -59,6 +60,12 @@ const ROLES = [
 type UseCase = (typeof USE_CASES)[number]['id']
 type Role = (typeof ROLES)[number]['id']
 
+// sessionStorage has no change event within the same tab, so there is
+// nothing to subscribe to; React re-reads the snapshot on every render,
+// which is when the survey step appears after bootstrap wrote the stash.
+const subscribeNoop = () => () => {}
+const noStashOnServer = () => false
+
 export default function OnboardingPage() {
   // Once the user advances past the initial step, `manualStep` takes over.
   // Before that, we derive the initial step from the pending-invitations
@@ -81,6 +88,11 @@ export default function OnboardingPage() {
   // Step 2
   const [useCase, setUseCase] = useState<UseCase | null>(null)
   const [role, setRole] = useState<Role | null>(null)
+  // Whether the dashboard will be able to show this user their new key. It
+  // will not after a 409 bootstrap (the workspace already existed, so no key
+  // came back) or when the browser refused to store it. The welcome banner
+  // then renders nothing, so the survey must not promise a snippet.
+  const keyReady = useSyncExternalStore(subscribeNoop, hasWelcomeStash, noStashOnServer)
 
   // Stepper visible only on the workspace + survey legs (the pending
   // step is its own world — different content, different action set).
@@ -257,6 +269,14 @@ export default function OnboardingPage() {
             </OptionGroup>
           </div>
 
+          {!keyReady && (
+            <AuthNote className="mt-5">
+              We can&apos;t show you an API key here, because keys are only displayed once, when
+              they are created. After you continue, open Projects and create a new key to connect
+              your app.
+            </AuthNote>
+          )}
+
           {error && <AuthNote tone="bad" live="assertive" className="mt-4">{error}</AuthNote>}
 
           <button
@@ -265,7 +285,7 @@ export default function OnboardingPage() {
             disabled={loading || (!useCase && !role)}
             className={`${authPrimaryButton} mt-6`}
           >
-            {loading ? 'Saving…' : 'Continue to the snippet'}
+            {loading ? 'Saving…' : keyReady ? 'Continue to the snippet' : 'Continue to the dashboard'}
           </button>
 
           <button

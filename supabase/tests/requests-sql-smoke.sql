@@ -262,6 +262,52 @@ EXECUTE request_filters(
 );
 DEALLOCATE request_filters;
 
+\echo '  +  /requests table filters on the KPI strip, bound as untyped parameters'
+-- The overview behind the /requests KPI strip takes the same filters as the
+-- table. The app binds every value as an untyped `$n` (lib/postgres.ts), so
+-- Postgres has to infer uuid for provider_key_id / prompt_version_id, text for
+-- the rest, and timestamptz from the explicit cast. PREPARE with no declared
+-- types is the closest reproduction of that binding.
+PREPARE stats_overview_filtered AS
+SELECT
+  count(*)                                    AS total_requests,
+  count(*) FILTER (WHERE status_code <  400)  AS success_requests,
+  count(*) FILTER (WHERE status_code >= 400)  AS error_requests,
+  sum(cost_usd)                               AS total_cost_usd,
+  avg(latency_ms)                             AS avg_latency_ms
+FROM public.requests
+WHERE organization_id = $1
+  AND created_at >= now() - make_interval(days => $2)
+  AND provider = $3
+  AND position(lower($4) in lower(model)) > 0
+  AND provider_key_id = $5
+  AND prompt_version_id = $6
+  AND user_id = $7
+  AND session_id = $8
+  AND status_code >= 400 AND status_code < 500
+  AND truncated = false
+  AND created_at >= $9::timestamptz;
+EXECUTE stats_overview_filtered(
+  '00000000-0000-4000-8000-00000000f002', 365, 'openai', 'GPT-4o_mini',
+  '00000000-0000-4000-8000-00000000f003', '00000000-0000-4000-8000-00000000f004',
+  'user-1', 'sess-1', '2026-01-01T00:00:00.000Z'
+);
+DEALLOCATE stats_overview_filtered;
+
+\echo '  +  model breakdown: unpriced groups sort after priced ones'
+-- sum(cost_usd) is NULL for a group with no priced row. A bare DESC would put
+-- those first; NULLS LAST keeps real spend at the top of the model table.
+SELECT
+  provider,
+  model,
+  count(*)                                                 AS requests,
+  sum(cost_usd)                                            AS total_cost_usd,
+  avg(CASE WHEN status_code >= 400 THEN 1.0 ELSE 0.0 END)  AS error_rate
+FROM public.requests
+WHERE created_at >= now() - make_interval(days => 30)
+GROUP BY provider, model
+ORDER BY total_cost_usd DESC NULLS LAST, requests DESC;
+
 ROLLBACK;
 
 \echo '── all shapes parsed and planned ──'
