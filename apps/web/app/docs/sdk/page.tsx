@@ -909,7 +909,9 @@ result = graph.invoke(
         <code>tracker.onFinish</code> and <code>tracker.onError</code>. Awaited calls (
         <code>generateText</code> / <code>generateObject</code>) have no <code>onFinish</code>{' '}
         callback in AI SDK 4.x and 5.x, so pass the result to <code>tracker.end()</code>. Token
-        totals cover every step of a multi-step run. Works with AI SDK 4.x and 5.x; see the{' '}
+        totals cover every step of a multi-step run. Closing the span never waits on Spanlens, so
+        call <a href="#flush">flush()</a> before a serverless handler returns. Works with AI SDK
+        4.x and 5.x; see the{' '}
         <a href="/docs/integrations/vercel-ai">Vercel AI SDK integration</a> page for details.
       </p>
       <LangTabs
@@ -922,17 +924,15 @@ const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 
 // generateText / generateObject: close the span from the awaited result
 const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
-try {
-  const result = await generateText({
-    model: openai('gpt-4o'),
-    messages: [{ role: 'user', content: 'Hello' }],
-    onStepFinish: tracker.onStepFinish,  // counts tool steps and sums their usage
-  })
-  await tracker.end(result)             // closes span with the run's token totals
-} catch (err) {
+const result = await generateText({
+  model: openai('gpt-4o'),
+  messages: [{ role: 'user', content: 'Hello' }],
+  onStepFinish: tracker.onStepFinish,   // counts tool steps and sums their usage
+}).catch(async (err) => {
   await tracker.onError(err)            // closes span as an error
   throw err
-}
+})
+await tracker.end(result)               // closes span with the run's token totals
 
 // streamText / streamObject: close the span from the callbacks
 const streamTracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
@@ -1015,11 +1015,13 @@ await client.flush()                     // resolves when every scheduled ingest
 await client.flush({ timeoutMs: 2000 })  // or cap the wait to fit a time budget
 process.exit(0)`}</CodeBlock>
       <p>
-        In TypeScript, <code>flush()</code> waits for everything scheduled so far: in-flight
-        requests, span and trace ends you never awaited (including those from{' '}
-        <code>observe()</code> and the framework integrations), and anything scheduled while it
-        waits. It resolves even if some requests failed, so a network error won&apos;t hang the
-        process. Failed writes are dropped and reported to your <code>onError</code> hook if set.
+        In TypeScript, <code>flush()</code> waits for everything scheduled before you called it:
+        in-flight requests and span and trace ends you never awaited (including those from{' '}
+        <code>observe()</code> and the framework integrations). Work scheduled after it starts,
+        such as other requests sharing the client in a long-running server, is left for the next
+        flush, so steady traffic can&apos;t keep it waiting. It resolves even if some requests
+        failed, so a network error won&apos;t hang the process. Failed writes are dropped and
+        reported to your <code>onError</code> hook if set.
         The TypeScript transport gives network errors, timeouts, and <code>5xx</code> responses 3
         attempts in total, 200 ms and then 400 ms apart, before giving up; <code>4xx</code>{' '}
         responses are not retried.
@@ -1030,12 +1032,13 @@ process.exit(0)`}</CodeBlock>
         Both SDKs do the actual ingest HTTP calls in the background: the TypeScript SDK on the
         runtime&rsquo;s promise queue, Python on a small background thread pool. In TypeScript,{' '}
         <code>startTrace()</code> and <code>span()</code> return immediately, and{' '}
-        <code>observe()</code> and the <code>observe*</code> provider helpers resolve as soon as
-        your callback does, with the span&apos;s end time stamped at that moment. So neither the
-        LLM call nor the code awaiting <code>observe()</code> waits on Spanlens, and a slow
-        Spanlens server does not stretch recorded durations. The only calls that wait for
-        delivery are the ones you await on purpose: <code>span.end()</code>,{' '}
-        <code>trace.end()</code>, <code>client.flush()</code>, or <code>observe()</code> with{' '}
+        <code>observe()</code>, the <code>observe*</code> provider helpers, and the Vercel AI
+        tracker&apos;s <code>end()</code>, <code>onFinish</code>, and <code>onError</code>{' '}
+        resolve as soon as your code is done, with the end time stamped at that moment. So
+        neither the LLM call nor the code awaiting them waits on Spanlens, and a slow Spanlens
+        server does not stretch recorded durations. The only calls that wait for delivery are
+        the ones you await on purpose: <code>span.end()</code>, <code>trace.end()</code>,{' '}
+        <code>client.flush()</code>, or <code>observe()</code> and the Vercel AI tracker with{' '}
         <code>awaitIngest: true</code>. A slow or down Spanlens server never crashes your app.
         Failures are swallowed by default; pass <code>silent: false</code> (TS) or{' '}
         <code>silent=False</code> (Python) plus an <code>onError</code> hook to surface them.

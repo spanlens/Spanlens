@@ -43,17 +43,15 @@ import { createSpanlensTracker } from '@spanlens/sdk/vercel-ai'
 const client = new SpanlensClient({ apiKey: process.env.SPANLENS_API_KEY! })
 const tracker = createSpanlensTracker({ client, modelName: 'gpt-4o' })
 
-try {
-  const result = await generateText({
-    model: openai('gpt-4o'),
-    messages: [{ role: 'user', content: 'Summarise the latest release notes.' }],
-    onStepFinish: tracker.onStepFinish, // optional, counts tool steps and sums their usage
-  })
-  await tracker.end(result)             // required, closes the span with the run's totals
-} catch (err) {
-  await tracker.onError(err)            // closes the span as an error
+const result = await generateText({
+  model: openai('gpt-4o'),
+  messages: [{ role: 'user', content: 'Summarise the latest release notes.' }],
+  onStepFinish: tracker.onStepFinish, // optional, counts tool steps and sums their usage
+}).catch(async (err) => {
+  await tracker.onError(err)          // closes the span as an error
   throw err
-}`}</CodeBlock>
+})
+await tracker.end(result)             // required, closes the span with the run's totals`}</CodeBlock>
 
       <h3>streamText and streamObject</h3>
       <CodeBlock language="ts">{`import { streamText } from 'ai'
@@ -74,6 +72,19 @@ const result = streamText({
         emitting). The span closes when <code>tracker.end()</code> or{' '}
         <code>onFinish</code> runs, or when <code>onError</code> reports a
         failure.
+      </p>
+      <p>
+        Closing the span never waits on Spanlens. <code>end()</code>,{' '}
+        <code>onFinish</code>, and <code>onError</code> record the end time
+        on the span and on the trace the tracker opened the moment they run,
+        send the updates in the background, and return right away. A slow or
+        unreachable Spanlens server adds nothing to your response time, and an
+        ingest error never lands in your <code>catch</code>. In a serverless
+        route, call <code>await client.flush()</code> before returning (or
+        hand it to <code>waitUntil</code>) so the updates are delivered before
+        the function freezes. If you would rather wait for delivery inline,
+        pass <code>awaitIngest: true</code> to{' '}
+        <code>createSpanlensTracker</code>.
       </p>
 
       <h2>What gets captured</h2>
@@ -149,7 +160,8 @@ for (const userMessage of conversation) {
   await tracker.end(result)
 }
 
-await trace.end({ status: 'completed' })`}</CodeBlock>
+await trace.end({ status: 'completed' })
+await client.flush() // before a serverless handler returns`}</CodeBlock>
       <p>
         Each turn lands as a child <code>llm.gpt-4o</code> span under the parent
         trace, so the chat appears as a single waterfall on{' '}
@@ -242,7 +254,16 @@ await tracker.end(result)`}</CodeBlock>
         <code>tracker.onFinish</code> to them is silently ignored and the span
         never closes. Await the call, pass the result to{' '}
         <code>tracker.end(result)</code>, and call{' '}
-        <code>tracker.onError(err)</code> from a <code>catch</code> block.
+        <code>tracker.onError(err)</code> when the call throws.
+      </p>
+
+      <h3>Span stays running in a serverless function</h3>
+      <p>
+        The tracker sends its updates in the background, and a serverless
+        runtime can freeze the instance as soon as your handler returns. Call{' '}
+        <code>await client.flush()</code> before returning, or pass it to{' '}
+        <code>waitUntil</code>. It waits for the updates your request already
+        scheduled, not for traffic that arrives afterwards.
       </p>
 
       <h3>Trace closes before tool calls finish</h3>
