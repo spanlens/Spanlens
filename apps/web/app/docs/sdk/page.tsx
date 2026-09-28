@@ -592,25 +592,45 @@ with client.start_trace("answer-question") as trace:
     return accumulated   // ← auto-saved as output; no need to pass output: here
   },
 )`}
-        py={`# Python streaming, accumulate manually, return for auto-capture
-async def streaming_span(trace):
-    async with observe(trace, {"name": "gpt-4o-mini", "span_type": "llm"}) as span:
-        stream = openai_client.chat.completions.create(
-            model="gpt-4o-mini", messages=messages, stream=True
-        )
-        accumulated = ""
-        usage = None
-        for chunk in stream:
+        py={`from spanlens import observe
+
+
+def stream_answer(span):
+    stream = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        stream=True,
+        stream_options={"include_usage": True},
+        extra_headers=span.trace_headers(),
+    )
+
+    accumulated = ""
+    usage = None
+    for chunk in stream:
+        if chunk.choices:  # the final usage chunk has no choices
             accumulated += chunk.choices[0].delta.content or ""
-            if chunk.usage:
-                usage = chunk.usage
-        if usage:
-            span.end(
-                prompt_tokens=usage.prompt_tokens,
-                completion_tokens=usage.completion_tokens,
-                total_tokens=usage.total_tokens,
-            )
-        return accumulated  # auto-saved as output`}
+        if chunk.usage:
+            usage = chunk.usage
+
+    # Pass token counts manually. The SDK can't read streaming chunks
+    if usage:
+        span.end(
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+        )
+
+    return accumulated  # auto-saved as output; no need to pass output= here
+
+
+text = observe(
+    trace,
+    "gpt-4o-mini · analysis",
+    stream_answer,
+    span_type="llm",
+    input=messages,  # captured at span creation
+)
+# Async code: make stream_answer an async def and use await observe(...)`}
       />
 
       <h2 id="observe-openai">observeOpenAI(), span + auto-parsed usage</h2>

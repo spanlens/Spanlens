@@ -175,6 +175,25 @@ result = observe_openai(trace, "answer", lambda headers:
 The same shape exists for Anthropic (`observe_anthropic`) and Gemini
 (`observe_gemini`).
 
+The response is recorded as the span output, and the generic `observe()`
+records whatever your callable returns (streams and iterators are skipped).
+Pass `input=` to record the prompt on the span as well.
+
+### Keeping prompts and responses out of Spanlens: `log_body`
+
+Every `observe*` helper accepts `log_body="full" | "meta" | "none"`. With
+`"meta"` or `"none"`, the span's input and output (and those of any child
+spans you open under it) are never sent; only metadata such as model, token
+counts, and latency is. The provider helpers also forward the value to the
+proxy as the `x-spanlens-log-body` header, so the proxied request row follows
+the same rule.
+
+```python
+result = observe_openai(trace, "pii-heavy-call", call_openai, log_body="meta")
+```
+
+An unknown value raises `ValueError` instead of silently storing everything.
+
 ### Async support
 
 `observe()` and `observe_*()` detect coroutines automatically. Pass an async
@@ -214,6 +233,10 @@ with client.start_trace("local_summarize") as trace:
 ```
 
 Cost is left as `None` because Ollama is self-hosted, so there is no per-token bill to compute.
+
+`observe_ollama()` defaults to `log_body="meta"`: only the model, token counts,
+and latency reach Spanlens, and the prompt and response stay on your machine.
+Pass `log_body="full"` if you do want them recorded on the span.
 
 ---
 

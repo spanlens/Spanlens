@@ -25,6 +25,13 @@ SpanType = Literal["llm", "tool", "retrieval", "embedding", "custom"]
 Status = Literal["running", "completed", "error"]
 """Lifecycle state of a trace or span."""
 
+LogBodyMode = Literal["full", "meta", "none"]
+"""How much of an observed call Spanlens stores. ``"full"`` keeps prompts and
+responses; ``"meta"`` and ``"none"`` keep only metadata (model, tokens,
+latency). The ``observe*`` helpers send it to the proxy as
+``x-spanlens-log-body`` and, for ``"meta"`` / ``"none"``, also keep span
+input and output out of the ingest calls."""
+
 
 # ── Configuration ────────────────────────────────────────────────
 
@@ -40,7 +47,7 @@ class SpanlensConfig(TypedDict, total=False):
             Observability calls should not block user code indefinitely.
         silent: Swallow all errors so instrumentation never crashes user code
             (default ``True``).
-        on_error: Custom error hook — called once when an ingest call fails
+        on_error: Custom error hook, called once when an ingest call fails
             for good (after retries). Signature
             ``(err: Exception, context: str) -> None``.
         max_pending: Cap on queued + in-flight ingest calls (default
@@ -106,6 +113,7 @@ class EndSpanOptions(TypedDict, total=False):
 __all__ = [
     "EndSpanOptions",
     "EndTraceOptions",
+    "LogBodyMode",
     "SpanOptions",
     "SpanType",
     "SpanlensConfig",
