@@ -30,16 +30,14 @@ Example::
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, Optional
+import threading
+from dataclasses import dataclass
+from typing import Any, Optional
 from uuid import UUID
 
 from ..client import SpanlensClient
 from ..span import SpanHandle
 from ..trace import TraceHandle
-
-if TYPE_CHECKING:  # pragma: no cover - type-only
-    pass
-
 
 # Try to subclass LangChain's BaseCallbackHandler when it's available so
 # duck-typed callback dispatch picks our methods up correctly. Falls back to a
@@ -94,6 +92,14 @@ def _short_name(serialized: Any, fallback: str) -> str:
     return fallback
 
 
+@dataclass(frozen=True)
+class _RunRecord:
+    """An open LangChain run and the root run whose trace it belongs to."""
+
+    span: SpanHandle
+    root_run_id: str
+
+
 def _stringify_run_id(run_id: Any) -> Optional[str]:
     """LangChain may pass run_id as ``UUID`` or ``str``. Normalise."""
     if run_id is None:
@@ -143,14 +149,17 @@ class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
     Attach to any LangChain chain, LLM, agent, or LangGraph compiled graph via
     the standard ``callbacks=[handler]`` configuration. Concurrent runs are
     tracked by LangChain's per-run UUIDs, so a single handler instance is safe
-    to share across parallel invocations.
+    to share across parallel invocations, threads, and asyncio tasks: every
+    root run gets its own trace, and that trace ends with the root's own
+    status.
 
     Args:
         client: Spanlens client instance.
         trace: Optional pre-existing trace to attach all spans to. When given,
-            ``trace.end()`` is NOT called — the caller owns the lifecycle.
-            When omitted, a trace is created on the first start-event and
-            closed when the root-level run ends.
+            ``trace.end()`` is NOT called, because the caller owns the
+            lifecycle. When omitted, each root run (a run whose parent is not
+            being recorded) opens its own trace, which is ended when that
+            root run ends.
         trace_name: Name for auto-created traces. Defaults to ``"langchain_run"``.
         capture_chains: Capture chain (LangGraph node, LCEL step) spans.
             Defaults to ``True``.
@@ -196,20 +205,26 @@ class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
         self._max_input_bytes = max_input_bytes
         self._max_output_bytes = max_output_bytes
 
-        # run_id (str) → {span, root_of_local_trace}
-        self._runs: dict[str, dict[str, Any]] = {}
-        # Lazy local trace — created on first start when no external trace.
-        self._local_trace: Optional[TraceHandle] = None
+        # LangChain may call a shared handler from several threads (sync
+        # runnables in executors) and interleave asyncio tasks. All run
+        # bookkeeping happens under this lock; the ingest calls it triggers
+        # only enqueue work, so holding it never blocks on the network.
+        self._lock = threading.Lock()
+        # run_id → open run (its span + the root run whose trace it is in).
+        self._runs: dict[str, _RunRecord] = {}
+        # root run_id → the trace this handler opened for it. Only locally
+        # owned traces live here; an external ``trace`` is never ended.
+        self._root_traces: dict[str, TraceHandle] = {}
 
     # ── Internal helpers ───────────────────────────────────────────────
 
-    def _get_trace(self) -> TraceHandle:
+    def _open_root_trace(self, root_run_id: str) -> TraceHandle:
+        # Called with ``self._lock`` held.
         if self._external_trace is not None:
             return self._external_trace
-        if self._local_trace is not None:
-            return self._local_trace
-        self._local_trace = self._client.start_trace(self._trace_name)
-        return self._local_trace
+        trace = self._client.start_trace(self._trace_name)
+        self._root_traces[root_run_id] = trace
+        return trace
 
     def _start_span(
         self,
@@ -220,30 +235,31 @@ class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
         input_value: Any,
     ) -> None:
         run_id_s = _stringify_run_id(run_id)
-        if run_id_s is None or run_id_s in self._runs:
-            return  # idempotent: defensive against duplicate start
+        if run_id_s is None:
+            return
         parent_run_id_s = _stringify_run_id(parent_run_id)
-        parent_record = self._runs.get(parent_run_id_s) if parent_run_id_s else None
-        was_root_before = self._external_trace is None and self._local_trace is None
-        trace = self._get_trace()
-        is_root = parent_record is None
 
         trimmed_input = (
             _truncate(input_value, self._max_input_bytes) if input_value is not None else _OMIT
         )
-
         kwargs: dict[str, Any] = {"span_type": span_type}
         if trimmed_input is not _OMIT:
             kwargs["input"] = trimmed_input
 
-        span: SpanHandle = (
-            trace.span(name, **kwargs) if is_root else parent_record["span"].child(name, **kwargs)
-        )
-
-        self._runs[run_id_s] = {
-            "span": span,
-            "root_of_local_trace": is_root and was_root_before and self._external_trace is None,
-        }
+        with self._lock:
+            if run_id_s in self._runs:
+                return  # idempotent: defensive against duplicate start
+            parent_record = self._runs.get(parent_run_id_s) if parent_run_id_s else None
+            if parent_record is not None:
+                span = parent_record.span.child(name, **kwargs)
+                root_run_id = parent_record.root_run_id
+            else:
+                # A run whose parent we are not recording (a true root, or a
+                # child of a run filtered out by capture_* flags) starts its
+                # own trace, so parallel roots never share one.
+                span = self._open_root_trace(run_id_s).span(name, **kwargs)
+                root_run_id = run_id_s
+            self._runs[run_id_s] = _RunRecord(span=span, root_run_id=root_run_id)
 
     def _end_span(
         self,
@@ -257,9 +273,15 @@ class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
         run_id_s = _stringify_run_id(run_id)
         if run_id_s is None:
             return
-        record = self._runs.pop(run_id_s, None)
-        if record is None:
-            return  # orphan end — silent
+        with self._lock:
+            record = self._runs.pop(run_id_s, None)
+            if record is None:
+                return  # orphan or duplicate end: silent
+            owned_trace = (
+                self._root_traces.pop(run_id_s, None)
+                if record.root_run_id == run_id_s
+                else None
+            )
 
         end_kwargs: dict[str, Any] = {"status": status}
         if output is not _OMIT:
@@ -278,12 +300,11 @@ class SpanlensCallbackHandler(_LCBase):  # type: ignore[valid-type,misc]
             if "metadata" in extra:
                 end_kwargs["metadata"] = extra["metadata"]
 
-        record["span"].end(**end_kwargs)
+        record.span.end(**end_kwargs)
 
-        if record["root_of_local_trace"]:
-            trace = self._get_trace()
-            trace.end(status=("error" if status == "error" else "completed"))
-            self._local_trace = None
+        if owned_trace is not None:
+            # This root's own trace, ended with this root's own status.
+            owned_trace.end(status=("error" if status == "error" else "completed"))
 
     # ── LLM hooks ──────────────────────────────────────────────────────
 

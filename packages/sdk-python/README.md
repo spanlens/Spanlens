@@ -263,6 +263,11 @@ graph = workflow.compile()
 result = graph.invoke({"input": "Hello"}, config={"callbacks": [handler]})
 ```
 
+One handler per process is enough. It is safe to share across threads and
+asyncio tasks: each top-level invocation gets its own trace, and that trace
+ends with that invocation's status, so a failure in one request is never
+hidden by another request that finished cleanly.
+
 Attach to an existing trace to nest the chain under a larger workflow:
 
 ```python
