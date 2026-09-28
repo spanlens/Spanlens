@@ -31,8 +31,15 @@ export function readEnv(name: string): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
+/**
+ * Drops trailing `/` characters. A loop instead of `/\/+$/`: that regex
+ * backtracks quadratically on a long run of slashes that is not at the end
+ * (CodeQL js/polynomial-redos), and the value comes from the environment.
+ */
 function stripTrailingSlashes(url: string): string {
-  return url.replace(/\/+$/, '')
+  let end = url.length
+  while (end > 0 && url.charCodeAt(end - 1) === 0x2f) end -= 1
+  return url.slice(0, end)
 }
 
 /** `SPANLENS_BASE_URL` without whitespace or trailing slashes; `undefined` when unset or blank. */
