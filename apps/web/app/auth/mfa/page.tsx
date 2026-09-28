@@ -15,9 +15,12 @@ import {
 
 const DIGIT_COUNT = 6
 
+// No recovery codes and no "remember this device": neither has anything
+// behind it (no recovery flow, no trusted-device store), so neither is
+// offered. Add them back only together with the server side.
 const PITCH = {
   title: 'Second factor, every sign in.',
-  body: 'Codes come from your authenticator app. Recovery codes work once each if you lose the device.',
+  body: 'Codes come from your authenticator app and change every 30 seconds.',
 }
 
 function MfaPageInner() {
@@ -28,7 +31,6 @@ function MfaPageInner() {
   const [digits, setDigits] = useState<string[]>(Array(DIGIT_COUNT).fill(''))
   const [error, setError] = useState('')
   const [verifying, setVerifying] = useState(false)
-  const [rememberDevice, setRememberDevice] = useState(false)
   const inputRefs = useRef<Array<HTMLInputElement | null>>(Array(DIGIT_COUNT).fill(null))
 
   useEffect(() => {
@@ -168,16 +170,6 @@ function MfaPageInner() {
       {error && <AuthNote tone="bad" live="assertive" className="mt-4">{error}</AuthNote>}
       {verifying && <AuthNote live="polite" className="mt-4">Verifying…</AuthNote>}
 
-      <label className="mt-4 flex cursor-pointer items-center gap-2.5">
-        <input
-          type="checkbox"
-          checked={rememberDevice}
-          onChange={(e) => setRememberDevice(e.target.checked)}
-          className="size-4 shrink-0 cursor-pointer accent-[var(--accent)]"
-        />
-        <span className="text-[12.5px] leading-[1.48] text-text-muted">Remember this device for 30 days</span>
-      </label>
-
       {/* The six boxes auto-submit on the last digit; this button is the
           explicit path for anyone who tabs away before that fires. */}
       <button
@@ -190,10 +182,11 @@ function MfaPageInner() {
       </button>
 
       <AuthFootnote className="mt-[18px]">
-        Lost the device?{' '}
-        <Link href="/login" className={authLink}>
-          Use a recovery code
-        </Link>
+        Lost your authenticator? Email{' '}
+        <a href="mailto:support@spanlens.io" className={authLink}>
+          support@spanlens.io
+        </a>{' '}
+        from your account address.
       </AuthFootnote>
     </AuthLayout>
   )
