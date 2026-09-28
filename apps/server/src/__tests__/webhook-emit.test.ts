@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const dispatchMock = vi.fn()
+const recordUndeliveredMock = vi.fn()
 let webhooksResult: { data: unknown; error: unknown }
 let fetchCount = 0
 
@@ -29,13 +30,16 @@ vi.mock('../lib/db.js', () => ({
 
 vi.mock('../lib/webhook-dispatch.js', () => ({
   dispatchWebhookEvent: (...args: unknown[]) => dispatchMock(...args),
+  recordUndeliveredWebhookEvent: (...args: unknown[]) => recordUndeliveredMock(...args),
 }))
 
 type Emit = typeof import('../lib/webhook-emit.js').emitWebhookEvent
 type Invalidate = typeof import('../lib/webhook-emit.js').invalidateWebhookCache
+type Defer = typeof import('../lib/webhook-emit.js').deferWebhookEvent
 
 let emitWebhookEvent: Emit
 let invalidateWebhookCache: Invalidate
+let deferWebhookEvent: Defer
 
 const hook = (id: string, events: string[]) => ({
   id,
@@ -47,11 +51,13 @@ const hook = (id: string, events: string[]) => ({
 beforeEach(async () => {
   vi.resetModules()
   dispatchMock.mockReset().mockResolvedValue('delivery-id')
+  recordUndeliveredMock.mockReset().mockResolvedValue(undefined)
   fetchCount = 0
   webhooksResult = { data: [], error: null }
   const mod = await import('../lib/webhook-emit.js')
   emitWebhookEvent = mod.emitWebhookEvent
   invalidateWebhookCache = mod.invalidateWebhookCache
+  deferWebhookEvent = mod.deferWebhookEvent
 })
 
 describe('emitWebhookEvent', () => {
@@ -138,5 +144,33 @@ describe('emitWebhookEvent', () => {
     dispatchMock.mockRejectedValueOnce(new Error('endpoint down'))
 
     await expect(emitWebhookEvent('org1', 'request.created', {})).resolves.toBeUndefined()
+  })
+})
+
+describe('deferWebhookEvent', () => {
+  test('records one undelivered delivery per subscribed webhook and sends nothing', async () => {
+    webhooksResult = {
+      data: [hook('w1', ['request.created']), hook('w2', ['alert.triggered']), hook('w3', ['request.created'])],
+      error: null,
+    }
+
+    await deferWebhookEvent('org1', 'request.created', { request: { id: 'r1' } }, 'out of time')
+
+    expect(dispatchMock).not.toHaveBeenCalled()
+    expect(recordUndeliveredMock.mock.calls.map((c) => (c[0] as { id: string }).id)).toEqual(['w1', 'w3'])
+    expect(recordUndeliveredMock).toHaveBeenCalledWith(
+      { id: 'w1', url: 'https://hooks.example.com/w1', secret: 'secret-w1' },
+      'request.created',
+      { request: { id: 'r1' } },
+      'out of time',
+    )
+  })
+
+  test('no-op without an org or a subscribed webhook', async () => {
+    await deferWebhookEvent('', 'request.created', {}, 'x')
+    webhooksResult = { data: [hook('w1', ['trace.completed'])], error: null }
+    await deferWebhookEvent('org1', 'request.created', {}, 'x')
+
+    expect(recordUndeliveredMock).not.toHaveBeenCalled()
   })
 })

@@ -111,17 +111,26 @@ export async function sendWebhook(
  * can pick it up. Returns the delivery result along with the created delivery
  * row ID (empty string if the insert failed).
  */
-export async function dispatchWebhookEvent(
+/** The body a webhook receives: the event's own fields plus the envelope. */
+function buildDeliveryPayload(
   webhook: WebhookRow,
   eventType: string,
   payloadObj: Record<string, unknown>,
-): Promise<DispatchResult & { deliveryId: string }> {
-  const fullPayload = {
+): Record<string, unknown> {
+  return {
     ...payloadObj,
     event: eventType,
     timestamp: new Date().toISOString(),
     webhook_id: webhook.id,
   }
+}
+
+export async function dispatchWebhookEvent(
+  webhook: WebhookRow,
+  eventType: string,
+  payloadObj: Record<string, unknown>,
+): Promise<DispatchResult & { deliveryId: string }> {
+  const fullPayload = buildDeliveryPayload(webhook, eventType, payloadObj)
 
   const { ok, httpStatus, errorMessage, durationMs, payloadStr } = await sendWebhook(
     webhook.url,
@@ -155,6 +164,44 @@ export async function dispatchWebhookEvent(
     errorMessage,
     durationMs,
     deliveryId: (data as { id: string } | null)?.id ?? '',
+  }
+}
+
+/**
+ * Records a delivery that was never attempted, so the event is not lost when a
+ * caller runs out of time to send it (the fallback replay's announce budget).
+ *
+ * The row is shaped for retryFailedWebhooks: status `failed`, `attempt_count`
+ * 0 because nothing was sent yet, and `next_retry_at` now so a retry run
+ * sends it with its full attempt budget. That job is unscheduled today (see
+ * /cron/retry-webhooks in api/cron.ts), so until it runs the row stands as a
+ * failed delivery like any other. `reason` becomes the delivery's error
+ * message in the customer's delivery history. Never throws: a caller that is
+ * already short on time must not fail on this.
+ */
+export async function recordUndeliveredWebhookEvent(
+  webhook: WebhookRow,
+  eventType: string,
+  payloadObj: Record<string, unknown>,
+  reason: string,
+): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin.from('webhook_deliveries').insert({
+      webhook_id: webhook.id,
+      event_type: eventType,
+      status: 'failed',
+      http_status: null,
+      error_message: reason,
+      duration_ms: null,
+      payload: buildDeliveryPayload(webhook, eventType, payloadObj),
+      attempt_count: 0,
+      next_retry_at: new Date().toISOString(),
+    })
+    if (error) {
+      logError('WEBHOOK_DISPATCH_FAILED', { webhookId: webhook.id, eventType, kind: 'undelivered_record' }, error)
+    }
+  } catch (err) {
+    logError('WEBHOOK_DISPATCH_FAILED', { webhookId: webhook.id, eventType, kind: 'undelivered_record' }, err)
   }
 }
 

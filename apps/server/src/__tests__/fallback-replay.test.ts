@@ -13,8 +13,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 //   3. Database still down → no rows deleted, retry budget untouched
 //   4. Old rows expired (>7 days) → dropped before batch even queries
 //   5. Poison rows → isolated row by row so they cannot hold the queue
-//      hostage, and only THEY spend retries
-//   6. fallbackQueueSize handles DB errors gracefully (returns null, not throws)
+//      hostage, and only THEY spend retries (including SQLSTATE 54000, an
+//      end-user id too long to index, and codes the replay has no rule for)
+//   6. request.created for replayed rows → sent a few at a time, after the
+//      queue bookkeeping, within a time budget; the rest recorded undelivered
+//   7. fallbackQueueSize handles DB errors gracefully (returns null, not throws)
 //
 // The replay is idempotent through `ON CONFLICT (created_at, id) DO NOTHING`
 // — the primary key enforces it, so there is no read-back and no window
@@ -29,6 +32,7 @@ const supabaseFromMock = vi.fn()
 const pgQueryMock = vi.fn()
 const recordOrgActivityMock = vi.fn()
 const emitRequestCreatedMock = vi.fn()
+const deferRequestCreatedMock = vi.fn()
 
 vi.mock('../lib/db.js', () => ({
   supabaseAdmin: {
@@ -56,6 +60,7 @@ vi.mock('../lib/org-activity.js', () => ({
 
 vi.mock('../lib/logger.js', () => ({
   emitRequestCreated: (...args: unknown[]) => emitRequestCreatedMock(...args),
+  deferRequestCreated: (...args: unknown[]) => deferRequestCreatedMock(...args),
 }))
 
 let replayFallbackQueue: typeof import('../lib/fallback-replay.js').replayFallbackQueue
@@ -70,6 +75,8 @@ beforeEach(async () => {
   recordOrgActivityMock.mockResolvedValue(undefined)
   emitRequestCreatedMock.mockReset()
   emitRequestCreatedMock.mockResolvedValue(undefined)
+  deferRequestCreatedMock.mockReset()
+  deferRequestCreatedMock.mockResolvedValue(undefined)
   // Default: the INSERT lands every payload it was given.
   pgQueryMock.mockImplementation(async (opts: { params: Record<string, unknown> }) =>
     boundIds(opts.params).map((id) => ({ id })),
@@ -556,6 +563,231 @@ describe('replayFallbackQueue — poison rows (C8.3)', () => {
     }
     expect(queue).toEqual([])
     expect(expiredGood).toBe(0)
+  })
+})
+
+describe('replayFallbackQueue — which failures isolate a row', () => {
+  const threeRows = [
+    { id: 'q-poison', payload: { id: 'p', organization_id: 'o1' }, retry_count: 0 },
+    { id: 'q-a', payload: { id: 'a', organization_id: 'o1' }, retry_count: 0 },
+    { id: 'q-b', payload: { id: 'b', organization_id: 'o2' }, retry_count: 0 },
+  ]
+
+  /** The INSERT fails with `err` whenever the poison payload is in it. */
+  function failWhenPoisonBound(err: Error): void {
+    pgQueryMock.mockImplementation(async (opts: { params: Record<string, unknown> }) => {
+      const ids = boundIds(opts.params)
+      if (ids.includes('p')) throw err
+      return ids.map((id) => ({ id }))
+    })
+  }
+
+  test('an end-user id too long for its index (54000) is a row problem: isolated, the rest lands', async () => {
+    // Reproduced against local Postgres: a user_id past ~2.7KB fails the
+    // partial btree on (organization_id, user_id, created_at). Deferring it
+    // as a database failure left retry_count at 0, so the same row headed
+    // every batch and held the whole queue until the 7-day expiry.
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: { data: threeRows, error: null },
+    })
+    failWhenPoisonBound(
+      pgError(
+        '54000',
+        'index row size 6440 exceeds btree version 4 maximum 2704 for index "requests_2026_09_organization_id_user_id_created_at_idx"',
+      ),
+    )
+
+    const result = await replayFallbackQueue()
+
+    expect(result.replayed).toBe(2)
+    expect(result.failed).toBe(1)
+    expect(recorder.deletedIds).toEqual([['q-a', 'q-b']])
+    expect(recorder.updates.map((u) => [u.id, u.patch['retry_count']])).toEqual([['q-poison', 1]])
+    expect(recorder.bulkUpdates).toEqual([])
+  })
+
+  test('a single-row batch rejected with 54000 spends its retry without a second attempt', async () => {
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: { data: [threeRows[0]!], error: null },
+    })
+    pgQueryMock.mockRejectedValue(pgError('54000', 'index row size 6440 exceeds btree version 4 maximum 2704'))
+
+    await replayFallbackQueue()
+
+    expect(pgQueryMock).toHaveBeenCalledOnce()
+    expect(recorder.updates.map((u) => [u.id, u.patch['retry_count']])).toEqual([['q-poison', 1]])
+  })
+
+  test('a SQLSTATE the replay has no rule for is isolated; the row failing while others land spends a retry', async () => {
+    // P0001 is what a RAISE in a trigger would produce. Nothing the replay
+    // knows about, but other rows landing in the same run proves the database
+    // is accepting inserts, so the failure belongs to that row.
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: { data: threeRows, error: null },
+    })
+    failWhenPoisonBound(pgError('P0001', 'row rejected by trigger'))
+
+    const result = await replayFallbackQueue()
+
+    expect(result.replayed).toBe(2)
+    expect(recorder.deletedIds).toEqual([['q-a', 'q-b']])
+    expect(recorder.updates.map((u) => [u.id, u.patch['retry_count']])).toEqual([['q-poison', 1]])
+  })
+
+  test('a SQLSTATE the replay has no rule for that every row hits is not charged to the rows', async () => {
+    // With nothing landing there is no evidence the rows are at fault, so the
+    // failure is treated like the database's own: queued as is, no retry spent.
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: { data: threeRows, error: null },
+    })
+    pgQueryMock.mockRejectedValue(pgError('P0001', 'inserts disabled by trigger'))
+
+    const result = await replayFallbackQueue()
+
+    expect(result.replayed).toBe(0)
+    expect(result.failed).toBe(3)
+    expect(result.error).toMatch(/inserts disabled by trigger/)
+    expect(recorder.deletedIds).toEqual([])
+    expect(recorder.updates).toEqual([])
+    expect(recorder.bulkUpdates.map((u) => u.ids)).toEqual([['q-poison', 'q-a', 'q-b']])
+    expect(recorder.bulkUpdates[0]!.patch['retry_count']).toBeUndefined()
+  })
+
+  test('a single row failing with an unrecognised SQLSTATE is deferred, not charged', async () => {
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: { data: [threeRows[0]!], error: null },
+    })
+    pgQueryMock.mockRejectedValue(pgError('P0001', 'row rejected by trigger'))
+
+    await replayFallbackQueue()
+
+    expect(recorder.updates).toEqual([])
+    expect(recorder.bulkUpdates.map((u) => u.ids)).toEqual([['q-poison']])
+  })
+
+  test('a Node socket error code is not mistaken for a SQLSTATE', async () => {
+    // `EPIPE` is five uppercase letters, the same shape as a SQLSTATE. It is
+    // the connection dropping, so the batch is deferred with no isolation pass.
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: { data: threeRows, error: null },
+    })
+    pgQueryMock.mockRejectedValue(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))
+
+    const result = await replayFallbackQueue()
+
+    expect(pgQueryMock).toHaveBeenCalledOnce()
+    expect(result.failed).toBe(3)
+    expect(recorder.updates).toEqual([])
+    expect(recorder.bulkUpdates.map((u) => u.ids)).toEqual([['q-poison', 'q-a', 'q-b']])
+  })
+
+  test.each([
+    ['08006', 'connection failure'],
+    ['25006', 'cannot execute INSERT in a read-only transaction'],
+    ['53300', 'too many connections'],
+    ['55P03', 'lock not available'],
+    ['57014', 'canceling statement due to statement timeout'],
+    ['XX000', 'internal error'],
+  ])('database-side SQLSTATE %s defers the batch without an isolation pass', async (code, message) => {
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: { data: threeRows, error: null },
+    })
+    pgQueryMock.mockRejectedValue(pgError(code, message))
+
+    await replayFallbackQueue()
+
+    expect(pgQueryMock).toHaveBeenCalledOnce()
+    expect(recorder.updates).toEqual([])
+  })
+})
+
+describe('replayFallbackQueue — announcing replayed rows', () => {
+  function queueOf(count: number): Array<{ id: string; payload: Record<string, unknown>; retry_count: number }> {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `q-${i}`,
+      payload: { id: `r-${i}`, organization_id: 'o1' },
+      retry_count: 0,
+    }))
+  }
+
+  test('retry bookkeeping is written before any request.created goes out', async () => {
+    // If a slow subscriber runs the function out of time, the retry state of
+    // the rows that did not land must already be saved.
+    const recorder = setupSupabaseChains({
+      deleteResult: { count: 0 },
+      selectResult: {
+        data: [
+          { id: 'q-poison', payload: { id: 'p', organization_id: 'o1' }, retry_count: 2 },
+          { id: 'q-a', payload: { id: 'a', organization_id: 'o1' }, retry_count: 0 },
+        ],
+        error: null,
+      },
+    })
+    pgQueryMock.mockImplementation(async (opts: { params: Record<string, unknown> }) => {
+      const ids = boundIds(opts.params)
+      if (ids.includes('p')) throw pgError('23503', 'violates foreign key constraint')
+      return ids.map((id) => ({ id }))
+    })
+    const updatesSeenAtFirstEmit: string[] = []
+    emitRequestCreatedMock.mockImplementation(async () => {
+      if (updatesSeenAtFirstEmit.length === 0) {
+        updatesSeenAtFirstEmit.push(...recorder.updates.map((u) => u.id), 'emitted')
+      }
+    })
+
+    await replayFallbackQueue()
+
+    expect(updatesSeenAtFirstEmit).toEqual(['q-poison', 'emitted'])
+  })
+
+  test('dispatches run a few at a time rather than one after another', async () => {
+    setupSupabaseChains({ deleteResult: { count: 0 }, selectResult: { data: queueOf(12), error: null } })
+    let inFlight = 0
+    let maxInFlight = 0
+    emitRequestCreatedMock.mockImplementation(async () => {
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight -= 1
+    })
+
+    await replayFallbackQueue()
+
+    expect(emitRequestCreatedMock).toHaveBeenCalledTimes(12)
+    expect(maxInFlight).toBeGreaterThan(1)
+    expect(maxInFlight).toBeLessThanOrEqual(5)
+    expect(deferRequestCreatedMock).not.toHaveBeenCalled()
+  })
+
+  test('events not started when the time budget runs out are recorded as undelivered', async () => {
+    // A subscriber that hangs costs each dispatch its full 10s timeout. Fifty
+    // of those one after another would run past the function's 300s ceiling,
+    // and everything after the kill would be lost without a delivery record.
+    setupSupabaseChains({ deleteResult: { count: 0 }, selectResult: { data: queueOf(50), error: null } })
+    let clock = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    emitRequestCreatedMock.mockImplementation(async () => {
+      clock += 20_000
+    })
+
+    const result = await replayFallbackQueue()
+
+    const emitted = emitRequestCreatedMock.mock.calls.map((c) => (c[0] as Record<string, unknown>)['id'])
+    const deferred = deferRequestCreatedMock.mock.calls.map((c) => (c[0] as Record<string, unknown>)['id'])
+    expect(result.replayed).toBe(50)
+    expect(emitted.length).toBeLessThan(50)
+    expect(deferred.length).toBeGreaterThan(0)
+    // Every inserted row is announced exactly once, one way or the other.
+    expect(new Set([...emitted, ...deferred]).size).toBe(50)
+    expect(emitted.length + deferred.length).toBe(50)
+    expect(String(deferRequestCreatedMock.mock.calls[0]![1])).toMatch(/time/i)
   })
 })
 

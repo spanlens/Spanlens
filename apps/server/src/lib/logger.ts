@@ -4,7 +4,7 @@ import { pgExecute } from './postgres.js'
 import { maskApiKeysInBody, maskApiKeys } from './pii-mask.js'
 import { scanAll, type SecurityFlag } from './security-scan.js'
 import { sendEmail, renderSecurityAlertEmail } from './resend.js'
-import { emitWebhookEvent } from './webhook-emit.js'
+import { deferWebhookEvent, emitWebhookEvent } from './webhook-emit.js'
 import { logError } from './structured-logger.js'
 import { resolvePromptVersion } from './resolve-prompt-version.js'
 import { getOrgBodySampleRate, shouldStoreBody } from './org-log-config.js'
@@ -149,6 +149,30 @@ function maybeTruncateBody(body: unknown): unknown {
 }
 
 /**
+ * Longest `user_id` / `session_id` stored, in UTF-16 code units. Both columns
+ * sit in partial btree indexes with the org id and timestamp, and a btree
+ * entry cannot exceed ~2.7KB: a longer customer-supplied x-spanlens-user or
+ * x-spanlens-session value failed the live INSERT with SQLSTATE 54000, and
+ * then failed every replay of the queued row too. One code unit is at most 3
+ * UTF-8 bytes, so 512 units stay under 1.6KB, well inside the limit, while
+ * leaving room for any real identifier (emails, UUIDs, composite keys).
+ */
+const MAX_IDENTIFIER_LENGTH = 512
+
+/**
+ * Cuts a customer-supplied identifier to MAX_IDENTIFIER_LENGTH. Backs off one
+ * unit rather than end on the high half of a surrogate pair, which would
+ * otherwise reach Postgres as a replacement character.
+ */
+function boundIdentifier(value: string | null | undefined): string | null {
+  if (value == null) return null
+  if (value.length <= MAX_IDENTIFIER_LENGTH) return value
+  const lastKept = value.charCodeAt(MAX_IDENTIFIER_LENGTH - 1)
+  const endsOnHighSurrogate = lastKept >= 0xd800 && lastKept <= 0xdbff
+  return value.slice(0, endsOnHighSurrogate ? MAX_IDENTIFIER_LENGTH - 1 : MAX_IDENTIFIER_LENGTH)
+}
+
+/**
  * The column list, in the order `insertRequestRow` binds them.
  *
  * Kept as an explicit array rather than derived from `Object.keys(row)` so the
@@ -237,23 +261,46 @@ async function insertRequestRow(row: Record<string, unknown>): Promise<void> {
 export async function emitRequestCreated(row: Readonly<Record<string, unknown>>): Promise<void> {
   const orgId = String(row['organization_id'] ?? '')
   try {
-    await emitWebhookEvent(orgId, 'request.created', {
-      request: {
-        id: row['id'],
-        provider: row['provider'],
-        model: row['model'],
-        prompt_tokens: row['prompt_tokens'],
-        completion_tokens: row['completion_tokens'],
-        total_tokens: row['total_tokens'],
-        cost_usd: row['cost_usd'],
-        latency_ms: row['latency_ms'],
-        status_code: row['status_code'],
-        trace_id: row['trace_id'],
-        created_at: row['created_at'],
-      },
-    })
+    await emitWebhookEvent(orgId, 'request.created', requestCreatedPayload(row))
   } catch (err) {
     logError('WEBHOOK_DISPATCH_FAILED', { orgId, eventType: 'request.created' }, err)
+  }
+}
+
+/**
+ * Records `request.created` for one stored row as an undelivered webhook
+ * delivery instead of sending it now, with `reason` as the delivery's error.
+ * The fallback replay uses this for events it had no time left to send (see
+ * announceInserted in lib/fallback-replay.ts). Same payload as
+ * emitRequestCreated. Never throws.
+ */
+export async function deferRequestCreated(
+  row: Readonly<Record<string, unknown>>,
+  reason: string,
+): Promise<void> {
+  const orgId = String(row['organization_id'] ?? '')
+  try {
+    await deferWebhookEvent(orgId, 'request.created', requestCreatedPayload(row), reason)
+  } catch (err) {
+    logError('WEBHOOK_DISPATCH_FAILED', { orgId, eventType: 'request.created', deferred: true }, err)
+  }
+}
+
+function requestCreatedPayload(row: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return {
+    request: {
+      id: row['id'],
+      provider: row['provider'],
+      model: row['model'],
+      prompt_tokens: row['prompt_tokens'],
+      completion_tokens: row['completion_tokens'],
+      total_tokens: row['total_tokens'],
+      cost_usd: row['cost_usd'],
+      latency_ms: row['latency_ms'],
+      status_code: row['status_code'],
+      trace_id: row['trace_id'],
+      created_at: row['created_at'],
+    },
   }
 }
 
@@ -418,8 +465,8 @@ export async function logRequestAsync(data: RequestLogData): Promise<void> {
   const errorMessage = data.errorMessage ? maskApiKeys(data.errorMessage) : null
 
   const dropIdentifiers = logBodyMode === 'none'
-  const userId = dropIdentifiers ? null : (data.userId ?? null)
-  const sessionId = dropIdentifiers ? null : (data.sessionId ?? null)
+  const userId = dropIdentifiers ? null : boundIdentifier(data.userId)
+  const sessionId = dropIdentifiers ? null : boundIdentifier(data.sessionId)
 
   // Resolve the prompt version here rather than in the proxy hot path: on a
   // cold cache this is 1-2 Supabase queries, and logRequestAsync already runs

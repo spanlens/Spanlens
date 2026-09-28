@@ -12,6 +12,7 @@ const fallbackInsertMock = vi.fn()
 const fallbackUpdateMock = vi.fn().mockResolvedValue({ data: null })
 const supabaseFromMock = vi.fn()
 const emitWebhookEventMock = vi.fn()
+const deferWebhookEventMock = vi.fn()
 
 vi.mock('../lib/postgres.js', async (importOriginal) => {
   // Partial mock: only the write entry point is stubbed, so the parameter
@@ -32,6 +33,7 @@ vi.mock('../lib/db.js', () => ({
 
 vi.mock('../lib/webhook-emit.js', () => ({
   emitWebhookEvent: (...args: unknown[]) => emitWebhookEventMock(...args),
+  deferWebhookEvent: (...args: unknown[]) => deferWebhookEventMock(...args),
 }))
 
 vi.mock('../lib/resend.js', () => ({
@@ -40,6 +42,8 @@ vi.mock('../lib/resend.js', () => ({
 }))
 
 let logRequestAsync: typeof import('../lib/logger.js').logRequestAsync
+let emitRequestCreated: typeof import('../lib/logger.js').emitRequestCreated
+let deferRequestCreated: typeof import('../lib/logger.js').deferRequestCreated
 
 beforeEach(async () => {
   vi.resetModules()
@@ -50,6 +54,8 @@ beforeEach(async () => {
   supabaseFromMock.mockReset()
   emitWebhookEventMock.mockReset()
   emitWebhookEventMock.mockResolvedValue(undefined)
+  deferWebhookEventMock.mockReset()
+  deferWebhookEventMock.mockResolvedValue(undefined)
 
   // Default chain: insert into requests_fallback succeeds; org-update for
   // security alerts returns no row (so the alert chain bails fast).
@@ -73,7 +79,7 @@ beforeEach(async () => {
   })
   fallbackInsertMock.mockResolvedValue({ error: null })
 
-  ;({ logRequestAsync } = await import('../lib/logger.js'))
+  ;({ logRequestAsync, emitRequestCreated, deferRequestCreated } = await import('../lib/logger.js'))
 })
 
 afterEach(() => vi.restoreAllMocks())
@@ -275,5 +281,72 @@ describe('logRequestAsync — request.created only for a row that exists (C8.1)'
 
     expect(fallbackInsertMock).toHaveBeenCalledOnce()
     expect(emitWebhookEventMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('deferRequestCreated', () => {
+  test('hands the same payload emitRequestCreated sends to the undelivered-delivery path', async () => {
+    const row = { id: 'r1', organization_id: 'org_1', provider: 'openai', cost_usd: 0.5, created_at: 't' }
+
+    await emitRequestCreated(row)
+    await deferRequestCreated(row, 'ran out of time')
+
+    const [, , sent] = emitWebhookEventMock.mock.calls[0] as [string, string, unknown]
+    const [orgId, eventType, deferred, reason] = deferWebhookEventMock.mock.calls[0] as [
+      string,
+      string,
+      unknown,
+      string,
+    ]
+    expect(orgId).toBe('org_1')
+    expect(eventType).toBe('request.created')
+    expect(deferred).toEqual(sent)
+    expect(reason).toBe('ran out of time')
+  })
+
+  test('never throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    deferWebhookEventMock.mockRejectedValue(new Error('boom'))
+
+    await expect(deferRequestCreated({ id: 'r1', organization_id: 'org_1' }, 'x')).resolves.toBeUndefined()
+  })
+})
+
+describe('logRequestAsync — end-user and session ids fit their indexes', () => {
+  // requests has partial btree indexes on (organization_id, user_id,
+  // created_at) and (organization_id, session_id, created_at). A btree entry
+  // tops out near 2.7KB, so a longer x-spanlens-user value failed the live
+  // insert with 54000 and then the replay of the queued row.
+  function insertedParams(): Record<string, unknown> {
+    return (pgExecuteMock.mock.calls[0]?.[0] as { params: Record<string, unknown> }).params
+  }
+
+  test('an oversized id is cut to a length the index always accepts', async () => {
+    pgExecuteMock.mockResolvedValue(1)
+
+    await logRequestAsync({ ...baseLog, userId: 'u'.repeat(6000), sessionId: 's'.repeat(6000) })
+
+    const params = insertedParams()
+    expect(String(params['user_id'])).toBe('u'.repeat(512))
+    expect(String(params['session_id'])).toBe('s'.repeat(512))
+  })
+
+  test('an ordinary id is stored as is', async () => {
+    pgExecuteMock.mockResolvedValue(1)
+
+    await logRequestAsync({ ...baseLog, userId: 'user_42', sessionId: 'sess_7' })
+
+    expect(insertedParams()['user_id']).toBe('user_42')
+    expect(insertedParams()['session_id']).toBe('sess_7')
+  })
+
+  test('the cut never leaves half of a surrogate pair behind', async () => {
+    pgExecuteMock.mockResolvedValue(1)
+
+    await logRequestAsync({ ...baseLog, userId: 'a' + '\u{1F600}'.repeat(400) })
+
+    const stored = String(insertedParams()['user_id'])
+    expect(stored.length).toBeLessThanOrEqual(512)
+    expect(/[\uD800-\uDBFF]$/.test(stored)).toBe(false)
   })
 })

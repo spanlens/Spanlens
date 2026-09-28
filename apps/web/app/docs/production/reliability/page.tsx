@@ -134,9 +134,16 @@ export default function ReliabilityDocs() {
         </li>
         <li>
           <strong>A row&apos;s own data is the problem</strong> (for example it belongs to an
-          organization deleted while the row waited): the batch is retried one row at a time.
-          Every other row lands, and only the rejected row has its <code>retry_count</code>{' '}
-          bumped. One bad row cannot hold up the rows queued behind it.
+          organization deleted while the row waited, or holds a value too large for its
+          index): the batch is retried one row at a time. Every other row lands, and only the
+          rejected row has its <code>retry_count</code> bumped, which moves it behind the rows
+          queued after it. One bad row cannot hold up the rows queued behind it.
+        </li>
+        <li>
+          <strong>The cause is unclear</strong> (an error the replay has no rule for): the
+          batch is also retried one row at a time. A row that fails while other rows in the
+          same run land has its <code>retry_count</code> bumped. When no row lands at all, the
+          failure is treated as a database problem and no row is charged for it.
         </li>
       </ul>
       <ul>
@@ -145,7 +152,10 @@ export default function ReliabilityDocs() {
         <li>
           <strong>Webhooks</strong>: <code>request.created</code> fires when a row reaches{' '}
           <code>requests</code>. For a queued row that is when the replay inserts it, so the
-          event arrives late but never names a request you cannot read.
+          event arrives late but never names a request you cannot read. A replay run sends
+          these events a few at a time and stops starting new ones after about a minute, so a
+          slow endpoint cannot stall the queue. An event it does not reach appears in the
+          webhook&apos;s delivery history as a failed delivery that was never attempted.
         </li>
         <li>
           <strong>Duplicates</strong>: the replay insert ends in{' '}

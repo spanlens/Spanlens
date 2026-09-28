@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { supabaseAdmin } from './db.js'
-import { dispatchWebhookEvent } from './webhook-dispatch.js'
+import { dispatchWebhookEvent, recordUndeliveredWebhookEvent } from './webhook-dispatch.js'
 
 export type WebhookEventType = 'request.created' | 'trace.completed' | 'alert.triggered'
 
@@ -135,4 +135,25 @@ export async function emitWebhookEvent(
       ),
     ),
   )
+}
+
+/**
+ * Like emitWebhookEvent, but records the event as an undelivered delivery for
+ * each subscribed webhook instead of sending it. For callers that owe an
+ * event but have no time left to wait on the endpoint (see
+ * recordUndeliveredWebhookEvent for what the row looks like). Never throws.
+ */
+export async function deferWebhookEvent(
+  orgId: string,
+  eventType: WebhookEventType,
+  payload: Record<string, unknown>,
+  reason: string,
+): Promise<void> {
+  if (!orgId) return
+
+  const hooks = await getActiveWebhooksForOrg(orgId)
+  const matching = hooks.filter((h) => h.events.includes(eventType))
+  for (const h of matching) {
+    await recordUndeliveredWebhookEvent({ id: h.id, url: h.url, secret: h.secret }, eventType, payload, reason)
+  }
 }
