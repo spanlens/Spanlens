@@ -412,8 +412,18 @@ const openai = createOpenAI({
       <CodeBlock language="bash">{`# Pull the latest images and restart
 docker compose pull && docker compose up -d
 
-# If a new release added migrations, re-run init.sql in SQL Editor
-# (all statements use CREATE IF NOT EXISTS / ALTER IF NOT EXISTS, safe to re-run)`}</CodeBlock>
+# If the release added database migrations, open supabase/migrations/ and run
+# the files added since your last upgrade, oldest first, in the SQL Editor.
+# Skip any file listed in supabase/superseded-migrations.txt.
+# Do not re-run init.sql on an existing database: it is for fresh installs.`}</CodeBlock>
+      <p>
+        <code>init.sql</code> is the full schema for a new project and creates its tables without
+        checking whether they exist, so running it again on a live database stops at the first
+        table. To see which migration files a release adds, compare the two versions in git, for
+        example <code>git diff --name-only &lt;old&gt; &lt;new&gt; -- supabase/migrations</code>,
+        or check the <a href="/changelog">changelog</a>, which names the first new file when a
+        release needs one.
+      </p>
       <p>
         We ship semver tags (<code>ghcr.io/spanlens/spanlens-server:0.3.0</code>,{' '}
         <code>ghcr.io/spanlens/spanlens-web:0.3.0</code>). Pin a tag in production and upgrade

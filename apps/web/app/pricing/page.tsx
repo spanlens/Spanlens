@@ -407,7 +407,7 @@ export default function PricingPage() {
             </div>
             <div className="grid grid-cols-[140px_1fr] gap-x-4">
               <dt className="font-semibold text-text">Overage billing</dt>
-              <dd>Pro <span className="font-mono">$8</span> / Team <span className="font-mono">$5</span> per 100K extra requests. Overage is charged during the last two days of your billing period, and any usage from the final hours is charged right after the period closes.</dd>
+              <dd>Pro <span className="font-mono">$8</span> / Team <span className="font-mono">$5</span> per 100K extra requests. Overage is charged during the last two days of your billing period, and any usage after that is charged in the first daily billing run once the period closes, usually within a day.</dd>
             </div>
             <div className="grid grid-cols-[140px_1fr] gap-x-4">
               <dt className="font-semibold text-text">Hard cap</dt>
