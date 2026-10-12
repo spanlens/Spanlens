@@ -24,11 +24,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@typescript-eslint/utils": "^8.70.1"
+    "@typescript-eslint/utils": "^8.71.1"
   },
   "devDependencies": {
-    "@types/node": "^22.20.4",
-    "@typescript-eslint/rule-tester": "^8.70.1",
+    "@types/node": "^22.20.5",
+    "@typescript-eslint/rule-tester": "^8.71.1",
     "tsup": "^8.3.5",
     "typescript": "^6.0.3",
     "vitest": "^3.2.7"

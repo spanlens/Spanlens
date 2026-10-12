@@ -16,12 +16,12 @@
     "check:env": "pnpm --filter server check:env"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^8.70.1",
-    "@typescript-eslint/parser": "^8.70.1",
+    "@typescript-eslint/eslint-plugin": "^8.71.1",
+    "@typescript-eslint/parser": "^8.71.1",
     "eslint": "^9",
     "globals": "^16.5.0",
-    "lefthook": "^2.1.14",
-    "pg": "^8.23.0",
+    "lefthook": "^2.2.1",
+    "pg": "^8.23.1",
     "prettier": "^3.9.9",
     "typescript": "^6.0.3"
   },
