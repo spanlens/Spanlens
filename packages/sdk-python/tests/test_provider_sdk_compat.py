@@ -80,7 +80,7 @@ MESSAGE = {
     "id": "msg_1",
     "type": "message",
     "role": "assistant",
-    "model": "claude-sonnet-4-5",
+    "model": "claude-sonnet-5-5",
     "content": [{"type": "text", "text": "hello back"}],
     "stop_reason": "end_turn",
     "stop_sequence": None,
@@ -317,7 +317,7 @@ def test_anthropic_message_is_proxied_and_traced(
             trace,
             "messages",
             lambda headers: client.messages.create(
-                model="claude-sonnet-4-5",
+                model="claude-sonnet-5-5",
                 max_tokens=64,
                 messages=MESSAGES,
                 extra_headers=headers,
@@ -333,7 +333,7 @@ def test_anthropic_message_is_proxied_and_traced(
 
     end = _span_end(span_patch)
     assert (end["prompt_tokens"], end["completion_tokens"], end["total_tokens"]) == (9, 4, 13)
-    assert end["metadata"] == {"model": "claude-sonnet-4-5", "provider": "anthropic"}
+    assert end["metadata"] == {"model": "claude-sonnet-5-5", "provider": "anthropic"}
     assert end["output"]["content"][0]["text"] == "hello back"
 
 
@@ -357,7 +357,7 @@ async def test_async_anthropic_message_is_proxied_and_traced(
             trace,
             "messages",
             lambda headers: client.messages.create(
-                model="claude-sonnet-4-5",
+                model="claude-sonnet-5-5",
                 max_tokens=64,
                 messages=MESSAGES,
                 extra_headers=headers,
@@ -430,7 +430,7 @@ def test_anthropic_stream_is_returned_unconsumed(
             trace,
             "stream",
             lambda headers: client.messages.create(
-                model="claude-sonnet-4-5",
+                model="claude-sonnet-5-5",
                 max_tokens=64,
                 messages=MESSAGES,
                 stream=True,
