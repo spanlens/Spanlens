@@ -328,7 +328,12 @@ def test_anthropic_message_is_proxied_and_traced(
 
     assert msg.content[0].text == "hello back"
     sent = upstream.calls[0].request
-    assert sent.headers["x-api-key"] == PROXY_KEY
+    # anthropic < 2 sends the key as x-api-key, 2.x as Authorization: Bearer.
+    # The proxy's authApiKey accepts both, so either transport is correct.
+    assert (
+        sent.headers.get("x-api-key") == PROXY_KEY
+        or sent.headers.get("authorization") == f"Bearer {PROXY_KEY}"
+    )
     _assert_linked(sent, trace.trace_id)
 
     end = _span_end(span_patch)
