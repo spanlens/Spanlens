@@ -243,9 +243,12 @@ jobs:
   # no tomllib, but pytest installs tomli there, so plain runs take the tomli
   # path. The text fallback used when neither is available is covered by the
   # tests that set framework_detect.tomllib to None, on both interpreters.
+  # Pinned to 24.04: ubuntu-latest moved to 26.04, and actions/setup-python
+  # ships no Python 3.9 build for it (3.9 is past end-of-life). Keep the pin
+  # for as long as the SDK supports 3.9.
   python-sdk:
     name: Python SDK (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:

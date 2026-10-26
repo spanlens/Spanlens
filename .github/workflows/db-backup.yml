@@ -1,0 +1,147 @@
+name: Daily DB backup
+
+# Daily logical backup of the production Supabase database.
+#
+# Why this exists: the Supabase Free plan has no automated backups (Pro keeps
+# 7 days of daily backups). This workflow is the replacement, so it must be
+# running and green BEFORE the project is downgraded.
+#
+# What it produces, per run, following Supabase's own backup recipe
+# (https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore):
+#   roles.sql   cluster roles
+#   schema.sql  DDL for every non-platform schema
+#   data.sql    rows (COPY format), auth.users included
+# The three files are packed into one tarball and encrypted before upload.
+#
+# !! This repository is PUBLIC. !!
+#   - Artifacts of a public repo can be downloaded by any signed-in GitHub
+#     user. The dump holds customer prompts and auth data, so it is encrypted
+#     with AES-256 (gpg symmetric) before upload, and the plaintext never
+#     leaves the runner. Never remove the encryption step, never upload the
+#     raw .sql files, and never `cat` the dump in a step (run logs are public).
+#   - Provider keys inside the dump are already encrypted with the server's
+#     ENCRYPTION_KEY. A restore is only fully useful if that key is kept
+#     somewhere outside this backup (password manager).
+#
+# Restore procedure: docs/backup-and-restore.md
+#
+# Required secrets:
+#   SUPABASE_ACCESS_TOKEN  same token deploy-server.yml uses
+#   SUPABASE_DB_PASSWORD   same password deploy-server.yml uses
+#   BACKUP_PASSPHRASE      long random string (e.g. `openssl rand -base64 48`).
+#                          Store a copy in a password manager: without it the
+#                          backups cannot be decrypted.
+#
+# Note: GitHub disables scheduled workflows in public repos after 60 days with
+# no repository activity. A failed or disabled run emails the repo admins; if
+# the backups stop, check the Actions tab first.
+
+on:
+  schedule:
+    # 19:17 UTC = 04:17 KST. Off the :00 mark (GitHub drops top-of-hour
+    # schedules under load) and away from the 03:xx UTC daily cron cluster.
+    - cron: '17 19 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Dump, encrypt, upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      - name: Check secrets are present
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          missing=0
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD BACKUP_PASSPHRASE; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is not set"
+              missing=1
+            fi
+          done
+          # A short passphrase makes the public artifact brute-forceable.
+          if [ "${#BACKUP_PASSPHRASE}" -lt 32 ]; then
+            echo "::error::BACKUP_PASSPHRASE must be at least 32 characters"
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Dump database
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dump"
+          supabase link --project-ref gebocvcsjlarxhyauadf
+          supabase db dump --linked -f "$RUNNER_TEMP/dump/roles.sql" --role-only
+          supabase db dump --linked -f "$RUNNER_TEMP/dump/schema.sql"
+          supabase db dump --linked -f "$RUNNER_TEMP/dump/data.sql" --data-only --use-copy
+
+      - name: Sanity-check the dump
+        working-directory: ${{ runner.temp }}/dump
+        run: |
+          set -euo pipefail
+          # Fail loudly instead of uploading an empty or partial backup.
+          # Only sizes and match counts are printed, never file contents.
+          for f in roles.sql schema.sql data.sql; do
+            [ -s "$f" ] || { echo "::error::$f is empty"; exit 1; }
+            echo "$f: $(wc -c < "$f") bytes"
+          done
+          # Identifiers may or may not be quoted depending on the CLI version,
+          # so match both: public.requests and "public"."requests".
+          ident() { printf '"?%s"?\\."?%s"?' "${1%%.*}" "${1#*.}"; }
+          for table in public.organizations public.api_keys public.requests auth.users; do
+            grep -qE "CREATE TABLE( IF NOT EXISTS)? $(ident "$table")[ (]" schema.sql \
+              || { echo "::error::schema.sql has no CREATE TABLE for $table"; exit 1; }
+          done
+          for table in public.organizations auth.users; do
+            grep -qE "^COPY $(ident "$table") " data.sql \
+              || { echo "::error::data.sql has no COPY for $table"; exit 1; }
+          done
+
+      - name: Pack and encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/out"
+          tar -C "$RUNNER_TEMP/dump" -czf - roles.sql schema.sql data.sql \
+            | gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 \
+                --passphrase-fd 3 \
+                -o "$RUNNER_TEMP/out/spanlens-db-$stamp.tar.gz.gpg" \
+                3<<<"$BACKUP_PASSPHRASE"
+          # Remove the plaintext before anything else can pick it up.
+          rm -rf "$RUNNER_TEMP/dump"
+          # Prove the artifact decrypts and lists, without writing plaintext.
+          gpg --batch --quiet --pinentry-mode loopback --decrypt --passphrase-fd 3 \
+            "$RUNNER_TEMP/out/spanlens-db-$stamp.tar.gz.gpg" 3<<<"$BACKUP_PASSPHRASE" \
+            | tar -tzf - > /dev/null
+          ls -l "$RUNNER_TEMP/out"
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v7
+        with:
+          name: spanlens-db-${{ env.STAMP }}
+          path: ${{ runner.temp }}/out/spanlens-db-${{ env.STAMP }}.tar.gz.gpg
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
