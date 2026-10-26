@@ -107,7 +107,10 @@ jobs:
           # Identifiers may or may not be quoted depending on the CLI version,
           # so match both: public.requests and "public"."requests".
           ident() { printf '"?%s"?\\."?%s"?' "${1%%.*}" "${1#*.}"; }
-          for table in public.organizations public.api_keys public.requests auth.users; do
+          # auth.* DDL is platform-managed: `db dump` leaves it out of
+          # schema.sql (a new project already has it), but its rows are in
+          # data.sql, which the second loop checks.
+          for table in public.organizations public.api_keys public.requests; do
             grep -qE "CREATE TABLE( IF NOT EXISTS)? $(ident "$table")[ (]" schema.sql \
               || { echo "::error::schema.sql has no CREATE TABLE for $table"; exit 1; }
           done
