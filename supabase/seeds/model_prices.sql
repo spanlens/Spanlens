@@ -26,12 +26,23 @@ INSERT INTO model_prices (
   -- ── OpenAI: GPT-6 flagship family ─────────────────────────────────────────
   -- All three carry a 272k long-context tier at exactly 2x (set at the bottom).
   ('openai', 'gpt-6-astra',                     10.00,  50.00,   1.00,  12.500),
+  -- ⚠ gpt-6.1-sol matches gpt-6-sol on input, output AND cache write. The only
+  -- difference is cache read: 0.10 vs 0.20. Copying the 6 row doubles every
+  -- cache hit with nothing else looking wrong. Pinned by a test.
+  ('openai', 'gpt-6.1-sol',                      2.00,  10.00,   0.10,   2.500),
+  ('openai', 'gpt-6.1-terra',                    1.00,   5.00,   0.05,   1.250),
+  ('openai', 'gpt-6-cyber',                     20.00, 100.00,   2.00,  25.000), -- Cyber; no long tier
   ('openai', 'gpt-6-sol',                        2.00,  10.00,   0.20,   2.500),
   ('openai', 'gpt-6-luna',                       0.10,   0.50,   0.01,   0.125),
   -- Daybreak aliases. These are moving pointers: as of 2026-09-28 blue mirrors
   -- gpt-5.6-sol and red mirrors gpt-5.6-cyber. Re-verify both targets on every
   -- price refresh — they repoint without notice. A test pins each alias to the
   -- row it mirrors, so the two cannot drift apart inside this file.
+  -- ⚠ 2026-11-06: the pricing page NO LONGER mentions either Daybreak alias, so
+  -- we can no longer read what they point at. These hold gpt-5.6-sol and
+  -- gpt-5.6-cyber rates from 2026-09. If OpenAI repointed blue at the current
+  -- flagship, input is over-reported 2x and cache reads 4x. Not deleted: that
+  -- needs a `requests` history check, and prod was unreadable this run.
   ('openai', 'gpt-daybreak-blue-latest',         4.00,  20.00,   0.40,   5.000),
   ('openai', 'gpt-daybreak-red-latest',         12.50,  75.00,   1.25,  15.625),
   -- ── OpenAI: GPT-5.x flagship family ───────────────────────────────────────
@@ -60,7 +71,10 @@ INSERT INTO model_prices (
   ('openai', 'gpt-5-nano',                       0.05,   0.40,   0.005,  NULL),
   ('openai', 'gpt-5-pro',                       15.00, 120.00,   NULL,   NULL),
   ('openai', 'gpt-5-search-api',                 1.25,  10.00,   0.125,  NULL), -- Specialized models table
-  ('openai', 'gpt-rosalind-research',            5.00,  25.00,   0.50,   NULL), -- Specialized: Life Sciences
+  ('openai', 'gpt-rosalind-research',            5.00,  25.00,   0.50,   NULL), -- Life Sciences
+  ('openai', 'gpt-rosalind-discovery',           5.00,  25.00,   0.50,   NULL), -- Life Sciences
+  ('openai', 'gpt-6-rosalind',                  15.00,  75.00,   1.50,  18.750), -- Life Sciences; 272k tier below
+  ('openai', 'gpt-6-astra-law',                 10.00,  50.00,   1.00,   NULL), -- Legal; promo through 2026-12-31
   -- Listed as "Free" on the pricing page. 0, not NULL, so the dashboard shows
   -- $0.00 rather than missing data. Served by /v1/moderations, not chat.
   ('openai', 'omni-moderation-latest',           0.00,   0.000,  NULL,   NULL),
@@ -108,17 +122,21 @@ INSERT INTO model_prices (
   -- ── Mistral: chat completion + multimodal + embeddings ───────────────────
   -- Source: mistral.ai/pricing/api, 2026-07-29. Cache pricing not published
   -- (Mistral doesn't surface cache tokens in usage today).
-  ('mistral', 'mistral-large-latest',            0.50,   1.50,   NULL,   NULL), -- Mistral Large 3
-  ('mistral', 'mistral-medium-latest',           1.50,   7.50,   NULL,   NULL), -- Mistral Medium 3.5
-  ('mistral', 'mistral-small-latest',            0.15,   0.60,   NULL,   NULL), -- Mistral Small 4
+  -- ⚠ `*-latest` are moving pointers. Large 3 became Large 4 on 2026-11 and
+  -- took the price with it (was 0.50 / 1.50). Re-check these every refresh.
+  -- Mistral began publishing cached-input rates for the whole catalogue in
+  -- 2026-11; before that every cache hit here billed at the full input rate.
+  ('mistral', 'mistral-large-latest',            0.70,   2.10,   0.07,   NULL), -- Mistral Large 4
+  ('mistral', 'mistral-medium-latest',           1.50,   7.50,   NULL,   NULL), -- off the current page
+  ('mistral', 'mistral-small-latest',            0.15,   0.60,   0.015,  NULL), -- Mistral Small 4
   ('mistral', 'magistral-medium-latest',         2.00,   5.00,   NULL,   NULL),
   ('mistral', 'magistral-small-latest',          0.50,   1.50,   NULL,   NULL),
   ('mistral', 'devstral-medium-latest',          0.40,   2.00,   NULL,   NULL),
   ('mistral', 'devstral-small-latest',           0.10,   0.30,   NULL,   NULL),
-  ('mistral', 'codestral-latest',                0.30,   0.90,   NULL,   NULL),
-  ('mistral', 'ministral-3b-latest',             0.10,   0.10,   NULL,   NULL),
-  ('mistral', 'ministral-8b-latest',             0.15,   0.15,   NULL,   NULL),
-  ('mistral', 'ministral-14b-latest',            0.20,   0.20,   NULL,   NULL),
+  ('mistral', 'codestral-latest',                0.30,   0.90,   0.03,   NULL),
+  ('mistral', 'ministral-3b-latest',             0.10,   0.10,   0.01,   NULL),
+  ('mistral', 'ministral-8b-latest',             0.15,   0.15,   0.015,  NULL),
+  ('mistral', 'ministral-14b-latest',            0.20,   0.20,   0.02,   NULL),
   ('mistral', 'open-mistral-nemo',               0.15,   0.15,   NULL,   NULL),
   ('mistral', 'open-mixtral-8x7b',               0.70,   0.70,   NULL,   NULL),
   ('mistral', 'open-mixtral-8x22b',              2.00,   6.00,   NULL,   NULL),
@@ -128,14 +146,15 @@ INSERT INTO model_prices (
   ('mistral', 'voxtral-small-latest',            0.10,   0.40,   NULL,   NULL),
   -- GLM 5.x, third-party on Mistral. The pricing page stopped rendering API ids
   -- in 2026-09; the 5-3 id follows the 5-2 convention and is unconfirmed.
-  ('mistral', 'zai-glm-5-3',                     1.40,   4.40,   NULL,   NULL),
+  ('mistral', 'zai-glm-5-3-flash',               0.15,   0.50,   0.03,   NULL),
+  ('mistral', 'zai-glm-5-3',                     1.40,   4.40,   0.14,   NULL),
   ('mistral', 'zai-glm-5-2',                     1.40,   4.40,   NULL,   NULL),
   -- Listed as "Free" on the pricing page — 0, not NULL, so cost renders as $0
   -- rather than as missing data.
   ('mistral', 'mistral-moderation-2603',         0.00,   0.000,  NULL,   NULL),
   ('mistral', 'labs-leanstral-2603',             0.00,   0.000,  NULL,   NULL),
-  ('mistral', 'mistral-embed',                   0.10,   0.000,  NULL,   NULL),
-  ('mistral', 'codestral-embed',                 0.15,   0.000,  NULL,   NULL),
+  ('mistral', 'mistral-embed',                   0.10,   0.000,  0.01,   NULL),
+  ('mistral', 'codestral-embed',                 0.15,   0.000,  0.015,  NULL),
   -- ── Groq (OpenAI-compatible, api.groq.com/openai/v1) ─────────────────────
   ('groq', 'openai/gpt-oss-120b',                        0.15,  0.60,    0.075,    NULL),
   ('groq', 'openai/gpt-oss-20b',                         0.075, 0.30,    0.0375,   NULL),
@@ -207,6 +226,12 @@ INSERT INTO model_prices (
   -- claude-fable-5-1. Confirm on the next refresh.
   ('anthropic', 'claude-mythos-5-1',            10.00,  50.00,   0.25,  12.50),
   ('anthropic', 'claude-opus-5-5',               4.00,  20.00,   0.20,   5.00),
+  -- Sonnet 5.5 and Opus 5.5 read cache at 0.05x base, not the usual 0.1x.
+  ('anthropic', 'claude-sonnet-5-5',             2.00,  10.00,   0.10,   2.50),
+  -- Anthropic's first PROMPT-LENGTH tier: a flat 5x step above 100k tokens,
+  -- set in the long_* block below. Prompt length counts cache tokens, and the
+  -- page says "over 100,000", which is cost.ts's strict `>`. Pinned by a test.
+  ('anthropic', 'claude-haiku-5-5',              0.10,   0.50,   0.01,   0.125),
   ('anthropic', 'claude-fable-5',               10.00,  50.00,   1.00,  12.50),
   ('anthropic', 'claude-mythos-5',              10.00,  50.00,   1.00,  12.50),
   ('anthropic', 'claude-mythos-preview',        10.00,  50.00,   1.00,  12.50),
@@ -245,6 +270,9 @@ INSERT INTO model_prices (
   -- 2026-12-31. From 2027-01-01 each becomes 1.50 / 7.50 / 0.15. Flipping early
   -- doubles the reported cost; flipping late halves it. The Robotics ER 2 rows
   -- below are on the same window. Pinned by model-prices-cache.test.ts.
+  -- ⚠ PROMOTIONAL through 2026-11-30; 2.00 / 10.00 / 0.20 starts 2026-12-01.
+  -- Implicit caching only, and not offered on the free tier.
+  ('gemini', 'gemini-4-argon',                         2.00,  10.00,   0.10,  NULL),
   ('gemini', 'gemini-3.8-flash',                       0.75,   3.75,   0.075, NULL),
   ('gemini', 'gemini-3.7-flash',                       0.75,   3.75,   0.075, NULL),
   ('gemini', 'gemini-3.6-flash',                       0.75,   3.75,   0.075, NULL),
@@ -328,6 +356,43 @@ UPDATE model_prices
 --   Gemini threshold = 200,000 tokens (Pro family explicit ≤/> split)
 --   xAI    threshold = 200,000 tokens (docs.x.ai: reaching it re-rates the whole request)
 -- GPT-6: every axis is exactly 2x above the threshold.
+-- Anthropic Haiku 5.5: a PROMPT-LENGTH tier, not a context-window tier. Flat
+-- 5x on every axis above 100k. The page says "over 100,000" (cost.ts uses a
+-- strict `>`), and prompt length counts cache tokens (cost.ts branches on
+-- promptTokens, which includes them) — so these columns express it exactly.
+UPDATE model_prices
+   SET long_context_threshold_tokens = 100000,
+       long_prompt_price_per_1m      = 0.50,
+       long_completion_price_per_1m  = 2.50,
+       long_cache_read_price_per_1m  = 0.05,
+       long_cache_write_price_per_1m = 0.625
+ WHERE provider = 'anthropic' AND model = 'claude-haiku-5-5';
+
+-- GPT-6.1: 272k tier, 2x on input and both cache axes, 1.5x on output.
+UPDATE model_prices
+   SET long_context_threshold_tokens = 272000,
+       long_prompt_price_per_1m      =  4.00,
+       long_completion_price_per_1m  = 15.00,
+       long_cache_read_price_per_1m  =  0.20,
+       long_cache_write_price_per_1m =  5.00
+ WHERE provider = 'openai' AND model = 'gpt-6.1-sol';
+
+UPDATE model_prices
+   SET long_context_threshold_tokens = 272000,
+       long_prompt_price_per_1m      =  2.00,
+       long_completion_price_per_1m  =  7.50,
+       long_cache_read_price_per_1m  =  0.10,
+       long_cache_write_price_per_1m =  2.50
+ WHERE provider = 'openai' AND model = 'gpt-6.1-terra';
+
+UPDATE model_prices
+   SET long_context_threshold_tokens = 272000,
+       long_prompt_price_per_1m      =  30.00,
+       long_completion_price_per_1m  = 112.50,
+       long_cache_read_price_per_1m  =   3.00,
+       long_cache_write_price_per_1m =  37.50
+ WHERE provider = 'openai' AND model = 'gpt-6-rosalind';
+
 UPDATE model_prices
    SET long_context_threshold_tokens = 272000,
        long_prompt_price_per_1m      = 20.00,
