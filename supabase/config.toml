@@ -20,6 +20,11 @@ port = 54323
 api_url = "http://127.0.0.1"
 openai_api_key = "env(OPENAI_API_KEY)"
 
+# Local mail catcher. Supabase CLI v3 renamed this key to [local_smtp] and
+# rejects [inbucket] outright, but CLI 2.x rejects [local_smtp] just as hard,
+# and every workflow is pinned to 2.106.0. Rename this ONLY in the same change
+# that moves all four workflows to v3 — doing one without the other breaks
+# either the deploy or CI, which is exactly what happened on 2026-11-06.
 [inbucket]
 enabled = true
 port = 54324

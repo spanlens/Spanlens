@@ -60,7 +60,13 @@ jobs:
 
       - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          # Pinned, same as ci.yml and e2e.yml. This was `latest` until
+          # 2026-11-06, when the CLI released v3 and broke the nightly backup:
+          # v3 rejects the [inbucket] key in config.toml, which 2.x requires.
+          # Nothing in the repo changed, so the break was invisible until the
+          # next push -- five weeks later. Bump this with the other three
+          # workflows and the config.toml key together, never alone.
+          version: 2.106.0
 
       - name: Check secrets are present
         env:
