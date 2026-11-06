@@ -138,6 +138,7 @@ describe('model-prices-cache', () => {
       'claude-sonnet-4-6', 'claude-opus-4-7', 'claude-haiku-4-5', 'claude-opus-5',
       'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3.6-flash',
       'gpt-6-astra', 'gpt-6-sol', 'claude-opus-5-5', 'claude-fable-5-1',
+      'gpt-6.1-sol', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'gemini-4-argon',
     ]
     for (const model of required) {
       expect(cache.FALLBACK_PRICES[model], `missing fallback for ${model}`).toBeDefined()
@@ -233,6 +234,9 @@ describe('model-prices-cache', () => {
       'claude-fable-5-1':  { prompt: 10, cacheRead: 0.25, multiplier: 0.025 },
       'claude-mythos-5-1': { prompt: 10, cacheRead: 0.25, multiplier: 0.025 },
       'claude-opus-5-5':   { prompt: 4,  cacheRead: 0.2,  multiplier: 0.05 },
+      // Footnote 2 grew to cover Sonnet 5.5 as well (verified 2026-11-06).
+      'claude-sonnet-5-5': { prompt: 2,  cacheRead: 0.1,  multiplier: 0.05 },
+      'claude-haiku-5-5':  { prompt: 0.1, cacheRead: 0.01, multiplier: 0.1 },
       // The 0.1x models, pinned alongside so a blanket "fix" to either rule fails.
       'claude-fable-5':    { prompt: 10, cacheRead: 1.0,  multiplier: 0.1 },
       'claude-opus-5':     { prompt: 5,  cacheRead: 0.5,  multiplier: 0.1 },
@@ -282,6 +286,69 @@ describe('model-prices-cache', () => {
       expect(p?.longCacheWrite, `${model} long cache write is 2x`).toBeCloseTo((p?.cacheWrite ?? 0) * 2, 10)
       expect(p?.longCompletion, `${model} long output is 1.5x`).toBeCloseTo((p?.completion ?? 0) * 1.5, 10)
     }
+  })
+
+  test('gpt-6.1-sol differs from gpt-6-sol on cache read alone', () => {
+    // These two rows agree on input, output and cache write, and disagree on
+    // exactly one axis. That makes gpt-6-sol a tempting template for the new
+    // model, and copying it would double every cache-hit charge while leaving
+    // every other number correct. Pin the one axis that separates them.
+    // Source: developers.openai.com/api/docs/pricing.md (verified 2026-11-06).
+    const sol61 = cache.FALLBACK_PRICES['gpt-6.1-sol']
+    const sol6 = cache.FALLBACK_PRICES['gpt-6-sol']
+    expect(sol61, 'missing fallback for gpt-6.1-sol').toBeDefined()
+    expect(sol6, 'missing fallback for gpt-6-sol').toBeDefined()
+
+    for (const axis of ['prompt', 'completion', 'cacheWrite'] as const) {
+      expect(sol61?.[axis], `gpt-6.1-sol ${axis} should match gpt-6-sol`).toBe(sol6?.[axis])
+    }
+    expect(sol61?.cacheRead, 'gpt-6.1-sol cache read is 0.10, not the 0.20 on gpt-6-sol').toBe(0.1)
+    expect(sol6?.cacheRead, 'gpt-6-sol cache read is 0.20').toBe(0.2)
+
+    // The 272k tier keeps the same split: 2x input and cache, 1.5x output.
+    expect(sol61?.longThreshold).toBe(272000)
+    expect(sol61?.longPrompt).toBeCloseTo((sol61?.prompt ?? 0) * 2, 10)
+    expect(sol61?.longCacheRead).toBeCloseTo((sol61?.cacheRead ?? 0) * 2, 10)
+    expect(sol61?.longCacheWrite).toBeCloseTo((sol61?.cacheWrite ?? 0) * 2, 10)
+    expect(sol61?.longCompletion).toBeCloseTo((sol61?.completion ?? 0) * 1.5, 10)
+  })
+
+  test('claude-haiku-5-5 carries a 100k prompt-length tier at a flat 5x', () => {
+    // Anthropic's first prompt-length tier. It is NOT the 2x/1.5x shape OpenAI
+    // uses: every axis steps by exactly 5x above 100,000 tokens. Pin both the
+    // threshold and the uniform multiplier, so neither a missing tier nor an
+    // OpenAI-shaped one slips through.
+    // Source: platform.claude.com pricing (verified 2026-11-06).
+    const h = cache.FALLBACK_PRICES['claude-haiku-5-5']
+    expect(h, 'missing fallback for claude-haiku-5-5').toBeDefined()
+    expect(h?.prompt).toBe(0.1)
+    expect(h?.completion).toBe(0.5)
+    expect(h?.cacheRead).toBe(0.01)
+    expect(h?.cacheWrite).toBe(0.125)
+    expect(h?.longThreshold, 'tier is on prompt length, at 100k').toBe(100000)
+
+    for (const [short, long] of [
+      ['prompt', 'longPrompt'],
+      ['completion', 'longCompletion'],
+      ['cacheRead', 'longCacheRead'],
+      ['cacheWrite', 'longCacheWrite'],
+    ] as const) {
+      expect(h?.[long], `${long} is 5x ${short}`).toBeCloseTo((h?.[short] ?? 0) * 5, 10)
+    }
+  })
+
+  test('gemini-4-argon holds the promotional rates, not the December ones', () => {
+    // 2.00 / 10.00 / 0.10 through 2026-11-30, then 4.00 / 20.00 / 0.20 from
+    // 2026-12-01. Taking the later column early over-reports by 2x; missing
+    // the flip under-reports by 50%. Same mistake class as the Gemini flash
+    // introductory window, which shipped wrong twice.
+    // Source: aistudio.google.com/docs/pricing (verified 2026-11-06).
+    const argon = cache.FALLBACK_PRICES['gemini-4-argon']
+    expect(argon, 'missing fallback for gemini-4-argon').toBeDefined()
+    expect(argon).toEqual({ prompt: 2.0, completion: 10, cacheRead: 0.1 })
+    // Argon publishes no >200k split; inheriting one from a Pro row would
+    // silently double long requests.
+    expect(argon?.longThreshold, 'argon has no long-context tier').toBeUndefined()
   })
 
   test('Daybreak aliases mirror the rows they point at', () => {

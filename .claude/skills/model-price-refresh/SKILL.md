@@ -213,35 +213,51 @@ over-reported every Sonnet 5 request by 50%.
 
 Currently pending:
 
-- **2027-01-01** — five Gemini rows step off introductory pricing.
-  `gemini-3.6-flash`, `gemini-3.7-flash` and `gemini-3.8-flash` go
-  0.75 / 3.75 / cache 0.075 → 1.50 / 7.50 / 0.15;
-  `gemini-robotics-er-2-preview` goes 1.00 / 5.00 / 0.10 → 2.00 / 10.00 / 0.20
-  and `gemini-robotics-er-2-streaming-preview` 1.00 / 5.00 → 2.00 / 10.00.
-  Missing it under-reports all five by 50%; applying it early over-reports by
-  2x. Both sides are pinned by tests in `model-prices-cache.test.ts`.
-  **Read the "through December 31, 2026" column, not the "starting January 1,
-  2027" one.** Taking the wrong column is now the single most repeated mistake
-  in this routine: it shipped on `gemini-3.6-flash` in 2026-08 and again on
-  both Robotics ER 2 rows in the same seed, each a silent 2x over-report.
-- **Every run** — re-check the moving pointers, which go stale without any
-  announcement: `gpt-daybreak-blue-latest` / `gpt-daybreak-red-latest` (seeded
-  since 2026-09; OpenAI repoints them at each new flagship, and only this audit
-  can notice) and Mistral's `*-latest` family.
+- **🔥 2026-11-30 — `gpt-5.6-sol` leaves promotional pricing.** The page says
+  only "available until November 30, 2026" and does **not** say what it reverts
+  to. Re-read the page on or after 12-01 and take the number from it. Do not
+  assume it returns to the pre-cut 5.00 / 30.00.
+- **🔥 2026-12-01 — `gemini-4-argon` doubles on every axis**, 2.00 / 10.00 /
+  cache 0.10 → 4.00 / 20.00 / 0.20. It is the current Gemini flagship, so this
+  is the largest single-model error available to get wrong. Pinned by a test.
+- **2026-12-31 — `gpt-6-astra-law`** leaves promotional pricing (10.00 / 50.00 /
+  1.00). The page says "at least through December 31, 2026".
+- **2027-01-01 — four Gemini rows** step off introductory pricing.
+  `gemini-3.6-flash` and `gemini-3.8-flash` go 0.75 / 3.75 / 0.075 →
+  1.50 / 7.50 / 0.15; `gemini-robotics-er-2-preview` goes 1.00 / 5.00 / 0.10 →
+  2.00 / 10.00 / 0.20 and `gemini-robotics-er-2-streaming-preview`
+  1.00 / 5.00 → 2.00 / 10.00. `gemini-3.7-flash` used to be on this list and
+  has since left the page, so its 2027 behaviour is unknown; its row is frozen.
+  **Read the "through <date>" column, not the "starting <date>" one.** Taking
+  the wrong column is the single most repeated mistake in this routine: it
+  shipped on `gemini-3.6-flash` in 2026-08 and on both Robotics ER 2 rows in
+  the same seed, each a silent 2x over-report.
+- **Every run** — re-check the moving pointers. Mistral's `*-latest` family
+  moved in 2026-11 and nobody noticed for five weeks: `mistral-large-latest`
+  followed Large 3 → Large 4 and under-reported by 29% on both axes the whole
+  time. OpenAI's `gpt-daybreak-blue-latest` / `gpt-daybreak-red-latest` are
+  worse: **the page stopped documenting them entirely in 2026-11**, so their
+  target can no longer be read at all. See the standing risk note below.
 - **Every run** — diff *every member* of a flagship family, not the headline
-  one. In 2026-08 OpenAI cut `gpt-5.6-terra` and `gpt-5.6-luna` and left `sol`;
-  in 2026-09 it cut `sol` and left the other two.
-- **Next run** — `zai-glm-5-3` is still an unconfirmed id. Mistral's pricing
-  page stopped rendering API ids in 2026-09 (it showed them in 2026-08, which is
-  where `zai-glm-5-2` came from), and neither `models_overview` nor the weights
-  page carries a `zai-`/`glm` id. Prices match GLM 5.2 either way, so the row is
-  harmless if wrong, but confirm it when an id source reappears.
+  one. OpenAI has now moved this family in both directions: in 2026-08 it cut
+  `gpt-5.6-terra` and `gpt-5.6-luna` and left `sol`; in 2026-09 it cut `sol` and
+  left the other two.
+- **Every run** — check whether the provider has started publishing an axis it
+  previously left blank. Mistral published cached-input rates for its whole
+  catalogue in 2026-11; until that was picked up, every Mistral cache hit billed
+  at the full input rate because `calculateCost()` falls back to `prompt` when
+  `cache_read` is NULL. A newly-published column is a silent over-charge, not a
+  no-op.
 
-  `claude-mythos-5-1` was confirmed on 2026-09-28: the model-ids page documents
-  the format `claude-{name}-{major}[-{minor}]` for the 4.6 generation onward,
-  and `claude-fable-5-1` is listed explicitly. The id follows a published rule
-  rather than only our own row convention. Anthropic still omits invite-only
-  ids from the models overview, so expect the same gap on future Mythos rows.
+**Standing risk — the Daybreak aliases are undocumented as of 2026-11-06.**
+They were seeded in 2026-09 because the pricing page stated which models they
+point at. That statement is gone and the page no longer mentions either id.
+The rows still hold `gpt-5.6-sol` / `gpt-5.6-cyber` rates. If OpenAI repointed
+blue at the current flagship, input is over-reported 2x and cache reads 4x
+(`gpt-6.1-sol` is 2.00 / 0.10 against the 4.00 / 0.40 held). They have not been
+deleted: that needs both the provider omitting the id *and* a `requests` history
+check, and production was unreadable in the 2026-11 run. Settle this when prod
+can be queried, or find a page that still documents the aliases.
 
 Resolved, kept as a record of why:
 

@@ -218,9 +218,13 @@ describe('mistral proxy — logging + cost', () => {
     expect(row['model']).toBe('mistral-large-latest')
     expect(row['promptTokens']).toBe(1_000_000)
     expect(row['completionTokens']).toBe(500_000)
-    // mistral-large-latest (Mistral Large 3): $0.50 / 1M prompt + $1.50 / 1M completion
-    // 1M * 0.50 + 0.5M * 1.50 = 0.5 + 0.75 = 1.25
-    expect(row['costUsd']).toBeCloseTo(1.25, 4)
+    // mistral-large-latest is a moving pointer. It followed Mistral Large 3 ->
+    // Large 4 in 2026-11, taking the rate from 0.50 / 1.50 to 0.70 / 2.10, and
+    // this assertion is what caught it. Keep the arithmetic written out so the
+    // next move is just as visible.
+    // Mistral Large 4: $0.70 / 1M prompt + $2.10 / 1M completion
+    // 1M * 0.70 + 0.5M * 2.10 = 0.70 + 1.05 = 1.75
+    expect(row['costUsd']).toBeCloseTo(1.75, 4)
   })
 
   test('upstream non-2xx is passed through and recorded with errorMessage', async () => {

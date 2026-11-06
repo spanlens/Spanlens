@@ -77,7 +77,17 @@ export interface ModelPrice {
 //   • xAI       — every Grok model has a cached-input rate and a ≥200k tier that re-rates the whole request
 //   • Tiered Gemini models use the ≤200k token band
 export const FALLBACK_PRICES: Record<string, ModelPrice> = {
-  // ── OpenAI: GPT-6 flagship (long-context tier at ≥272k tokens, all 2x) ───
+  // ── OpenAI: GPT-6.1 / GPT-6 flagship (272k tier: 2x input + cache, 1.5x out)
+  // ⚠ gpt-6.1-sol and gpt-6-sol share input (2.00), output (10) and cache
+  // write (2.5). They differ on ONE axis: cache read, 0.10 vs 0.20. Copying
+  // one row onto the other doubles every cache hit and looks right otherwise.
+  'gpt-6.1-sol':       { prompt: 2.0,  completion: 10,  cacheRead: 0.1,  cacheWrite: 2.5,
+                         longThreshold: 272000, longPrompt: 4, longCompletion: 15,
+                         longCacheRead: 0.2, longCacheWrite: 5.0 },
+  'gpt-6.1-terra':     { prompt: 1.0,  completion: 5,   cacheRead: 0.05, cacheWrite: 1.25,
+                         longThreshold: 272000, longPrompt: 2, longCompletion: 7.5,
+                         longCacheRead: 0.1, longCacheWrite: 2.5 },
+  'gpt-6-cyber':       { prompt: 20,   completion: 100, cacheRead: 2.0,  cacheWrite: 25 },
   'gpt-6-astra':       { prompt: 10,   completion: 50,  cacheRead: 1.0,  cacheWrite: 12.5,
                          longThreshold: 272000, longPrompt: 20, longCompletion: 75,
                          longCacheRead: 2.0, longCacheWrite: 25 },
@@ -104,9 +114,13 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // is deliberately absent.
   'gpt-5.6-cyber':     { prompt: 12.5, completion: 75,  cacheRead: 1.25, cacheWrite: 15.625 },
   'gpt-5.5-cyber':     { prompt: 12.5, completion: 75,  cacheRead: 1.25 },
-  // Daybreak aliases: moving pointers, currently gpt-5.6-sol and gpt-5.6-cyber.
-  // Re-verify both targets on every price refresh — they repoint silently.
-  // A test pins each to the row it mirrors so they cannot drift apart here.
+  // ⚠ Daybreak aliases: moving pointers whose target we can NO LONGER READ.
+  // The pricing page stated which models they point at when these were seeded
+  // in 2026-09; as of 2026-11-06 it does not mention either id at all. These
+  // still hold gpt-5.6-sol / gpt-5.6-cyber rates. If OpenAI repointed blue at
+  // the current flagship, input is over-reported 2x and cache reads 4x.
+  // The test below pins them to the rows they mirror, which catches an
+  // internal edit but cannot catch an upstream repoint. Only the audit can.
   'gpt-daybreak-blue-latest': { prompt: 4.0,  completion: 20, cacheRead: 0.4,  cacheWrite: 5.0,
                          longThreshold: 272000, longPrompt: 8, longCompletion: 30,
                          longCacheRead: 0.8, longCacheWrite: 10 },
@@ -181,29 +195,34 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // ── Mistral: chat completion + embeddings (OpenAI-compatible API) ────────
   // Same rows live in supabase/seeds/model_prices.sql + the 20260612150000
   // migration. cache pricing not published by Mistral.
-  'mistral-large-latest':         { prompt: 0.50, completion: 1.50 },
-  // Mistral stopped rendering API ids on its pricing page in 2026-09; the 5-3
-  // id follows the 5-2 convention and is unconfirmed. Same rates either way.
-  'zai-glm-5-3':                  { prompt: 1.40, completion: 4.40 },
+  // ⚠ `*-latest` are moving pointers. Large 3 became Large 4 in 2026-11 and
+  // took the price with it (was 0.50 / 1.50, which under-reported by 29%).
+  // Mistral also began publishing cached-input rates for the whole catalogue;
+  // before that a NULL cacheRead billed every cache hit at the full input rate.
+  'mistral-large-latest':         { prompt: 0.70, completion: 2.10, cacheRead: 0.07 },
+  // zai-glm-5-3's id was inferred in 2026-09 and CONFIRMED 2026-11 from the
+  // page's own link targets (/models/zai-glm-5-3).
+  'zai-glm-5-3':                  { prompt: 1.40, completion: 4.40, cacheRead: 0.14 },
+  'zai-glm-5-3-flash':            { prompt: 0.15, completion: 0.50, cacheRead: 0.03 },
   'zai-glm-5-2':                  { prompt: 1.40, completion: 4.40 },
-  'mistral-medium-latest':        { prompt: 1.50, completion: 7.50 },
-  'mistral-small-latest':         { prompt: 0.15, completion: 0.60 },
+  'mistral-medium-latest':        { prompt: 1.50, completion: 7.50 }, // off the current page
+  'mistral-small-latest':         { prompt: 0.15, completion: 0.60, cacheRead: 0.015 },
   'magistral-medium-latest':      { prompt: 2.00, completion: 5.00 },
   'magistral-small-latest':       { prompt: 0.50, completion: 1.50 },
   'devstral-medium-latest':       { prompt: 0.40, completion: 2.00 },
   'devstral-small-latest':        { prompt: 0.10, completion: 0.30 },
   'pixtral-large-latest':         { prompt: 2.00, completion: 6.00 },
   'pixtral-12b':                  { prompt: 0.15, completion: 0.15 },
-  'codestral-latest':             { prompt: 0.30, completion: 0.90 },
-  'ministral-3b-latest':          { prompt: 0.10, completion: 0.10 },
-  'ministral-8b-latest':          { prompt: 0.15, completion: 0.15 },
-  'ministral-14b-latest':         { prompt: 0.20, completion: 0.20 },
+  'codestral-latest':             { prompt: 0.30, completion: 0.90, cacheRead: 0.03 },
+  'ministral-3b-latest':          { prompt: 0.10, completion: 0.10, cacheRead: 0.01 },
+  'ministral-8b-latest':          { prompt: 0.15, completion: 0.15, cacheRead: 0.015 },
+  'ministral-14b-latest':         { prompt: 0.20, completion: 0.20, cacheRead: 0.02 },
   'open-mistral-nemo':            { prompt: 0.15, completion: 0.15 },
   'open-mixtral-8x7b':            { prompt: 0.70, completion: 0.70 },
   'open-mixtral-8x22b':           { prompt: 2.00, completion: 6.00 },
   'mixtral-8x22b':                { prompt: 2.00, completion: 6.00 }, // legacy alias
-  'mistral-embed':                { prompt: 0.10, completion: 0 },
-  'codestral-embed':              { prompt: 0.15, completion: 0 },
+  'mistral-embed':                { prompt: 0.10, completion: 0, cacheRead: 0.01 },
+  'codestral-embed':              { prompt: 0.15, completion: 0, cacheRead: 0.015 },
   // ── Groq / DeepSeek / xAI / Cohere (OpenAI-compatible) ───────────────────
   // Representative production models; full set lives in the seed +
   // 20260701120100 migration. Cold-start fallback so cost lands non-NULL.
@@ -247,6 +266,15 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   'claude-fable-5-1':             { prompt: 10,   completion: 50, cacheRead: 0.25, cacheWrite: 12.5 },
   'claude-mythos-5-1':            { prompt: 10,   completion: 50, cacheRead: 0.25, cacheWrite: 12.5 }, // invite-only
   'claude-opus-5-5':              { prompt: 4,    completion: 20, cacheRead: 0.2,  cacheWrite: 5.0 },
+  // Sonnet 5.5 reads cache at 0.05x base (page footnote 2 covers Opus 5.5 and
+  // Sonnet 5.5), so 0.10 on a 2.00 base rather than the usual 0.20.
+  'claude-sonnet-5-5':            { prompt: 2,    completion: 10, cacheRead: 0.1,  cacheWrite: 2.5 },
+  // Anthropic's first PROMPT-LENGTH tier: flat 5x above 100k on every axis.
+  // cost.ts branches on promptTokens (cache included) with a strict `>`, which
+  // is exactly what the page specifies. Pinned by a test.
+  'claude-haiku-5-5':             { prompt: 0.1,  completion: 0.5, cacheRead: 0.01, cacheWrite: 0.125,
+                                    longThreshold: 100000, longPrompt: 0.5, longCompletion: 2.5,
+                                    longCacheRead: 0.05, longCacheWrite: 0.625 },
   'claude-fable-5':               { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 },
   'claude-mythos-5':              { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 }, // invite-only
   'claude-mythos-preview':        { prompt: 10,   completion: 50, cacheRead: 1.0,  cacheWrite: 12.5 }, // invite-only
@@ -285,6 +313,8 @@ export const FALLBACK_PRICES: Record<string, ModelPrice> = {
   // 3.7-flash and 3.6-flash are on INTRODUCTORY pricing through 2026-12-31.
   // From 2027-01-01 both become 1.5 / 7.5 / 0.15. Flipping early doubles the
   // reported cost; flipping late halves it. Pinned by a test.
+  // ⚠ PROMOTIONAL through 2026-11-30; 2.00 / 10.00 / 0.20 starts 2026-12-01.
+  'gemini-4-argon':                         { prompt: 2.0,  completion: 10,   cacheRead: 0.1 },
   'gemini-3.8-flash':                       { prompt: 0.75, completion: 3.75, cacheRead: 0.075 },
   'gemini-3.7-flash':                       { prompt: 0.75, completion: 3.75, cacheRead: 0.075 },
   'gemini-3.6-flash':                       { prompt: 0.75, completion: 3.75, cacheRead: 0.075 },
